@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtDuration, timeAgo } from '../ui/format';
-import { Seg, Spinner, Badge } from '../components/ui';
+import { Seg, Select, Spinner, Badge } from '../components/ui';
 import { Logo, IconCode, IconList, IconHome, IconShield, IconDownload } from '../components/icons';
 import { useModal } from '../components/Modal';
 import {
@@ -147,11 +147,8 @@ export default function Settings() {
             { v: 'compact', label: t('s_density_compact') },
           ]} />
         <label>{t('s_lang')}</label>
-        <select value={langMode} onChange={(e) => setLang(e.target.value as typeof langMode)} aria-label={t('s_lang')}>
-          <option value="auto">🌐 Auto</option>
-          <option value="es">🇪🇸 Español</option>
-          <option value="en">🇬🇧 English</option>
-        </select>
+        <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
+          options={[{ v: 'auto', label: '🌐 Auto' }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
       </div>
 
       {/* ---- Usuarios (solo admin) ---- */}
