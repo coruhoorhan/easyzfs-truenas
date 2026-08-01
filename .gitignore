@@ -16,3 +16,6 @@ web/dist/
 
 # Zips de trabajo (no pertenecen al repo)
 *.zip
+
+# Credenciales locales (NUNCA subir)
+easyzfs_credenciales.txt
