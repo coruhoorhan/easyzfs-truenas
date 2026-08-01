@@ -2,10 +2,10 @@
 // barra de modo demo y vistas con code-splitting (React.lazy).
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
-import { AppProvider, useApp } from './ui/store';
+import { AppProvider, useApp, alertTargetView } from './ui/store';
 import type { ViewId } from './ui/store';
 import { ModalProvider, ModalHost } from './components/ModalHost';
-import { Logo, IconHome, IconPool, IconData, IconSnap, IconTask, IconDisk, IconGear, IconBell, IconMoon, IconSun } from './components/icons';
+import { Logo, IconHome, IconPool, IconData, IconSnap, IconTask, IconDisk, IconGear, IconBell, IconMoon, IconSun, IconChev } from './components/icons';
 import { Spinner } from './components/ui';
 import { getProvider } from './data';
 import { subscribeEvents } from './data/events';
@@ -35,7 +35,7 @@ const NAV: { id: ViewId; icon: ComponentType<{ size?: number }>; adminOnly?: boo
 
 // Panel desplegable de alertas (campanita)
 function AlertsPanel({ onClose }: { onClose: () => void }) {
-  const { t } = useApp();
+  const { t, navigate } = useApp();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -79,8 +79,14 @@ function AlertsPanel({ onClose }: { onClose: () => void }) {
       <div style={{ maxHeight: 320, overflowY: 'auto' }}>
         {pending.map((a) => {
           const tone = a.level === 'crit' ? 'err' : a.level === 'warn' ? 'warn' : 'info';
+          const view = alertTargetView(a.target);
+          const go = view ? () => { navigate(view); onClose(); } : undefined;
           return (
-            <div className="alert" key={a.id}>
+            <div className={`alert${view ? ' clickable' : ''}`} key={a.id}
+              role={view ? 'link' : undefined} tabIndex={view ? 0 : undefined}
+              title={view ? t('al_goto') : undefined}
+              onClick={go}
+              onKeyDown={go ? (e) => { if (e.key === 'Enter') go(); } : undefined}>
               <div className="ico" style={{ background: `var(--${tone}-soft)`, color: `var(--${tone})` }}>
                 {a.level === 'crit' ? '!' : a.level === 'warn' ? '⚠' : 'i'}
               </div>
@@ -90,7 +96,8 @@ function AlertsPanel({ onClose }: { onClose: () => void }) {
                   {a.source} · {timeAgo(a.ts, t)}
                 </div>
               </div>
-              <button className="btn sm" onClick={() => ack(a.id)}>{t('al_ack')}</button>
+              <button className="btn sm" onClick={(e) => { e.stopPropagation(); ack(a.id); }}>{t('al_ack')}</button>
+              {view && <span className="chev"><IconChev /></span>}
             </div>
           );
         })}
@@ -144,7 +151,7 @@ function Shell() {
           <div className="brand">
             <Logo size={30} />
             <div>
-              <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em' }}>zfsctl</div>
+              <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em' }}>EasyZFS</div>
               <div style={{ fontSize: 11, color: 'var(--text2)' }}>{user.user} · {user.role}</div>
             </div>
           </div>

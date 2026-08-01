@@ -50,7 +50,10 @@ export function ModalHost() {
     case 'newtask': return <NewTaskModal onClose={closeModal} />;
     case 'sched': return <EditScheduleModal job={p.job as Job} onClose={closeModal} />;
     case 'export': return <ExportPoolModal pool={p.pool as string} onClose={closeModal} />;
+    case 'addvdev': return <PoolDiskModal pool={p.pool as string} mode="vdev" onClose={closeModal} />;
+    case 'replace': return <PoolDiskModal pool={p.pool as string} mode="replace" onClose={closeModal} />;
     case 'newuser': return <NewUserModal onClose={closeModal} />;
+    case 'mypass': return <MyPasswdModal onClose={closeModal} />;
     case 'passwd': return <PasswdModal user={p.user as string} onClose={closeModal} />;
     case 'deluser': return <DeleteUserModal user={p.user as string} onClose={closeModal} />;
     case 'rollback': return <RollbackModal full={p.full as string} onClose={closeModal} />;
@@ -116,6 +119,7 @@ function NewPoolModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [topo, setTopo] = useState<Topo>('mirror');
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -139,12 +143,12 @@ function NewPoolModal({ onClose }: { onClose: () => void }) {
 
   const minDisks = TOPO_MIN[topo];
   const canNext = name.trim().length > 0;
-  const canCreate = sel.size >= minDisks;
+  const canCreate = sel.size >= minDisks && confirm.trim() === name.trim();
 
   const submit = async () => {
     setBusy(true); setErr('');
     try {
-      await getProvider().createPool({ name: name.trim(), topo, disks: [...sel] });
+      await getProvider().createPool({ name: name.trim(), topo, disks: [...sel], confirm: confirm.trim() });
       refresh(); onClose();
     } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
   };
@@ -191,7 +195,10 @@ function NewPoolModal({ onClose }: { onClose: () => void }) {
         <p className="desc" style={{ marginTop: 14 }}>
           ⚠️ {t('np_warn')} {usable > 0 && <>{t('np_usable')}: <b>~{fmtBytes(usable)}</b>.</>}
         </p>
-        {!canCreate && <p className="form-err">{t('np_need_disks', { n: minDisks })}</p>}
+        {sel.size < minDisks && <p className="form-err">{t('np_need_disks', { n: minDisks })}</p>}
+        <label htmlFor="np-confirm">{t('ex_confirm_lbl')}</label>
+        <input id="np-confirm" placeholder={name.trim()} value={confirm}
+          onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
           <button type="button" className="btn" onClick={() => setStep(1)}>{t('np_back')}</button>
@@ -382,6 +389,110 @@ function ExportPoolModal({ pool, onClose }: { pool: string; onClose: () => void 
         <div className="m-actions">
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
           <SubmitBtn label={t('ex_btn')} busy={busy} danger disabled={!isAdmin || confirm.trim() !== pool} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- añadir vdev / sustituir disco (confirmación escrita) ----------
+// Modal genérico para las dos operaciones destructivas de pool: pide el
+// nombre del pool para confirmar y envía {confirm} al backend.
+function PoolDiskModal({ pool, mode, onClose }: { pool: string; mode: 'vdev' | 'replace'; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const disks = useLoad(() => getProvider().getDisks());
+  const pools = useLoad(() => getProvider().getPools());
+  const [topo, setTopo] = useState<Topo>('mirror');
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [oldDev, setOldDev] = useState('');
+  const [newDev, setNewDev] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const free = useMemo(() => (disks ?? []).filter((d) => d.pool === '—' || d.pool === ''), [disks]);
+  const current = useMemo(() => pools?.find((pl) => pl.name === pool)?.vdevs ?? [], [pools, pool]);
+  const toggle = (dev: string) => setSel((s) => {
+    const n = new Set(s);
+    if (n.has(dev)) n.delete(dev); else n.add(dev);
+    return n;
+  });
+
+  useEffect(() => {
+    if (mode === 'replace') {
+      if (!oldDev && current.length) setOldDev(current[0].dev);
+      if (!newDev && free.length) setNewDev(free[0].dev);
+    }
+  }, [mode, current, free, oldDev, newDev]);
+
+  const confirmed = confirm.trim() === pool;
+  const minDisks = TOPO_MIN[topo];
+  const valid = mode === 'vdev'
+    ? sel.size >= minDisks
+    : !!oldDev && !!newDev && oldDev !== newDev;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      if (mode === 'vdev') await getProvider().addVdev(pool, topo, [...sel], confirm.trim());
+      else await getProvider().replaceDisk(pool, oldDev, newDev, confirm.trim());
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose}>
+      <form onSubmit={submit}>
+        <h3>{mode === 'vdev' ? t('av_title') : t('rp_title')}</h3>
+        <p className="desc">
+          {t(mode === 'vdev' ? 'av_desc' : 'rp_desc')} <b className="mono">{pool}</b>
+        </p>
+
+        {mode === 'vdev' && (<>
+          <label>{t('np_topo')}</label>
+          <Seg<Topo> ariaLabel={t('np_topo')} value={topo} onChange={setTopo}
+            options={[
+              { v: 'mirror', label: 'Mirror' }, { v: 'raidz1', label: 'RaidZ1' },
+              { v: 'raidz2', label: 'RaidZ2' }, { v: 'stripe', label: 'Stripe' },
+            ]} />
+          <label>{t('np_disks')}</label>
+          {free.length === 0 && <p className="desc" style={{ marginTop: 8 }}>{t('np_no_disks')}</p>}
+          {free.map((d: Disk) => (
+            <div key={d.dev} className={`diskpick ${sel.has(d.dev) ? 'sel' : ''}`} role="checkbox"
+              aria-checked={sel.has(d.dev)} tabIndex={0}
+              onClick={() => toggle(d.dev)}
+              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(d.dev); } }}>
+              <span className="mono">{d.dev}</span>
+              <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text2)' }}>{d.model} · {fmtBytes(d.size_bytes)}</span>
+              <span className="badge info">{t('np_free')}</span>
+            </div>
+          ))}
+          {sel.size < minDisks && <p className="form-err">{t('np_need_disks', { n: minDisks })}</p>}
+        </>)}
+
+        {mode === 'replace' && (<>
+          <label htmlFor="rp-old">{t('rp_old')}</label>
+          <select id="rp-old" value={oldDev} onChange={(e) => setOldDev(e.target.value)}>
+            {current.map((v) => <option key={v.dev} value={v.dev}>{v.dev} ({v.role})</option>)}
+          </select>
+          <label htmlFor="rp-new">{t('rp_new')}</label>
+          {free.length === 0 && <p className="desc" style={{ marginTop: 8 }}>{t('np_no_disks')}</p>}
+          {free.length > 0 && (
+            <select id="rp-new" value={newDev} onChange={(e) => setNewDev(e.target.value)}>
+              {free.map((d) => <option key={d.dev} value={d.dev}>{d.dev} · {d.model} · {fmtBytes(d.size_bytes)}</option>)}
+            </select>
+          )}
+        </>)}
+
+        <label htmlFor="pd-confirm">{t('ex_confirm_lbl')}</label>
+        <input id="pd-confirm" placeholder={pool} value={confirm}
+          onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={mode === 'vdev' ? t('av_btn') : t('rp_btn')} busy={busy} danger
+            disabled={!isAdmin || !confirmed || !valid} />
         </div>
       </form>
     </ModalBox>
@@ -695,6 +806,48 @@ function NewUserModal({ onClose }: { onClose: () => void }) {
         <div className="m-actions">
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
           <SubmitBtn label={t('mu_create')} busy={busy} disabled={!user.trim() || pass.length < 8} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// Cambiar la contraseña de la sesión actual (desde Ajustes > Mi sesión)
+function MyPasswdModal({ onClose }: { onClose: () => void }) {
+  const { t } = useApp();
+  const [cur, setCur] = useState('');
+  const [p1, setP1] = useState('');
+  const [p2, setP2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (p1 !== p2) { setErr(t('s_mypass_mismatch')); return; }
+    setBusy(true); setErr('');
+    try {
+      await getProvider().setMyPassword(cur, p1);
+      onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose}>
+      <form onSubmit={submit}>
+        <h3>{t('s_mypass')}</h3>
+        <label htmlFor="myp-cur">{t('s_mypass_cur')}</label>
+        <input id="myp-cur" type="password" autoComplete="current-password" value={cur}
+          onChange={(e) => setCur(e.target.value)} required />
+        <label htmlFor="myp-p1">{t('mp_new')}</label>
+        <input id="myp-p1" type="password" placeholder={t('mu_pass_ph')} autoComplete="new-password"
+          value={p1} onChange={(e) => setP1(e.target.value)} minLength={8} required />
+        <label htmlFor="myp-p2">{t('s_mypass2')}</label>
+        <input id="myp-p2" type="password" autoComplete="new-password" value={p2}
+          onChange={(e) => setP2(e.target.value)} minLength={8} required />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('update')} busy={busy} disabled={!cur || p1.length < 8 || p1 !== p2} />
         </div>
       </form>
     </ModalBox>

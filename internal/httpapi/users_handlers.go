@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gnacho/zfsctl/internal/auth"
-	"github.com/gnacho/zfsctl/internal/users"
+	"easyzfs/internal/auth"
+	"easyzfs/internal/users"
 )
 
 // listUsers — GET /api/users → [{user, role, last_login, sessions}]
@@ -90,15 +90,20 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setUserPassword — POST /api/users/{name}/password {new, close_sessions} → 204 (admin).
+// setUserPassword — POST /api/users/{name}/password {new, close_sessions?} → 204 (admin).
+// close_sessions por defecto es true (si el campo no viene, se cierran las sesiones).
 func (s *Server) setUserPassword(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body struct {
 		New           string `json:"new"`
-		CloseSessions bool   `json:"close_sessions"`
+		CloseSessions *bool  `json:"close_sessions"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
+	}
+	closeSessions := true
+	if body.CloseSessions != nil {
+		closeSessions = *body.CloseSessions
 	}
 	if err := s.users.SetPassword(r.Context(), name, body.New); err != nil {
 		switch {
@@ -111,7 +116,7 @@ func (s *Server) setUserPassword(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if body.CloseSessions {
+	if closeSessions {
 		if err := s.auth.DestroyUserSessions(r.Context(), name, ""); err != nil {
 			writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
 			return

@@ -1,4 +1,5 @@
-// Vista Tareas: próximas ejecuciones, tareas programadas e historial.
+// Vista Tareas: próximas ejecuciones, tareas programadas, tareas del
+// sistema (systemd/cron, solo lectura) e historial.
 import { useEffect } from 'react';
 import { getProvider } from '../data';
 import { subscribeEvents } from '../data/events';
@@ -20,6 +21,7 @@ export default function Tasks() {
   const { openModal } = useModal();
   const jobs = useData((p) => p.getJobs());
   const hist = useData((p) => p.getJobHistory());
+  const sys = useData((p) => p.getSystemTimers());
   const [err, setErr] = useState('');
 
   // Cuando termina una tarea (evento) recargamos lista e historial
@@ -105,6 +107,31 @@ export default function Tasks() {
           ))}
           {jobs.data && list.length === 0 && <div className="empty">{t('empty')}</div>}
         </div>
+      </div>
+
+      {/* Tareas del sistema: timers de systemd y cron (solo lectura) */}
+      <div className="sect">
+        <h2>{t('tk_system')}</h2>
+        <div className="card">
+          {sys.loading && !sys.data && <Spinner label={t('loading')} />}
+          {(sys.data ?? []).map((s, i) => (
+            <div className="rowitem" key={i}>
+              <Badge tone={s.source === 'systemd' ? 'info' : 'warn'} dot={false} style={{ padding: '2px 8px' }}>
+                {s.source}
+              </Badge>
+              <div className="grow">
+                <div className="t1" style={{ fontSize: 13.5 }}>{s.name}</div>
+                <div className="t2">
+                  {s.schedule}
+                  {s.next_run ? ` · ${t('tk_nextrun')}: ${timeAgo(s.next_run, t)}` : ''}
+                </div>
+                <div className="t2 mono">{s.command}</div>
+              </div>
+            </div>
+          ))}
+          {sys.data && sys.data.length === 0 && <div className="empty">{t('empty')}</div>}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('tk_system_d')}</p>
       </div>
 
       <div className="sect">

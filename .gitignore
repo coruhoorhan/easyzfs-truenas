@@ -1,8 +1,18 @@
-/zfsctl
-/dist
-/web/dist
-/web/node_modules
-node_modules
+# Binario y artefactos de build
+easyzfs
+*.test
+
+# Datos en runtime
 *.db
 *.db-wal
 *.db-shm
+
+# Front (web/ se genera con el stack PWA; dist/ se construye por make)
+web/node_modules/
+web/dist/
+
+# Go
+/vendor/
+
+# Zips de trabajo (no pertenecen al repo)
+*.zip

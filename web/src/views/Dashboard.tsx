@@ -2,24 +2,32 @@
 import { useEffect } from 'react';
 import { subscribeEvents } from '../data/events';
 import { useData } from '../ui/useData';
-import { useApp } from '../ui/store';
+import { useApp, alertTargetView } from '../ui/store';
 import { fmtBytesPair, fmtInt, fmtPct, timeAgo } from '../ui/format';
 import { KpiCard, Spinner } from '../components/ui';
 import { PoolCard } from '../components/PoolCard';
+import { IconChev } from '../components/icons';
 import type { Alert } from '../data/types';
 
 function AlertRow({ a }: { a: Alert }) {
-  const { t } = useApp();
+  const { t, navigate } = useApp();
   const tone = a.level === 'crit' ? 'err' : a.level === 'warn' ? 'warn' : 'info';
   const ico = a.level === 'crit' ? '!' : a.level === 'warn' ? '⚠' : 'i';
+  const view = alertTargetView(a.target);
+  const go = view ? () => navigate(view) : undefined;
   return (
-    <div className="alert">
+    <div className={`alert${view ? ' clickable' : ''}`}
+      role={view ? 'link' : undefined} tabIndex={view ? 0 : undefined}
+      title={view ? t('al_goto') : undefined}
+      onClick={go}
+      onKeyDown={go ? (e) => { if (e.key === 'Enter') go(); } : undefined}>
       <div className="ico" style={{ background: `var(--${tone}-soft)`, color: `var(--${tone})` }}>{ico}</div>
       <div className="grow" style={{ flex: 1, minWidth: 0 }}>
         <b>{a.message}</b>
         <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 2 }}>{a.source}</div>
       </div>
       <span style={{ fontSize: 11.5, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{timeAgo(a.ts, t)}</span>
+      {view && <span className="chev"><IconChev /></span>}
     </div>
   );
 }

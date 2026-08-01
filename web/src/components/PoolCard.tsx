@@ -79,8 +79,10 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
           {running ? t('pool_scrub_pause') : t('pool_scrub_now')}
         </button>
         {running && <button className="btn sm" onClick={() => scrub('stop')}>Stop</button>}
-        <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}>{t('pool_add_vdev')}</button>
-        <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}>{t('pool_replace')}</button>
+        <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}
+          onClick={() => openModal('addvdev', { pool: pool.name })}>{t('pool_add_vdev')}</button>
+        <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}
+          onClick={() => openModal('replace', { pool: pool.name })}>{t('pool_replace')}</button>
         <button className="btn sm danger" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}
           onClick={() => openModal('export', { pool: pool.name })}>
           {t('pool_export')}

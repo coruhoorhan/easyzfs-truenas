@@ -1,5 +1,6 @@
 // mock.go — datos realistas del dominio para desarrollo/demo (MOCK=1 o DEMO=1).
-// Dominio: pools tank (raidz1, 3×4 TB) y ssd (mirror, 2×1 TB NVMe), 5 discos,
+// Dominio: pools tank (raidz1, 3×4 TB) y ssd (mirror, 2×1 TB NVMe), 7 discos
+// (incl. una eMMC mmcblk0 sin SMART, como en el hardware real reportado),
 // scrub de ssd en curso que avanza en cada tick y emite scrub.progress.
 package collectors
 
@@ -10,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/alerts"
-	"github.com/gnacho/zfsctl/internal/hub"
-	"github.com/gnacho/zfsctl/internal/model"
+	"easyzfs/internal/alerts"
+	"easyzfs/internal/hub"
+	"easyzfs/internal/model"
 )
 
 // Mock — implementa PoolProvider y DiskProvider con datos vivos de mentira.
@@ -41,6 +42,10 @@ func (m *Mock) Name() string { return "mock" }
 
 // Run — avanza el scrub del pool ssd (~1 % cada 5 s) y republica temperaturas.
 func (m *Mock) Run(ctx context.Context) {
+	// Evaluación inicial: sdd tiene SMART con avisos → alerta de ejemplo con
+	// target navegable ("disks:sdd"), como haría el colector real.
+	m.al.EvaluateDisks(ctx, m.Disks())
+	m.al.EvaluatePools(ctx, m.Pools())
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	for {
@@ -140,6 +145,37 @@ func (m *Mock) Disks() []model.Disk {
 	return out
 }
 
+// SysTimers implementa SysTimerProvider: ejemplos de timers systemd y cron
+// que un NAS típico ya tendría (la vista Tareas los muestra junto a los jobs).
+func (m *Mock) SysTimers() []model.SysTimer {
+	now := time.Now().UTC()
+	return []model.SysTimer{
+		{
+			Source: "systemd", Name: "zfs-scrub@tank-monthly.timer", Schedule: "monthly",
+			NextRun: now.Add(11 * 24 * time.Hour).Format(time.RFC3339),
+			LastRun: now.Add(-19 * 24 * time.Hour).Format(time.RFC3339),
+			Command: "zfs-scrub@tank-monthly.service", Origin: "systemctl list-timers",
+		},
+		{
+			Source: "systemd", Name: "logrotate.timer", Schedule: "daily",
+			NextRun: now.Add(6 * time.Hour).Format(time.RFC3339),
+			LastRun: now.Add(-18 * time.Hour).Format(time.RFC3339),
+			Command: "logrotate.service", Origin: "systemctl list-timers",
+		},
+		{
+			Source: "systemd", Name: "man-db.timer", Schedule: "daily",
+			NextRun: now.Add(9 * time.Hour).Format(time.RFC3339),
+			LastRun: now.Add(-15 * time.Hour).Format(time.RFC3339),
+			Command: "man-db.service", Origin: "systemctl list-timers",
+		},
+		{
+			Source: "cron", Name: "backup-tank.sh", Schedule: "30 3 * * *",
+			Command: "/usr/local/bin/backup-tank.sh --pool tank --dest /mnt/usb",
+			Origin:  "/etc/cron.d/backup",
+		},
+	}
+}
+
 // build — el escenario estático inicial.
 func (m *Mock) build() {
 	const (
@@ -190,19 +226,27 @@ func (m *Mock) build() {
 		return model.Snapshot{Name: name, Full: ds + "@" + name, Ts: now.Add(-age), UsedBytes: used, Kind: kind}
 	}
 	m.snaps = []model.Snapshot{
-		mkSnap("tank/docs", "zfsctl-auto-20250101-0600", 48*time.Hour, 1*uint64(gib), "auto"),
-		mkSnap("tank/docs", "zfsctl-auto-20250102-0600", 24*time.Hour, 800*(1<<20), "auto"),
+		mkSnap("tank/docs", "easyzfs-auto-20250101-0600", 48*time.Hour, 1*uint64(gib), "auto"),
+		mkSnap("tank/docs", "easyzfs-auto-20250102-0600", 24*time.Hour, 800*(1<<20), "auto"),
 		mkSnap("tank/docs", "antes-de-migracion", 30*24*time.Hour, 2*uint64(gib), "manual"),
-		mkSnap("tank/fotos", "zfsctl-auto-20250102-0600", 24*time.Hour, 3*uint64(gib), "auto"),
-		mkSnap("tank/backups", "zfsctl-auto-20250102-0600", 24*time.Hour, 12*uint64(gib), "auto"),
+		mkSnap("tank/fotos", "easyzfs-auto-20250102-0600", 24*time.Hour, 3*uint64(gib), "auto"),
+		mkSnap("tank/backups", "easyzfs-auto-20250102-0600", 24*time.Hour, 12*uint64(gib), "auto"),
 		mkSnap("ssd/vm", "pre-upgrade", 7*24*time.Hour, 20*uint64(gib), "manual"),
 	}
 	m.disks = []model.Disk{
-		{Dev: "sda", Model: "CT500MX500SSD1", Serial: "2034E5A1B2C3", SizeBytes: 500 * uint64(gib), TempC: 33, Smart: "ok", SmartDetail: "PASSED", Pool: "", Hours: 18200},
-		{Dev: "sdb", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA01", SizeBytes: 4 * uint64(tib), TempC: 34, Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41230},
-		{Dev: "sdc", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA02", SizeBytes: 4 * uint64(tib), TempC: 35, Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41231},
-		{Dev: "sdd", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA03", SizeBytes: 4 * uint64(tib), TempC: 36, Smart: "warn", SmartDetail: "PASSED (realloc=2 pending=0)", Pool: "tank", Hours: 42010},
-		{Dev: "nvme0n1", Model: "Samsung SSD 980 1TB", Serial: "S649NL0R111111", SizeBytes: 1 * uint64(tib), TempC: 41, Smart: "ok", SmartDetail: "PASSED", Pool: "ssd", Hours: 9800},
-		{Dev: "nvme1n1", Model: "Samsung SSD 980 1TB", Serial: "S649NL0R222222", SizeBytes: 1 * uint64(tib), TempC: 42, Smart: "ok", SmartDetail: "PASSED", Pool: "ssd", Hours: 9812},
+		{Dev: "sda", Model: "CT500MX500SSD1", Serial: "2034E5A1B2C3", SizeBytes: 500 * uint64(gib), TempC: f64ptr(33), Smart: "ok", SmartDetail: "PASSED", Pool: "", Hours: 18200},
+		{Dev: "sdb", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA01", SizeBytes: 4 * uint64(tib), TempC: f64ptr(34), Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41230},
+		{Dev: "sdc", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA02", SizeBytes: 4 * uint64(tib), TempC: f64ptr(35), Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41231},
+		{Dev: "sdd", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA03", SizeBytes: 4 * uint64(tib), TempC: f64ptr(36), Smart: "warn", SmartDetail: "PASSED (realloc=2 pending=0)", Pool: "tank", Hours: 42010},
+		{Dev: "nvme0n1", Model: "Samsung SSD 980 1TB", Serial: "S649NL0R111111", SizeBytes: 1 * uint64(tib), TempC: f64ptr(41), Smart: "ok", SmartDetail: "PASSED", Pool: "ssd", Hours: 9800},
+		{Dev: "nvme1n1", Model: "Samsung SSD 980 1TB", Serial: "S649NL0R222222", SizeBytes: 1 * uint64(tib), TempC: f64ptr(42), Smart: "ok", SmartDetail: "PASSED", Pool: "ssd", Hours: 9812},
+		// Caso real: eMMC de placa (smartctl no la soporta → "unknown", sin
+		// lectura de temperatura → TempC nil, JSON null). En el sistema también
+		// había zd0 y mmcblk0boot0/boot1, pero el filtro de discos físicos los
+		// excluye (ver smart.go).
+		{Dev: "mmcblk0", Model: "S008G1 eMMC", Serial: "0x2c8f1a3b", SizeBytes: 8 * uint64(gib), TempC: nil, Smart: "unknown", SmartDetail: "no disponible", Pool: "", Hours: 0},
 	}
 }
+
+// f64ptr — helper para literales *float64 del mock (temp_c: number|null).
+func f64ptr(v float64) *float64 { return &v }

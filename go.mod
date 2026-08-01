@@ -1,6 +1,8 @@
-module github.com/gnacho/zfsctl
+module easyzfs
 
 go 1.23.0
+
+toolchain go1.23.10
 
 require (
 	golang.org/x/crypto v0.36.0 // argon2id para hashes de contraseña (stdlib no lo incluye)

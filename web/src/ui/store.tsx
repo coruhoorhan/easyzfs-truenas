@@ -1,13 +1,14 @@
 // Estado global de la app: sesión, ruta, modo demo, idioma y tema.
 // Router ligero basado en hash (#/vista).
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { SessionUser } from '../data/types';
 import { getProvider, initProvider, enterDemoSession, exitDemoSession } from '../data';
+import { AUTH_EXPIRED_EVENT, connectSSE, disconnectSSE } from '../data/events';
 import { ApiError } from '../data/types';
 import { initLang, onLangChange, setLangMode, t as translate, getLangMode } from './i18n';
 import type { LangMode, I18nKey } from './i18n';
-import { applyTheme, onThemeChange, startThemeWatcher, effectiveTheme, setThemeMode, getThemeMode } from './theme';
+import { applyTheme, applyDensity, onThemeChange, startThemeWatcher, effectiveTheme, setThemeMode, getThemeMode } from './theme';
 import type { ThemeMode } from './theme';
 
 export type ViewId = 'dash' | 'pools' | 'data' | 'snaps' | 'tasks' | 'disks' | 'settings';
@@ -57,7 +58,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Arranque: idioma, tema, provider y sesión existente
   useEffect(() => {
     initLang();
-    applyTheme();
+    applyTheme(); // aplica también el acento guardado (depende del tema efectivo)
+    applyDensity();
     startThemeWatcher();
     const offLang = onLangChange(() => setLangModeState(getLangMode()));
     const offTheme = onThemeChange(() => {
@@ -94,14 +96,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (u: string, p: string) => {
     const s = await getProvider().login(u, p);
     setUser(s);
+    connectSSE(); // reabre el stream con la sesión recién creada
   }, []);
 
   const logout = useCallback(async () => {
+    disconnectSSE(); // corta el stream antes de cerrar la sesión
     try { await getProvider().logout(); } catch { /* la sesión local se cierra igual */ }
     if (demo) { exitDemoSession(); setDemo(false); } // cerrar sesión en demo también sale del demo
     setUser(null);
     location.hash = '/dash';
   }, [demo]);
+
+  // Sesión expirada (401 global en http.ts o 3 fallos 401 del SSE):
+  // fuerza logout y vuelta al login. Solo aplica a sesiones reales (no demo)
+  // y con sesión activa (evita bucles con el propio logout).
+  const stateRef = useRef({ user, demo, logout });
+  stateRef.current = { user, demo, logout };
+  useEffect(() => {
+    const onExpired = () => {
+      const s = stateRef.current;
+      if (s.demo || !s.user) return;
+      void s.logout();
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, []);
 
   // Sesión demo local (provider mock, usuario "demo"); no llama al backend
   const enterDemo = useCallback(async () => {
@@ -144,6 +163,14 @@ export function useApp(): AppCtx {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useApp fuera de AppProvider');
   return ctx;
+}
+
+// Helper: vista destino de una alerta según su campo target del backend
+// ("disks:nvme1n1" → Discos, "pools:tank" → Pools, "tasks" → Tareas, "settings" → Ajustes)
+export function alertTargetView(target?: string): ViewId | null {
+  if (!target) return null;
+  const kind = target.split(':')[0] as ViewId;
+  return VIEWS.includes(kind) ? kind : null;
 }
 
 // Helper: traduce errores de API a mensajes legibles

@@ -17,7 +17,7 @@ import (
 )
 
 // CookieName — nombre de la cookie de sesión (contrato).
-const CookieName = "zfsctl_session"
+const CookieName = "easyzfs_session"
 
 // sessionTTL — duración fija de la sesión.
 const sessionTTL = 7 * 24 * time.Hour
@@ -26,8 +26,8 @@ const sessionTTL = 7 * 24 * time.Hour
 type contextKey string
 
 const (
-	ctxUser contextKey = "zfsctl.user"
-	ctxRole contextKey = "zfsctl.role"
+	ctxUser contextKey = "easyzfs.user"
+	ctxRole contextKey = "easyzfs.role"
 )
 
 // Manager gestiona sesiones y middleware.

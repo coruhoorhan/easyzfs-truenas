@@ -12,7 +12,7 @@ import (
 // Config — configuración de la app (todo por variables de entorno).
 type Config struct {
 	ListenAddr    string // LISTEN_ADDR (def ":8080")
-	DBPath        string // DB_PATH (def "/var/lib/zfsctl/app.db")
+	DBPath        string // DB_PATH (def "/var/lib/easyzfs/app.db")
 	SessionSecret []byte // SESSION_SECRET (sha256 del valor; si falta, efímero + aviso)
 	Demo          bool   // DEMO=1 → datos mock + mutaciones 403 demo_mode
 	Mock          bool   // MOCK=1 → colectores mock (datos reales mutan y fallarán)
@@ -25,7 +25,7 @@ type Config struct {
 func Load() *Config {
 	cfg := &Config{
 		ListenAddr:    env("LISTEN_ADDR", ":8080"),
-		DBPath:        env("DB_PATH", "/var/lib/zfsctl/app.db"),
+		DBPath:        env("DB_PATH", "/var/lib/easyzfs/app.db"),
 		Demo:          envBool("DEMO"),
 		Mock:          envBool("MOCK"),
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),

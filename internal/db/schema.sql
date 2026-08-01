@@ -1,4 +1,4 @@
--- Esquema zfsctl v1 (basado en go-collector-stack). Migraciones aditivas: nunca DROP en producción.
+-- Esquema EasyZFS v1 (basado en go-collector-stack). Migraciones aditivas: nunca DROP en producción.
 -- Fechas en RFC3339 UTC escritas desde Go (el contrato API exige RFC3339).
 
 CREATE TABLE IF NOT EXISTS migrations (
@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 
 -- Alertas generadas (umbrales, SMART, errores ZFS)
+-- v2 añade la columna target (objeto navegable: 'pools:tank', 'disks:sda'…).
 CREATE TABLE IF NOT EXISTS alerts (
   id       INTEGER PRIMARY KEY,
   ts       TEXT NOT NULL,

@@ -8,7 +8,7 @@ const es = {
   sub_dash: 'Resumen del sistema', sub_pools: 'Estado y topología de pools',
   sub_data: 'Datasets y volúmenes', sub_snaps: 'Instantáneas por dataset',
   sub_tasks: 'Tareas programadas', sub_disks: 'Discos y salud SMART',
-  sub_settings: 'Umbrales y notificaciones',
+  sub_settings: 'Apariencia, umbrales y notificaciones',
 
   // Demo
   demobar: 'Modo demo — los cambios no se aplican al sistema',
@@ -32,6 +32,7 @@ const es = {
   login_demo_btn: 'Entrar en modo demo',
   login_or: 'o',
   login_checking: 'Conectando con el servidor…',
+  login_remember: 'Recordar contraseña',
 
   // Panel
   kpi_health: 'Salud general', kpi_health_ok: 'todo ONLINE', kpi_health_warn: 'hay avisos',
@@ -73,6 +74,15 @@ const es = {
   ex_destroy: 'Destruir el pool tras exportar (¡borra los datos!)',
   ex_confirm_lbl: 'Escribe el nombre del pool para confirmar',
   ex_btn: 'Exportar pool',
+
+  // Añadir vdev / sustituir disco
+  av_title: 'Añadir vdev',
+  av_desc: 'Se añadirá un nuevo vdev al pool con los discos seleccionados. Esta acción no se puede deshacer. Pool:',
+  av_btn: 'Añadir vdev',
+  rp_title: 'Sustituir disco',
+  rp_desc: 'Se sustituirá el disco elegido por uno nuevo y se reconstruirán los datos (resilver). Pool:',
+  rp_old: 'Disco a sustituir', rp_new: 'Disco nuevo',
+  rp_btn: 'Sustituir disco',
 
   // Datasets
   ds_name: 'Dataset', ds_type: 'Tipo', ds_comp: 'Compresión', ds_used: 'Usado',
@@ -126,6 +136,8 @@ const es = {
   et_title: 'Editar programación', et_job: 'Tarea',
   et_notify: 'Notificar si la tarea falla', et_delete: 'Eliminar tarea',
   hist_ok: 'OK', hist_warn: 'aviso',
+  tk_system: 'Tareas del sistema',
+  tk_system_d: 'Temporizadores del sistema operativo (solo lectura).',
   freq_hourly: 'Cada hora', freq_daily: 'Diario', freq_weekly: 'Semanal', freq_monthly: 'Mensual',
   wd_mon: 'L', wd_tue: 'M', wd_wed: 'X', wd_thu: 'J', wd_fri: 'V', wd_sat: 'S', wd_sun: 'D',
   wdl_mon: 'lun', wdl_tue: 'mar', wdl_wed: 'mié', wdl_thu: 'jue', wdl_fri: 'vie', wdl_sat: 'sáb', wdl_sun: 'dom',
@@ -136,14 +148,18 @@ const es = {
   dk_test_short: 'Test corto', dk_test_long: 'Test largo',
   dk_test_started: 'Test SMART iniciado',
   dk_hours: 'horas encendido',
+  dk_smart_na: 'no disponible',
 
   // Alertas (campanita)
   al_title: 'Alertas', al_ack: 'Marcar leída', al_none: 'No hay alertas pendientes.',
   al_ack_all: 'Marcar todas como leídas',
+  al_goto: 'Ver la causa',
 
   // Ajustes
   s_general: 'General', s_lang: 'Idioma',
-  s_theme: 'Tema', s_theme_auto: 'Auto', s_theme_light: 'Claro', s_theme_dark: 'Oscuro',
+  s_appear: 'Apariencia', s_accent: 'Color de acento',
+  s_density: 'Densidad', s_density_cozy: 'Cómoda', s_density_compact: 'Compacta',
+  s_theme: 'Tema', s_theme_auto: 'Sistema', s_theme_light: 'Claro', s_theme_dark: 'Oscuro',
   s_users: 'Usuarios', s_newuser: 'Nuevo usuario',
   s_roles_d: 'Admin: acceso total (usuarios, ajustes, acciones destructivas). Usuario: consulta y operaciones del día a día (snapshots, scrubs, datasets).',
   s_last_login: 'último acceso', s_sessions: 'sesiones activas', s_session_one: 'sesión activa',
@@ -151,6 +167,7 @@ const es = {
   s_thresh: 'Umbrales de salud', s_thresh_d: 'Se disparan alertas al superar estos valores.',
   s_cap_warn: 'Aviso de capacidad de pool (%)', s_cap_crit: 'Capacidad crítica (%)',
   s_temp: 'Temperatura de disco (°C)',
+  s_thresh_invalid: 'Valores no válidos: capacidad entre 1 y 100 (aviso menor que crítico) y temperatura entre 20 y 90.',
   s_notif: 'Notificaciones', s_webhook: 'Webhook / correo para alertas',
   s_webhook_ph: 'https://... o correo@dominio.es',
   s_n_scrub: 'Avisar al terminar un scrub con errores',
@@ -163,7 +180,16 @@ const es = {
   ab_ver: 'Versión', ab_rt: 'Runtime', ab_up: 'Tiempo activo', ab_mem: 'Memoria (RSS)',
   ab_db: 'Base de datos', ab_lic: 'Licencia',
   ab_chlog: 'Registro de cambios', ab_upd: 'Buscar actualizaciones',
-  ab_uptodate: 'zfsctl está al día.',
+  ab_uptodate: 'EasyZFS está al día.',
+  ab_system: 'Sistema',
+  ab_code: 'Código', ab_code_d: 'Repositorio del proyecto',
+  ab_chlog_d: 'Novedades de cada versión', ab_chlog_first: 'primera versión pública',
+  ab_home: 'Hecho en casa', ab_home_d: 'Proyecto personal para servidores caseros',
+  ab_priv: 'Privacidad', ab_priv_d: 'Sin telemetría: todo se queda en tu servidor',
+  ab_install: 'Instalar app', ab_install_btn: 'Instalar', ab_installed: 'Instalada',
+  ab_install_d: 'Añade EasyZFS a tu pantalla de inicio',
+  ab_installed_d: 'EasyZFS ya está instalada en este dispositivo',
+  ab_install_ios: 'En iOS: Compartir → «Añadir a pantalla de inicio»',
 
   // Modal usuarios
   mu_title: 'Nuevo usuario', mu_d: 'El usuario podrá entrar a la app con su propia contraseña.',
@@ -194,7 +220,7 @@ const en: Record<I18nKey, string> = {
   sub_dash: 'System overview', sub_pools: 'Pool status and topology',
   sub_data: 'Datasets and volumes', sub_snaps: 'Snapshots per dataset',
   sub_tasks: 'Scheduled tasks', sub_disks: 'Disks and SMART health',
-  sub_settings: 'Thresholds and notifications',
+  sub_settings: 'Appearance, thresholds and notifications',
 
   demobar: 'Demo mode — changes are not applied to the system',
   demobar_exit: 'Exit demo',
@@ -215,6 +241,7 @@ const en: Record<I18nKey, string> = {
   login_demo_btn: 'Enter demo mode',
   login_or: 'or',
   login_checking: 'Connecting to the server…',
+  login_remember: 'Remember password',
 
   kpi_health: 'Overall health', kpi_health_ok: 'all ONLINE', kpi_health_warn: 'warnings present',
   kpi_cap: 'Total capacity', kpi_cap_used: 'used',
@@ -252,6 +279,14 @@ const en: Record<I18nKey, string> = {
   ex_destroy: 'Destroy the pool after exporting (deletes data!)',
   ex_confirm_lbl: 'Type the pool name to confirm',
   ex_btn: 'Export pool',
+
+  av_title: 'Add vdev',
+  av_desc: 'A new vdev with the selected disks will be added to the pool. This action cannot be undone. Pool:',
+  av_btn: 'Add vdev',
+  rp_title: 'Replace disk',
+  rp_desc: 'The chosen disk will be replaced by a new one and data will be rebuilt (resilver). Pool:',
+  rp_old: 'Disk to replace', rp_new: 'New disk',
+  rp_btn: 'Replace disk',
 
   ds_name: 'Dataset', ds_type: 'Type', ds_comp: 'Compression', ds_used: 'Used',
   ds_avail: 'Available', ds_quota: 'Quota',
@@ -302,6 +337,8 @@ const en: Record<I18nKey, string> = {
   et_title: 'Edit schedule', et_job: 'Task',
   et_notify: 'Notify if the task fails', et_delete: 'Delete task',
   hist_ok: 'OK', hist_warn: 'warning',
+  tk_system: 'System tasks',
+  tk_system_d: 'Operating system timers (read-only).',
   freq_hourly: 'Hourly', freq_daily: 'Daily', freq_weekly: 'Weekly', freq_monthly: 'Monthly',
   wd_mon: 'M', wd_tue: 'T', wd_wed: 'W', wd_thu: 'T', wd_fri: 'F', wd_sat: 'S', wd_sun: 'S',
   wdl_mon: 'Mon', wdl_tue: 'Tue', wdl_wed: 'Wed', wdl_thu: 'Thu', wdl_fri: 'Fri', wdl_sat: 'Sat', wdl_sun: 'Sun',
@@ -311,12 +348,16 @@ const en: Record<I18nKey, string> = {
   dk_test_short: 'Short test', dk_test_long: 'Long test',
   dk_test_started: 'SMART test started',
   dk_hours: 'power-on hours',
+  dk_smart_na: 'not available',
 
   al_title: 'Alerts', al_ack: 'Mark as read', al_none: 'No pending alerts.',
   al_ack_all: 'Mark all as read',
+  al_goto: 'View the cause',
 
   s_general: 'General', s_lang: 'Language',
-  s_theme: 'Theme', s_theme_auto: 'Auto', s_theme_light: 'Light', s_theme_dark: 'Dark',
+  s_appear: 'Appearance', s_accent: 'Accent color',
+  s_density: 'Density', s_density_cozy: 'Comfortable', s_density_compact: 'Compact',
+  s_theme: 'Theme', s_theme_auto: 'System', s_theme_light: 'Light', s_theme_dark: 'Dark',
   s_users: 'Users', s_newuser: 'New user',
   s_roles_d: 'Admin: full access (users, settings, destructive actions). User: read-only plus day-to-day operations (snapshots, scrubs, datasets).',
   s_last_login: 'last login', s_sessions: 'active sessions', s_session_one: 'active session',
@@ -324,6 +365,7 @@ const en: Record<I18nKey, string> = {
   s_thresh: 'Health thresholds', s_thresh_d: 'Alerts fire when these values are exceeded.',
   s_cap_warn: 'Pool capacity warning (%)', s_cap_crit: 'Critical capacity (%)',
   s_temp: 'Disk temperature (°C)',
+  s_thresh_invalid: 'Invalid values: capacity between 1 and 100 (warning lower than critical) and temperature between 20 and 90.',
   s_notif: 'Notifications', s_webhook: 'Webhook / email for alerts',
   s_webhook_ph: 'https://... or mail@example.com',
   s_n_scrub: 'Notify when a scrub finishes with errors',
@@ -336,7 +378,16 @@ const en: Record<I18nKey, string> = {
   ab_ver: 'Version', ab_rt: 'Runtime', ab_up: 'Uptime', ab_mem: 'Memory (RSS)',
   ab_db: 'Database', ab_lic: 'License',
   ab_chlog: 'Changelog', ab_upd: 'Check for updates',
-  ab_uptodate: 'zfsctl is up to date.',
+  ab_uptodate: 'EasyZFS is up to date.',
+  ab_system: 'System',
+  ab_code: 'Source code', ab_code_d: 'Project repository',
+  ab_chlog_d: 'What’s new in each release', ab_chlog_first: 'first public release',
+  ab_home: 'Homemade', ab_home_d: 'Personal project for home servers',
+  ab_priv: 'Privacy', ab_priv_d: 'No telemetry: everything stays on your server',
+  ab_install: 'Install app', ab_install_btn: 'Install', ab_installed: 'Installed',
+  ab_install_d: 'Add EasyZFS to your home screen',
+  ab_installed_d: 'EasyZFS is already installed on this device',
+  ab_install_ios: 'On iOS: Share → “Add to Home Screen”',
 
   mu_title: 'New user', mu_d: 'The user will log in to the app with their own password.',
   mu_name: 'Username', mu_name_ph: 'e.g. maria',

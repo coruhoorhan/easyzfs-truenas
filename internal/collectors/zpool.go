@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/alerts"
-	"github.com/gnacho/zfsctl/internal/executil"
-	"github.com/gnacho/zfsctl/internal/hub"
-	"github.com/gnacho/zfsctl/internal/model"
+	"easyzfs/internal/alerts"
+	"easyzfs/internal/executil"
+	"easyzfs/internal/hub"
+	"easyzfs/internal/model"
 )
 
 const (
@@ -215,23 +215,23 @@ func (c *ZpoolCollector) fillCompressRatio(ctx context.Context, p *model.Pool) {
 
 type zpoolStatusJSON struct {
 	Pools map[string]struct {
-		Name      string             `json:"name"`
-		State     string             `json:"state"`
+		Name      string              `json:"name"`
+		State     string              `json:"state"`
 		Vdevs     map[string]jsonVdev `json:"vdevs"`
 		ScanStats *struct {
-			State         string   `json:"state"`
-			Percentage    float64  `json:"percentage"`
-			TotalSecsLeft flexInt  `json:"total_secs_left"`
-			Errors        flexInt  `json:"errors"`
-			EndTime       string   `json:"end_time"`
+			State         string  `json:"state"`
+			Percentage    float64 `json:"percentage"`
+			TotalSecsLeft flexInt `json:"total_secs_left"`
+			Errors        flexInt `json:"errors"`
+			EndTime       string  `json:"end_time"`
 		} `json:"scan_stats"`
 	} `json:"pools"`
 }
 
 type jsonVdev struct {
-	Name     string             `json:"name"`
-	VdevType string             `json:"vdev_type"`
-	State    string             `json:"state"`
+	Name     string              `json:"name"`
+	VdevType string              `json:"vdev_type"`
+	State    string              `json:"state"`
 	Vdevs    map[string]jsonVdev `json:"vdevs"`
 }
 

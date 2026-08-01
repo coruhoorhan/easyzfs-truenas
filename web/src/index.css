@@ -194,6 +194,9 @@ tr.clickable{cursor:pointer} tr.clickable:hover td{background:var(--surface2)}
 .alert{display:flex;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);font-size:13.5px}
 .alert:last-child{border-bottom:none}
 .alert .ico{flex-shrink:0;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:700}
+.alert.clickable{cursor:pointer}
+.alert.clickable:hover{background:var(--surface2)}
+.alert .chev{align-self:center;margin-left:auto;color:var(--text2)}
 
 /* toggle switch */
 .switch{position:relative;width:44px;height:24px;flex-shrink:0}
@@ -219,11 +222,53 @@ tr.clickable{cursor:pointer} tr.clickable:hover td{background:var(--surface2)}
 
 /* acerca de */
 .about{display:flex;gap:14px;align-items:flex-start}
-.about .logo{width:46px;height:46px;border-radius:12px;background:var(--accent-soft);display:grid;place-items:center;flex-shrink:0}
+.about .logo{width:46px;height:46px;border-radius:12px;background:var(--accent-soft);display:grid;place-items:center;flex-shrink:0;overflow:hidden}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:7px 0;border-bottom:1px solid var(--border)}
 .kv:last-child{border-bottom:none}
 .kv span:first-child{color:var(--text2)}
 .kv span:last-child{font-weight:600;text-align:right}
+
+/* acerca de: tiles de enlaces/notas (estilo netpulse) */
+.abouttiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:16px}
+@media(min-width:640px){.abouttiles{grid-template-columns:repeat(4,1fr)}}
+.abouttile{
+  display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;
+  border:1px solid var(--border);border-radius:12px;padding:12px;
+  background:var(--surface);color:var(--text);text-decoration:none;width:100%;
+}
+a.abouttile:hover,button.abouttile:hover{background:var(--surface2)}
+.abouttile .t-ico{width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
+.abouttile b{font-size:13px}
+.abouttile>span:last-child{font-size:11.5px;color:var(--text2);line-height:1.35}
+
+/* acerca de: tira de instalación PWA y pie */
+.installstrip{
+  display:flex;align-items:center;gap:10px;margin-top:16px;padding:11px 13px;
+  border:1px dashed var(--border);border-radius:12px;font-size:13px;
+}
+.installstrip .grow{flex:1;min-width:0}
+.installstrip .d{font-size:11.5px;color:var(--text2);margin-top:1px}
+.aboutfoot{margin-top:16px;text-align:center;font-size:11.5px;color:var(--text2)}
+
+/* apariencia: tarjetas de tema con mini-preview */
+.themegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.themecard{
+  border:1.5px solid var(--border);border-radius:12px;padding:8px;background:var(--surface);
+  cursor:pointer;
+}
+.themecard:hover{background:var(--surface2)}
+.themecard.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.themecard .lbl{display:block;text-align:center;font-size:12px;font-weight:600;margin-top:7px}
+.tpreview{display:flex;gap:5px;height:54px;border:1px solid var(--border);border-radius:9px;padding:5px;background:var(--surface2);overflow:hidden}
+
+/* apariencia: muestras de acento */
+.swatches{display:flex;gap:10px;flex-wrap:wrap}
+.swatch{width:34px;height:34px;border-radius:50%;padding:3px;border:2px solid transparent;cursor:pointer}
+.swatch>span{display:block;width:100%;height:100%;border-radius:50%}
+.swatch.sel{border-color:var(--text)}
+
+/* densidad compacta: html font-size 13.5px (theme.ts) + reducción global */
+[data-density="compact"] #root{zoom:.92}
 
 /* vistas */
 .view{animation:fade .18s ease}

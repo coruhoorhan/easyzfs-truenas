@@ -8,7 +8,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/db"
+	"easyzfs/internal/db"
 )
 
 const (

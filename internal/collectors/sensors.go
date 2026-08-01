@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/hub"
+	"easyzfs/internal/hub"
 )
 
 const sensorsInterval = 30 * time.Second

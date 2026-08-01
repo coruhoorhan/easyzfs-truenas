@@ -15,7 +15,11 @@ import (
 var schemaV1 string
 
 // migrations — SQL por versión, en orden. Aditivas siempre.
-var migrations = []string{schemaV1}
+var migrations = []string{
+	schemaV1,
+	// v2: alertas con objetivo navegable (la UI enlaza a la vista afectada).
+	`ALTER TABLE alerts ADD COLUMN target TEXT NOT NULL DEFAULT '';`,
+}
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.
 func Open(path string) (*sql.DB, error) {

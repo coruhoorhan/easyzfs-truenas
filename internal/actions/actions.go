@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/executil"
-	"github.com/gnacho/zfsctl/internal/model"
+	"easyzfs/internal/executil"
+	"easyzfs/internal/model"
 )
 
 // Errores de dominio mapeados a códigos HTTP en httpapi.
@@ -74,7 +74,8 @@ func (s *Service) AuditOnly(ctx context.Context, actor, action, target string, p
 // --- Pools ---
 
 // PoolCreate — 'zpool create <name> [topo] <disks...>'.
-func (s *Service) PoolCreate(ctx context.Context, actor, name, topo string, disks []string) error {
+// confirmed debe ser true solo si el handler validó {"confirm":name}.
+func (s *Service) PoolCreate(ctx context.Context, actor, name, topo string, disks []string, confirmed bool) error {
 	if !rePool.MatchString(name) {
 		return ErrInvalidName
 	}
@@ -86,7 +87,7 @@ func (s *Service) PoolCreate(ctx context.Context, actor, name, topo string, disk
 		return err
 	}
 	params := map[string]any{"topo": topo, "disks": disks}
-	s.audit(ctx, actor, "pool.create", name, params, true)
+	s.audit(ctx, actor, "pool.create", name, params, confirmed)
 	_, err = executil.Run(ctx, 60*time.Second, "zpool",
 		append([]string{"create", name}, args...)...)
 	if err != nil {
@@ -171,7 +172,8 @@ func (s *Service) Scrub(ctx context.Context, actor, pool, action string) error {
 }
 
 // VdevAdd — 'zpool add <pool> [topo] <disks...>'.
-func (s *Service) VdevAdd(ctx context.Context, actor, pool, topo string, disks []string) error {
+// confirmed debe ser true solo si el handler validó {"confirm":pool}.
+func (s *Service) VdevAdd(ctx context.Context, actor, pool, topo string, disks []string, confirmed bool) error {
 	if !rePool.MatchString(pool) {
 		return ErrInvalidName
 	}
@@ -183,7 +185,7 @@ func (s *Service) VdevAdd(ctx context.Context, actor, pool, topo string, disks [
 		return err
 	}
 	s.audit(ctx, actor, "pool.vdev.add", pool,
-		map[string]any{"topo": topo, "disks": disks}, true)
+		map[string]any{"topo": topo, "disks": disks}, confirmed)
 	_, err = executil.Run(ctx, 60*time.Second, "zpool",
 		append([]string{"add", pool}, args...)...)
 	if err != nil {
@@ -193,7 +195,8 @@ func (s *Service) VdevAdd(ctx context.Context, actor, pool, topo string, disks [
 }
 
 // Replace — 'zpool replace <pool> <old> <new>'; el resilver se observa en el colector.
-func (s *Service) Replace(ctx context.Context, actor, pool, oldDev, newDev string) error {
+// confirmed debe ser true solo si el handler validó {"confirm":pool}.
+func (s *Service) Replace(ctx context.Context, actor, pool, oldDev, newDev string, confirmed bool) error {
 	if !rePool.MatchString(pool) {
 		return ErrInvalidName
 	}
@@ -201,7 +204,7 @@ func (s *Service) Replace(ctx context.Context, actor, pool, oldDev, newDev strin
 		return ErrInvalidDev
 	}
 	s.audit(ctx, actor, "pool.replace", pool,
-		map[string]any{"old_dev": oldDev, "new_dev": newDev}, true)
+		map[string]any{"old_dev": oldDev, "new_dev": newDev}, confirmed)
 	if _, err := executil.Run(ctx, 60*time.Second, "zpool", "replace",
 		pool, oldDev, newDev); err != nil {
 		return fmt.Errorf("replace: %w", err)
@@ -246,7 +249,7 @@ func (s *Service) DatasetCreate(ctx context.Context, actor, pool, name, typ, com
 	}
 	args := []string{"create", "-p", "-o", "compression=" + compression}
 	if quota > 0 {
-		args = append(args, "-o", "quota=" + strconv.FormatUint(quota, 10))
+		args = append(args, "-o", "quota="+strconv.FormatUint(quota, 10))
 	}
 	if typ == "volume" {
 		if volsize == 0 {

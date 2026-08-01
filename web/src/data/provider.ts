@@ -2,7 +2,7 @@
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Overview, Pool, SessionUser, Settings, SnapshotGroup,
-  UpdateJobReq, UserInfo, VersionInfo,
+  SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 export interface DataProvider {
@@ -34,8 +34,8 @@ export interface DataProvider {
   importPool(name?: string): Promise<string[]>;
   scrubAction(pool: string, action: 'start' | 'pause' | 'stop'): Promise<void>;
   exportPool(name: string, confirm: string, force: boolean, destroy: boolean): Promise<void>;
-  addVdev(pool: string, topo: string, disks: string[]): Promise<void>;
-  replaceDisk(pool: string, oldDev: string, newDev: string): Promise<void>;
+  addVdev(pool: string, topo: string, disks: string[], confirm: string): Promise<void>;
+  replaceDisk(pool: string, oldDev: string, newDev: string, confirm: string): Promise<void>;
 
   // Datasets
   getDatasets(): Promise<Dataset[]>;
@@ -56,6 +56,7 @@ export interface DataProvider {
   deleteJob(id: number, confirm: string): Promise<void>;
   runJob(id: number): Promise<void>;
   getJobHistory(): Promise<JobHistoryItem[]>;
+  getSystemTimers(): Promise<SystemTimer[]>;
 
   // Discos
   getDisks(): Promise<Disk[]>;

@@ -1,5 +1,8 @@
 // Pantalla de login. El formulario hace SIEMPRE login real (POST /api/login);
 // el modo demo es una sesión de entrada aparte (botón secundario, sin backend).
+// El form usa method="post" + name/autocomplete para que el navegador pueda
+// guardar las credenciales; el checkbox "Recordar contraseña" activa o
+// desactiva el autocompletado.
 import { useState } from 'react';
 import { useApp } from '../ui/store';
 import { ApiError } from '../data/types';
@@ -9,11 +12,12 @@ export default function Login() {
   const { t, login, enterDemo } = useApp();
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // el POST real lo hace la app vía fetch
     setBusy(true); setErr('');
     try {
       await login(user.trim(), pass);
@@ -40,20 +44,26 @@ export default function Login() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
             <Logo size={40} />
             <div>
-              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-.02em' }}>zfsctl</div>
+              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-.02em' }}>EasyZFS</div>
               <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('login_sub')}</div>
             </div>
           </div>
-          <form onSubmit={submit}>
+          <form method="post" onSubmit={submit}>
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('login_title')}</h3>
             <label htmlFor="lg-user">{t('login_user')}</label>
-            <input id="lg-user" autoComplete="username" value={user} autoFocus
-              onChange={(e) => setUser(e.target.value)} required />
+            <input id="lg-user" name="username" autoComplete={remember ? 'username' : 'off'}
+              value={user} autoFocus onChange={(e) => setUser(e.target.value)} required />
             <label htmlFor="lg-pass">{t('login_pass')}</label>
-            <input id="lg-pass" type="password" autoComplete="current-password" value={pass}
+            <input id="lg-pass" name="password" type="password"
+              autoComplete={remember ? 'current-password' : 'off'} value={pass}
               onChange={(e) => setPass(e.target.value)} required />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginTop: 14 }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={remember}
+                onChange={(e) => setRemember(e.target.checked)} />
+              {t('login_remember')}
+            </label>
             {err && <p className="form-err" role="alert">{err}</p>}
-            <div className="m-actions" style={{ justifyContent: 'stretch' }}>
+            <div className="m-actions" style={{ justifyContent: 'stretch', marginTop: 16 }}>
               <button type="submit" className="btn primary" style={{ flex: 1, justifyContent: 'center' }}
                 disabled={busy || !user.trim() || !pass}>
                 {busy ? '…' : t('login_btn')}

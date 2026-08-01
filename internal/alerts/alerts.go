@@ -4,16 +4,22 @@
 package alerts
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/hub"
-	"github.com/gnacho/zfsctl/internal/model"
-	"github.com/gnacho/zfsctl/internal/settings"
+	"easyzfs/internal/hub"
+	"easyzfs/internal/model"
+	"easyzfs/internal/settings"
 )
+
+// webhookClient — envío best-effort de alertas al webhook configurado.
+var webhookClient = &http.Client{Timeout: 5 * time.Second}
 
 // Alerter evalúa umbrales y persiste/emite alertas.
 type Alerter struct {
@@ -27,8 +33,10 @@ func New(d *sql.DB, h *hub.Hub, st *settings.Store) *Alerter {
 	return &Alerter{db: d, hub: h, st: st}
 }
 
-// Raise inserta una alerta (si no hay otra idéntica sin reconocer) y la emite por SSE.
-func (a *Alerter) Raise(ctx context.Context, level, source, message string) {
+// Raise inserta una alerta (si no hay otra idéntica sin reconocer) y la emite
+// por SSE. target es el destino navegable en la UI ("pools:tank",
+// "disks:nvme1n1", "tasks", "settings"; "" si no aplica).
+func (a *Alerter) Raise(ctx context.Context, level, source, target, message string) {
 	var exists int
 	err := a.db.QueryRowContext(ctx,
 		"SELECT 1 FROM alerts WHERE source=? AND message=? AND acked_at IS NULL LIMIT 1",
@@ -38,16 +46,45 @@ func (a *Alerter) Raise(ctx context.Context, level, source, message string) {
 	}
 	now := time.Now().UTC()
 	res, err := a.db.ExecContext(ctx,
-		"INSERT INTO alerts(ts, level, source, message) VALUES (?,?,?,?)",
-		now.Format(time.RFC3339), level, source, message)
+		"INSERT INTO alerts(ts, level, source, target, message) VALUES (?,?,?,?,?)",
+		now.Format(time.RFC3339), level, source, target, message)
 	if err != nil {
 		log.Printf("alerts: insert: %v", err)
 		return
 	}
 	id, _ := res.LastInsertId()
 	a.hub.Publish("alert.new", map[string]any{
-		"alert": model.Alert{ID: id, Ts: now, Level: level, Source: source, Message: message},
+		"alert": model.Alert{ID: id, Ts: now, Level: level, Source: source, Target: target, Message: message},
 	})
+	a.notifyWebhook(level, source, target, message, now)
+}
+
+// notifyWebhook envía la alerta al webhook de settings (si no está vacío) en
+// una goroutine: POST JSON {level, source, target, message, ts}, timeout 5 s,
+// best-effort (solo log si falla).
+func (a *Alerter) notifyWebhook(level, source, target, message string, ts time.Time) {
+	st, err := a.st.Load(context.Background())
+	if err != nil || st.Webhook == "" {
+		return
+	}
+	payload, err := json.Marshal(map[string]any{
+		"level": level, "source": source, "target": target, "message": message,
+		"ts": ts.UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		return
+	}
+	go func(url string, body []byte) {
+		resp, err := webhookClient.Post(url, "application/json", bytes.NewReader(body))
+		if err != nil {
+			log.Printf("alerts: webhook %s: %v", url, err)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			log.Printf("alerts: webhook %s: HTTP %d", url, resp.StatusCode)
+		}
+	}(st.Webhook, payload)
 }
 
 // EvaluatePools aplica umbrales de capacidad y scrub con errores.
@@ -63,19 +100,19 @@ func (a *Alerter) EvaluatePools(ctx context.Context, pools []model.Pool) {
 		pct := int(p.UsedBytes * 100 / p.TotalBytes)
 		switch {
 		case pct >= st.CapCritPct:
-			a.Raise(ctx, "crit", "pool."+p.Name,
+			a.Raise(ctx, "crit", "pool."+p.Name, "pools:"+p.Name,
 				fmt.Sprintf("Pool %s al %d%% de capacidad (crítico ≥ %d%%)", p.Name, pct, st.CapCritPct))
 		case pct >= st.CapWarnPct:
-			a.Raise(ctx, "warn", "pool."+p.Name,
+			a.Raise(ctx, "warn", "pool."+p.Name, "pools:"+p.Name,
 				fmt.Sprintf("Pool %s al %d%% de capacidad (aviso ≥ %d%%)", p.Name, pct, st.CapWarnPct))
 		}
 		if p.Status == "DEGRADED" {
-			a.Raise(ctx, "crit", "pool."+p.Name, "Pool "+p.Name+" DEGRADED")
+			a.Raise(ctx, "crit", "pool."+p.Name, "pools:"+p.Name, "Pool "+p.Name+" DEGRADED")
 		} else if p.Status == "FAULTED" {
-			a.Raise(ctx, "crit", "pool."+p.Name, "Pool "+p.Name+" FAULTED")
+			a.Raise(ctx, "crit", "pool."+p.Name, "pools:"+p.Name, "Pool "+p.Name+" FAULTED")
 		}
 		if st.NotifyScrubErrors && p.Scrub.State == "done" && p.Scrub.Errors > 0 {
-			a.Raise(ctx, "warn", "scrub."+p.Name,
+			a.Raise(ctx, "warn", "scrub."+p.Name, "pools:"+p.Name,
 				fmt.Sprintf("Scrub de %s terminó con %d errores", p.Name, p.Scrub.Errors))
 		}
 	}
@@ -88,19 +125,19 @@ func (a *Alerter) EvaluateDisks(ctx context.Context, disks []model.Disk) {
 		st = settings.Defaults()
 	}
 	for _, d := range disks {
-		if d.TempC > 0 && int(d.TempC) >= st.DiskTempC {
-			a.Raise(ctx, "warn", "disk."+d.Dev,
-				fmt.Sprintf("Disco %s a %.0f °C (umbral %d °C)", d.Dev, d.TempC, st.DiskTempC))
+		if d.TempC != nil && int(*d.TempC) >= st.DiskTempC {
+			a.Raise(ctx, "warn", "disk."+d.Dev, "disks:"+d.Dev,
+				fmt.Sprintf("Disco %s a %.0f °C (umbral %d °C)", d.Dev, *d.TempC, st.DiskTempC))
 		}
 		if !st.NotifySmartChange {
 			continue
 		}
 		switch d.Smart {
 		case "crit":
-			a.Raise(ctx, "crit", "smart."+d.Dev,
+			a.Raise(ctx, "crit", "smart."+d.Dev, "disks:"+d.Dev,
 				fmt.Sprintf("SMART crítico en %s: %s", d.Dev, d.SmartDetail))
 		case "warn":
-			a.Raise(ctx, "warn", "smart."+d.Dev,
+			a.Raise(ctx, "warn", "smart."+d.Dev, "disks:"+d.Dev,
 				fmt.Sprintf("SMART con avisos en %s: %s", d.Dev, d.SmartDetail))
 		}
 	}
@@ -109,7 +146,7 @@ func (a *Alerter) EvaluateDisks(ctx context.Context, disks []model.Disk) {
 // List devuelve las últimas alertas (limit), más recientes primero.
 func (a *Alerter) List(ctx context.Context, limit int) ([]model.Alert, error) {
 	rows, err := a.db.QueryContext(ctx,
-		"SELECT id, ts, level, source, message, acked_at IS NOT NULL FROM alerts ORDER BY id DESC LIMIT ?",
+		"SELECT id, ts, level, source, target, message, acked_at IS NOT NULL FROM alerts ORDER BY id DESC LIMIT ?",
 		limit)
 	if err != nil {
 		return nil, err
@@ -119,7 +156,7 @@ func (a *Alerter) List(ctx context.Context, limit int) ([]model.Alert, error) {
 	for rows.Next() {
 		var al model.Alert
 		var ts string
-		if err := rows.Scan(&al.ID, &ts, &al.Level, &al.Source, &al.Message, &al.Acked); err != nil {
+		if err := rows.Scan(&al.ID, &ts, &al.Level, &al.Source, &al.Target, &al.Message, &al.Acked); err != nil {
 			return nil, err
 		}
 		al.Ts = parseTS(ts)

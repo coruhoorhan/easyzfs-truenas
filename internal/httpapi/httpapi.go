@@ -12,15 +12,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/actions"
-	"github.com/gnacho/zfsctl/internal/alerts"
-	"github.com/gnacho/zfsctl/internal/auth"
-	"github.com/gnacho/zfsctl/internal/collectors"
-	"github.com/gnacho/zfsctl/internal/config"
-	"github.com/gnacho/zfsctl/internal/hub"
-	"github.com/gnacho/zfsctl/internal/scheduler"
-	"github.com/gnacho/zfsctl/internal/settings"
-	"github.com/gnacho/zfsctl/internal/users"
+	"easyzfs/internal/actions"
+	"easyzfs/internal/alerts"
+	"easyzfs/internal/auth"
+	"easyzfs/internal/collectors"
+	"easyzfs/internal/config"
+	"easyzfs/internal/hub"
+	"easyzfs/internal/scheduler"
+	"easyzfs/internal/settings"
+	"easyzfs/internal/users"
 )
 
 // Server — dependencias inyectadas desde main (sin framework de DI).
@@ -33,6 +33,7 @@ type Server struct {
 	settings   *settings.Store
 	pools      collectors.PoolProvider
 	disks      collectors.DiskProvider
+	sysTimers  collectors.SysTimerProvider
 	act        *actions.Service
 	sched      *scheduler.Scheduler
 	jstore     *scheduler.Store
@@ -41,6 +42,8 @@ type Server struct {
 	version    string
 	build      string
 	zfsVersion string
+
+	loginLimiter *loginLimiter // rate limit de /api/login (IP+usuario)
 }
 
 // Deps — parámetros del constructor.
@@ -53,6 +56,7 @@ type Deps struct {
 	Settings   *settings.Store
 	Pools      collectors.PoolProvider
 	Disks      collectors.DiskProvider
+	SysTimers  collectors.SysTimerProvider
 	Actions    *actions.Service
 	Sched      *scheduler.Scheduler
 	Jobs       *scheduler.Store
@@ -67,9 +71,10 @@ func NewServer(d Deps) *Server {
 	return &Server{
 		cfg: d.Cfg, db: d.DB, auth: d.Auth, users: d.Users,
 		alerter: d.Alerter, settings: d.Settings,
-		pools: d.Pools, disks: d.Disks,
+		pools: d.Pools, disks: d.Disks, sysTimers: d.SysTimers,
 		act: d.Actions, sched: d.Sched, jstore: d.Jobs, h: d.Hub,
 		started: time.Now(), version: d.Version, build: d.Build, zfsVersion: d.ZFSVersion,
+		loginLimiter: newLoginLimiter(),
 	}
 }
 
@@ -96,6 +101,7 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("GET /api/alerts", s.listAlerts)
 	a.HandleFunc("POST /api/alerts/{id}/ack", s.ackAlert)
 	a.HandleFunc("GET /api/overview", s.getOverview)
+	a.HandleFunc("GET /api/system-timers", s.listSystemTimers)
 	// pools (mutaciones: admin — son potencialmente destructivas)
 	a.HandleFunc("GET /api/pools", s.listPools)
 	a.HandleFunc("POST /api/pools", s.auth.RequireAdmin(s.createPool))

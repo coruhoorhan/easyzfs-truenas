@@ -1,10 +1,11 @@
 // Implementación real del provider contra el backend Go en /api.
 import type { DataProvider } from './provider';
 import { ApiError } from './types';
+import { notifyAuthExpired } from './events';
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Overview, Pool, SessionUser, Settings, SnapshotGroup,
-  UpdateJobReq, UserInfo, VersionInfo,
+  SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 const BASE = '/api';
@@ -21,6 +22,11 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   let json: unknown = undefined;
   try { json = text ? JSON.parse(text) : undefined; } catch { /* respuesta no JSON */ }
   if (!res.ok) {
+    // Sesión expirada: cualquier 401 fuera del propio login/logout fuerza
+    // volver a la pantalla de login (lo gestiona el store). Se excluyen
+    // /login (credenciales incorrectas no son sesión expirada) y /logout
+    // (evita bucles al cerrar una sesión ya caducada).
+    if (res.status === 401 && path !== '/login' && path !== '/logout') notifyAuthExpired();
     const e = json as { error?: string; message?: string } | undefined;
     throw new ApiError(res.status, e?.error ?? 'http_error', e?.message ?? `HTTP ${res.status}`);
   }
@@ -65,10 +71,10 @@ export class HttpProvider implements DataProvider {
     post<void>(`/pools/${enc(pool)}/scrub`, { action });
   exportPool = (name: string, confirm: string, force: boolean, destroy: boolean) =>
     post<void>(`/pools/${enc(name)}/export`, { confirm, force, destroy });
-  addVdev = (pool: string, topo: string, disks: string[]) =>
-    post<void>(`/pools/${enc(pool)}/vdev`, { topo, disks });
-  replaceDisk = (pool: string, oldDev: string, newDev: string) =>
-    post<void>(`/pools/${enc(pool)}/replace`, { old_dev: oldDev, new_dev: newDev });
+  addVdev = (pool: string, topo: string, disks: string[], confirm: string) =>
+    post<void>(`/pools/${enc(pool)}/vdev`, { topo, disks, confirm });
+  replaceDisk = (pool: string, oldDev: string, newDev: string, confirm: string) =>
+    post<void>(`/pools/${enc(pool)}/replace`, { old_dev: oldDev, new_dev: newDev, confirm });
 
   getDatasets = () => get<Dataset[]>('/datasets');
   createDataset = (r: CreateDatasetReq) => post<void>('/datasets', r);
@@ -89,6 +95,7 @@ export class HttpProvider implements DataProvider {
   deleteJob = (id: number, confirm: string) => del<void>(`/jobs/${id}`, { confirm });
   runJob = (id: number) => post<void>(`/jobs/${id}/run`);
   getJobHistory = () => get<JobHistoryItem[]>('/jobs/history');
+  getSystemTimers = () => get<SystemTimer[]>('/system-timers');
 
   getDisks = () => get<Disk[]>('/disks');
   smartTest = (dev: string, type: 'short' | 'long') => post<void>(`/disks/${enc(dev)}/smart-test`, { type });

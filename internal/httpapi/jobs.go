@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/scheduler"
+	"easyzfs/internal/scheduler"
 )
 
 // listJobs — GET /api/jobs (con next_run calculado).

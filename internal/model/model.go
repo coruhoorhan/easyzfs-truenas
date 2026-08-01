@@ -63,26 +63,42 @@ type SnapGroup struct {
 
 // Disk — contrato GET /api/disks.
 type Disk struct {
-	Dev         string  `json:"dev"`
-	Model       string  `json:"model"`
-	Serial      string  `json:"serial"`
-	SizeBytes   uint64  `json:"size_bytes"`
-	TempC       float64 `json:"temp_c"`
-	Smart       string  `json:"smart"` // "ok" | "warn" | "crit"
-	SmartDetail string  `json:"smart_detail"`
-	Pool        string  `json:"pool"`
-	Hours       uint64  `json:"hours"`
+	Dev       string `json:"dev"`
+	Model     string `json:"model"`
+	Serial    string `json:"serial"`
+	SizeBytes uint64 `json:"size_bytes"`
+	// TempC es nil (JSON null) cuando no hay lectura (eMMC, USB sin SAT,
+	// smartctl no disponible): "sin dato" no es lo mismo que 0 °C.
+	TempC       *float64 `json:"temp_c"`
+	Smart       string   `json:"smart"` // "ok" | "warn" | "crit" | "unknown" (sin smartctl: eMMC, USB sin SAT)
+	SmartDetail string   `json:"smart_detail"`
+	Pool        string   `json:"pool"`
+	Hours       uint64   `json:"hours"`
+}
+
+// SysTimer — contrato GET /api/system-timers: temporizadores que YA existen
+// en el sistema (systemd timers y cron), solo lectura. next_run/last_run son
+// cadenas de visualización ("" si el sistema no las conoce: cron no las tiene).
+type SysTimer struct {
+	Source   string `json:"source"`   // "systemd" | "cron"
+	Name     string `json:"name"`     // unidad .timer o nombre derivado del comando
+	Schedule string `json:"schedule"` // expr. cron ("0 2 * * *", "@daily") o "" si no se conoce
+	NextRun  string `json:"next_run"` // systemd: NEXT; cron: ""
+	LastRun  string `json:"last_run"` // systemd: LAST; cron: ""
+	Command  string `json:"command"`  // unidad activada (systemd) o comando (cron)
+	Origin   string `json:"origin"`   // "systemctl list-timers", "crontab", "/etc/crontab", "/etc/cron.d/<f>", "/etc/cron.daily"…
 }
 
 // Alert — contrato GET /api/alerts y evento SSE alert.new.
 type Alert struct {
 	ID      int64     `json:"id"`
 	Ts      time.Time `json:"ts"`
-	Level   string    `json:"level"` // "info" | "warn" | "crit"
-	Source  string    `json:"source"`
+	Level   string    `json:"level"`  // "info" | "warn" | "crit"
+	Source  string    `json:"source"` // origen lógico: "pool.tank", "disk.sda", "smart.sda", "scrub.tank"…
+	Target  string    `json:"target"` // destino navegable en la UI: "pools:<name>", "disks:<dev>", "tasks", "settings" ("" = sin destino)
 	Message string    `json:"message"`
 	Acked   bool      `json:"acked"`
 }
 
 // AutoSnapPrefix — prefijo de los snapshots creados por el scheduler.
-const AutoSnapPrefix = "zfsctl-auto-"
+const AutoSnapPrefix = "easyzfs-auto-"

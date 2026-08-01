@@ -51,12 +51,15 @@ export default function Disks() {
                   </div>
                 </td>
                 <td>{fmtBytes(d.size_bytes)}</td>
-                <td>{d.temp_c}°C</td>
-                <td><Badge tone={d.smart === 'ok' ? 'ok' : d.smart === 'warn' ? 'warn' : 'err'}>{d.smart_detail}</Badge></td>
+                <td>{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
+                <td>{d.smart === 'unknown'
+                  ? <Badge tone="info" dot={false}>{t('dk_smart_na')}</Badge>
+                  : <Badge tone={d.smart === 'ok' ? 'ok' : d.smart === 'warn' ? 'warn' : 'err'}>{d.smart_detail}</Badge>}
+                </td>
                 <td>{d.pool}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn sm" onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
-                  <button className="btn sm" onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>
+                  <button className="btn sm" disabled={d.smart === 'unknown'} onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
+                  <button className="btn sm" disabled={d.smart === 'unknown'} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>
                 </td>
               </tr>
             ))}

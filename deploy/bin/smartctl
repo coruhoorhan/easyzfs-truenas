@@ -1,3 +1,0 @@
-#!/bin/sh
-# wrapper zfsctl: eleva smartctl vía sudoers limitado (ver deploy/zfsctl.sudoers)
-exec sudo -n /usr/sbin/smartctl "$@"

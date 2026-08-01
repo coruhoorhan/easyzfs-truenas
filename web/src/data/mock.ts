@@ -6,7 +6,7 @@ import { ApiError } from './types';
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Overview, Pool, SessionUser, Settings, Snapshot,
-  SnapshotGroup, UpdateJobReq, UserInfo, VersionInfo,
+  SnapshotGroup, SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 const GiB = 1024 ** 3;
@@ -47,9 +47,9 @@ export class MockProvider implements DataProvider {
   private alertSeq = 100;
 
   private version: VersionInfo = {
-    version: '0.1.0', build: '2026-08-01', go: 'go1.23.4', os_arch: 'linux/amd64',
+    name: 'EasyZFS', version: '0.1.0', build: '2026-08-01', go: 'go1.23.4', os_arch: 'linux/amd64',
     uptime_sec: 17 * 86400 + 4 * 3600, rss_bytes: 21 * 1024 ** 2,
-    db_bytes: Math.round(8.4 * 1024 ** 2), db_path: '/var/lib/zfsctl/app.db',
+    db_bytes: Math.round(8.4 * 1024 ** 2), db_path: '/var/lib/easyzfs/app.db',
     zfs_version: 'OpenZFS 2.2.6', demo: true,
   };
 
@@ -65,21 +65,21 @@ export class MockProvider implements DataProvider {
 
   private pools: Pool[] = [
     {
-      name: 'tank', status: 'ONLINE', topo: 'mirror-0 (2×4TB)',
+      name: 'tank', status: 'ONLINE', topo: 'mirror-0 (2×1,86 TB NVMe)',
       used_bytes: Math.round(4.9 * TiB), total_bytes: Math.round(7.2 * TiB),
       frag_pct: 12, comp_ratio: 1.42,
       scrub: { state: 'done', pct: 100, eta_sec: 0, ts: iso(daysAgo(6, 2)), errors: 0 },
       vdevs: [
-        { dev: 'sda', role: 'mirror-0', status: 'ONLINE', temp_c: 38 },
-        { dev: 'sdb', role: 'mirror-0', status: 'ONLINE', temp_c: 37 },
+        { dev: 'nvme0n1', role: 'mirror-0', status: 'ONLINE', temp_c: 48 },
+        { dev: 'nvme1n1', role: 'mirror-0', status: 'ONLINE', temp_c: 48 },
       ],
     },
     {
-      name: 'ssd', status: 'ONLINE', topo: 'stripe (1×1TB NVMe)',
+      name: 'ssd', status: 'ONLINE', topo: 'stripe (1×238 GB NVMe)',
       used_bytes: Math.round(0.31 * TiB), total_bytes: Math.round(0.93 * TiB),
       frag_pct: 4, comp_ratio: 1.18,
       scrub: { state: 'running', pct: 62, eta_sec: 12 * 60, ts: iso(daysAgo(0, 5)), errors: 0 },
-      vdevs: [{ dev: 'nvme0n1', role: '—', status: 'ONLINE', temp_c: 41 }],
+      vdevs: [{ dev: 'nvme3n1', role: '—', status: 'ONLINE', temp_c: 55 }],
     },
   ];
 
@@ -113,22 +113,32 @@ export class MockProvider implements DataProvider {
   private history: JobHistoryItem[] = [
     { ts: iso(daysAgo(6, 2)), tipo: 'scrub', target: 'tank', ok: true, detail: '0 errores · 4h 12m' },
     { ts: iso(daysAgo(0, 6)), tipo: 'snapshot', target: 'tank/fotos', ok: true, detail: '2,4 GiB referenciados' },
-    { ts: iso(daysAgo(1, 22)), tipo: 'smart_short', target: 'sdb', ok: true, detail: 'completado sin errores' },
+    { ts: iso(daysAgo(1, 22)), tipo: 'smart_short', target: 'nvme0n1', ok: true, detail: 'completado sin errores' },
     { ts: iso(daysAgo(14, 5)), tipo: 'scrub', target: 'ssd', ok: false, detail: 'cancelado por el usuario al 31%' },
   ];
 
+  // Discos físicos del caso real (tras filtrar loop/zvols): eMMC sin SMART ni
+  // temperatura, un NVMe Samsung de sistema y tres ORICO de datos.
   private disks: Disk[] = [
-    { dev: 'sda', model: 'Seagate IronWolf ST4000VN006', serial: 'ZDH4A1XX', size_bytes: Math.round(3.6 * TiB), temp_c: 38, smart: 'ok', smart_detail: 'Correcto', pool: 'tank', hours: 12400 },
-    { dev: 'sdb', model: 'Seagate IronWolf ST4000VN006', serial: 'ZDH4B2YY', size_bytes: Math.round(3.6 * TiB), temp_c: 37, smart: 'warn', smart_detail: '2 sectores reasignados', pool: 'tank', hours: 12410 },
-    { dev: 'nvme0n1', model: 'Samsung 980 1TB', serial: 'S649NX0R', size_bytes: Math.round(931 * GiB), temp_c: 41, smart: 'ok', smart_detail: 'Correcto', pool: 'ssd', hours: 6100 },
-    { dev: 'sdc', model: 'Seagate IronWolf ST4000VN006', serial: 'ZDH9C3ZZ', size_bytes: Math.round(3.6 * TiB), temp_c: 33, smart: 'ok', smart_detail: 'Correcto', pool: '—', hours: 120 },
-    { dev: 'sdd', model: 'Seagate IronWolf ST4000VN006', serial: 'ZDH9D4WW', size_bytes: Math.round(3.6 * TiB), temp_c: 33, smart: 'ok', smart_detail: 'Correcto', pool: '—', hours: 118 },
+    { dev: 'mmcblk0', model: 'eMMC 5.1 (64 GB)', serial: '—', size_bytes: Math.round(58.2 * GiB), temp_c: null, smart: 'unknown', smart_detail: '', pool: '—', hours: 0 },
+    { dev: 'nvme3n1', model: 'Samsung MZVLB256HAHQ', serial: 'S417NB0K402133', size_bytes: Math.round(238 * GiB), temp_c: 55, smart: 'ok', smart_detail: 'PASSED', pool: 'ssd', hours: 1577 },
+    { dev: 'nvme0n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A01', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: 'tank', hours: 8725 },
+    { dev: 'nvme1n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A02', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: 'tank', hours: 8725 },
+    { dev: 'nvme2n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A03', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: '—', hours: 8725 },
+  ];
+
+  private systemTimers: SystemTimer[] = [
+    { source: 'systemd', name: 'Scrub mensual de ZFS (zfsutils)', schedule: 'zfs-scrub-monthly@tank.timer · mensual', next_run: iso(daysAgo(-9, 2)), command: '/usr/sbin/zpool scrub tank' },
+    { source: 'systemd', name: 'logrotate', schedule: 'logrotate.timer · diario', next_run: iso(daysAgo(-1, 0)), command: '/usr/sbin/logrotate /etc/logrotate.conf' },
+    { source: 'systemd', name: 'man-db', schedule: 'man-db.timer · diario', next_run: iso(daysAgo(-1, 3)), command: '/usr/bin/mandb --quiet' },
+    { source: 'cron', name: 'Backup nocturno (crontab de root)', schedule: '30 3 * * *', next_run: iso(daysAgo(-1, 3)), command: '/root/bin/backup.sh --to tank/backups' },
   ];
 
   private alerts: Alert[] = [
-    { id: 1, ts: iso(daysAgo(2, 14)), level: 'warn', source: 'pool/tank', message: 'Fragmentación alta en tank (12%) · considera programar un scrub', acked: false },
-    { id: 2, ts: iso(new Date()), level: 'info', source: 'scrub/ssd', message: 'Scrub de ssd en curso (62%)', acked: false },
-    { id: 3, ts: iso(daysAgo(5, 9)), level: 'crit', source: 'smartd/sdb', message: 'smartd: 2 sectores reasignados en sdb · vigilar evolución', acked: false },
+    { id: 1, ts: iso(daysAgo(2, 14)), level: 'warn', source: 'pool/tank', message: 'Fragmentación alta en tank (12%) · considera programar un scrub', acked: false, target: 'pools:tank' },
+    { id: 2, ts: iso(new Date()), level: 'info', source: 'scrub/ssd', message: 'Scrub de ssd en curso (62%)', acked: false, target: 'pools:ssd' },
+    { id: 4, ts: iso(daysAgo(1, 3)), level: 'warn', source: 'cron/backup', message: 'El backup nocturno terminó con avisos · revisa /var/log/backup.log', acked: false, target: 'tasks' },
+    { id: 3, ts: iso(daysAgo(5, 9)), level: 'crit', source: 'smartd/nvme1n1', message: 'smartd: nvme1n1 a 48 °C de forma sostenida · revisar ventilación', acked: false, target: 'disks:nvme1n1' },
   ];
 
   private activity = [
@@ -150,6 +160,7 @@ export class MockProvider implements DataProvider {
         const alert: Alert = {
           id: ++this.alertSeq, ts: iso(new Date()), level: 'info',
           source: 'scrub/ssd', message: 'Scrub de ssd completado · 0 errores', acked: false,
+          target: 'pools:ssd',
         };
         this.alerts.unshift(alert);
         this.activity.unshift({ ts: alert.ts, text: 'Scrub completado en ssd', detail: '0 errores' });
@@ -158,10 +169,12 @@ export class MockProvider implements DataProvider {
       }
     }, 2000));
 
-    // Simulación: variaciones leves de temperatura de discos
+    // Simulación: variaciones leves de temperatura (solo discos con sensor)
     this.timers.push(setInterval(() => {
-      const d = this.disks[Math.floor(Math.random() * this.disks.length)];
-      d.temp_c = Math.max(28, Math.min(46, d.temp_c + (Math.random() > 0.5 ? 1 : -1)));
+      const conTemp = this.disks.filter((d): d is Disk & { temp_c: number } => d.temp_c !== null);
+      if (conTemp.length === 0) return;
+      const d = conTemp[Math.floor(Math.random() * conTemp.length)];
+      d.temp_c = Math.max(38, Math.min(56, d.temp_c + (Math.random() > 0.5 ? 1 : -1)));
       const v = this.pools.flatMap((p) => p.vdevs).find((x) => x.dev === d.dev);
       if (v) v.temp_c = d.temp_c;
       emitEvent({ type: 'disk.temp', dev: d.dev, temp_c: d.temp_c });
@@ -235,6 +248,7 @@ export class MockProvider implements DataProvider {
   getPools = async () => { await delay(); return this.pools.map((p) => ({ ...p, vdevs: p.vdevs.map((v) => ({ ...v })), scrub: { ...p.scrub } })); };
   createPool = async (r: CreatePoolReq) => {
     await delay(400);
+    if (r.confirm !== r.name) throw new ApiError(400, 'confirm_required', `Escribe "${r.name}" para confirmar`);
     const size = this.disks.filter((d) => r.disks.includes(d.dev)).reduce((n, d) => n + d.size_bytes, 0);
     const usable = r.topo === 'mirror' ? size / Math.max(1, r.disks.length) : size;
     this.pools.push({
@@ -267,8 +281,32 @@ export class MockProvider implements DataProvider {
     }
     emitEvent({ type: 'overview' });
   };
-  addVdev = async (_p: string, _t: string, _d: string[]) => { await delay(300); };
-  replaceDisk = async (_p: string, _o: string, _n: string) => { await delay(300); };
+  addVdev = async (pool: string, topo: string, disks: string[], confirm: string) => {
+    await delay(300);
+    if (confirm !== pool) throw new ApiError(400, 'confirm_required', `Escribe "${pool}" para confirmar`);
+    const p = this.pools.find((x) => x.name === pool);
+    if (!p) throw new ApiError(404, 'not_found', 'Pool no encontrado');
+    const role = topo === 'stripe' ? '—' : `${topo}-${p.vdevs.length}`;
+    disks.forEach((dev) => {
+      p.vdevs.push({ dev, role, status: 'ONLINE', temp_c: 33 });
+      const d = this.disks.find((x) => x.dev === dev);
+      if (d) { d.pool = pool; p.total_bytes += d.size_bytes; }
+    });
+    emitEvent({ type: 'overview' });
+  };
+  replaceDisk = async (pool: string, oldDev: string, newDev: string, confirm: string) => {
+    await delay(300);
+    if (confirm !== pool) throw new ApiError(400, 'confirm_required', `Escribe "${pool}" para confirmar`);
+    const p = this.pools.find((x) => x.name === pool);
+    if (!p) throw new ApiError(404, 'not_found', 'Pool no encontrado');
+    const v = p.vdevs.find((x) => x.dev === oldDev);
+    if (v) v.dev = newDev;
+    const oldD = this.disks.find((x) => x.dev === oldDev);
+    if (oldD) oldD.pool = '—';
+    const newD = this.disks.find((x) => x.dev === newDev);
+    if (newD) newD.pool = pool;
+    emitEvent({ type: 'overview' });
+  };
 
   // ---- Datasets ----
   getDatasets = async () => { await delay(); return this.datasets.map((d) => ({ ...d })); };
@@ -356,6 +394,7 @@ export class MockProvider implements DataProvider {
     emitEvent({ type: 'job.finished', id, ok: true, detail: 'ejecutado manualmente' });
   };
   getJobHistory = async () => { await delay(); return this.history.map((h) => ({ ...h })); };
+  getSystemTimers = async () => { await delay(); return this.systemTimers.map((s) => ({ ...s })); };
 
   // ---- Discos ----
   getDisks = async () => { await delay(); return this.disks.map((d) => ({ ...d })); };

@@ -17,6 +17,7 @@ export interface UserInfo {
 }
 
 export interface VersionInfo {
+  name?: string; // nombre del producto ("EasyZFS")
   version: string;
   build: string;
   go: string;
@@ -47,6 +48,8 @@ export interface Alert {
   source: string;
   message: string;
   acked: boolean;
+  // Vista/recurso causante: "disks:nvme1n1" | "pools:tank" | "tasks" | "settings"
+  target?: string;
 }
 
 export interface ActivityItem {
@@ -142,15 +145,24 @@ export interface Disk {
   model: string;
   serial: string;
   size_bytes: number;
-  temp_c: number;
-  smart: 'ok' | 'warn' | 'crit';
+  temp_c: number | null; // null = sensor no disponible (p. ej. eMMC)
+  smart: 'ok' | 'warn' | 'crit' | 'unknown'; // unknown = SMART no disponible
   smart_detail: string;
   pool: string;
   hours: number;
 }
 
+// Tarea del sistema (GET /api/system-timers): timers de systemd y cron, solo lectura
+export interface SystemTimer {
+  source: 'systemd' | 'cron';
+  name: string;
+  schedule: string;
+  next_run: string; // RFC3339 UTC; '' si no se conoce
+  command: string;
+}
+
 // --- Peticiones ---
-export interface CreatePoolReq { name: string; topo: Topo; disks: string[] }
+export interface CreatePoolReq { name: string; topo: Topo; disks: string[]; confirm: string }
 export interface CreateDatasetReq {
   pool: string; name: string; type: DatasetType;
   compression: 'lz4' | 'zstd' | 'off';

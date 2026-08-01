@@ -1,21 +1,38 @@
-// Tema claro/oscuro: automático por hora (oscuro 20:00–08:00) + override manual.
-// Persiste en localStorage ('zfc-theme': 'light' | 'dark' | null = auto).
+// Apariencia: tema claro/oscuro/sistema, color de acento y densidad.
+// - Tema: 'light' | 'dark' | 'auto' (= sigue prefers-color-scheme del SO).
+// - Acento: 4 colores con valores distintos para claro/oscuro; se aplican
+//   como variables CSS (--accent, --accent-soft y --ok) en <html>.
+// - Densidad: 'cozy' | 'compact' (compacta = html font-size 13.5px + zoom).
+// Todo persiste en localStorage (claves zfc-theme / zfc-accent / zfc-density).
 export type ThemeMode = 'auto' | 'light' | 'dark';
+export type AccentId = 'cyan' | 'violet' | 'emerald' | 'amber';
+export type Density = 'cozy' | 'compact';
 
 const THEME_KEY = 'zfc-theme';
+const ACCENT_KEY = 'zfc-accent';
+const DENSITY_KEY = 'zfc-density';
 const subs = new Set<() => void>();
 
-export function isAutoDark(date = new Date()): boolean {
-  const h = date.getHours();
-  return h >= 20 || h < 8;
+// [color, soft] por tema. emerald = verde original de la app.
+export const ACCENTS: Record<AccentId, { light: [string, string]; dark: [string, string] }> = {
+  cyan:    { light: ['#0e7c93', '#dff0f4'], dark: ['#4cc3d9', '#13292f'] },
+  violet:  { light: ['#6d5bd0', '#e9e6f8'], dark: ['#9d8fef', '#25203b'] },
+  emerald: { light: ['#2f7d5f', '#e3f0e9'], dark: ['#5cb893', '#1d2f27'] },
+  amber:   { light: ['#a8741f', '#f6ecd9'], dark: ['#d9a84e', '#33291a'] },
+};
+
+// ---- Tema ----
+export function getThemeMode(): ThemeMode {
+  const v = localStorage.getItem(THEME_KEY);
+  return v === 'light' || v === 'dark' ? v : 'auto';
 }
 
-export function getThemeMode(): ThemeMode {
-  return (localStorage.getItem(THEME_KEY) as ThemeMode) || 'auto';
+export function systemPrefersDark(): boolean {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 export function effectiveTheme(mode: ThemeMode = getThemeMode()): 'light' | 'dark' {
-  if (mode === 'auto') return isAutoDark() ? 'dark' : 'light';
+  if (mode === 'auto') return systemPrefersDark() ? 'dark' : 'light';
   return mode;
 }
 
@@ -25,6 +42,7 @@ export function applyTheme(): void {
   // theme-color dinámico según el tema efectivo
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', eff === 'dark' ? '#0e1210' : '#f6f6f3');
+  applyAccent(); // el acento tiene valores distintos por tema
 }
 
 export function setThemeMode(mode: ThemeMode): void {
@@ -44,9 +62,55 @@ export function onThemeChange(fn: () => void): () => void {
   return () => subs.delete(fn);
 }
 
-// Re-evalúa el tema automático cada minuto por si cambia la hora
+// En modo sistema, re-aplica el tema cuando cambia prefers-color-scheme
 export function startThemeWatcher(): void {
-  setInterval(() => {
-    if (getThemeMode() === 'auto') applyTheme();
-  }, 60_000);
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const onChange = () => {
+    if (getThemeMode() === 'auto') {
+      applyTheme();
+      subs.forEach((f) => f());
+    }
+  };
+  if (mq.addEventListener) mq.addEventListener('change', onChange);
+  else mq.addListener(onChange); // Safari antiguo
+}
+
+// ---- Acento ----
+export function getAccent(): AccentId {
+  const v = localStorage.getItem(ACCENT_KEY) as AccentId | null;
+  return v && ACCENTS[v] ? v : 'emerald';
+}
+
+export function applyAccent(): void {
+  const [accent, soft] = ACCENTS[getAccent()][effectiveTheme()];
+  const st = document.documentElement.style;
+  st.setProperty('--accent', accent);
+  st.setProperty('--accent-soft', soft);
+  st.setProperty('--ok', accent); // el verde "ok" original sigue al acento
+}
+
+export function setAccent(id: AccentId): void {
+  localStorage.setItem(ACCENT_KEY, id);
+  applyAccent();
+}
+
+// ---- Densidad ----
+export function getDensity(): Density {
+  return localStorage.getItem(DENSITY_KEY) === 'compact' ? 'compact' : 'cozy';
+}
+
+export function applyDensity(): void {
+  const el = document.documentElement;
+  if (getDensity() === 'compact') {
+    el.dataset.density = 'compact';
+    el.style.fontSize = '13.5px';
+  } else {
+    el.removeAttribute('data-density');
+    el.style.fontSize = '';
+  }
+}
+
+export function setDensity(d: Density): void {
+  localStorage.setItem(DENSITY_KEY, d);
+  applyDensity();
 }

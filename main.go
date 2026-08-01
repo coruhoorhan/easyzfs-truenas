@@ -1,4 +1,4 @@
-// main.go — entrypoint de zfsctl.
+// main.go — entrypoint de EasyZFS.
 // Wiring: config → db (migraciones) → settings → usuarios (bootstrap) →
 // hub SSE → alerter → colectores → acciones → scheduler → HTTP.
 // Graceful shutdown: drenar SSE → srv.Shutdown → cerrar SQLite.
@@ -16,17 +16,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/actions"
-	"github.com/gnacho/zfsctl/internal/alerts"
-	"github.com/gnacho/zfsctl/internal/auth"
-	"github.com/gnacho/zfsctl/internal/collectors"
-	"github.com/gnacho/zfsctl/internal/config"
-	"github.com/gnacho/zfsctl/internal/db"
-	"github.com/gnacho/zfsctl/internal/hub"
-	"github.com/gnacho/zfsctl/internal/httpapi"
-	"github.com/gnacho/zfsctl/internal/scheduler"
-	"github.com/gnacho/zfsctl/internal/settings"
-	"github.com/gnacho/zfsctl/internal/users"
+	"easyzfs/internal/actions"
+	"easyzfs/internal/alerts"
+	"easyzfs/internal/auth"
+	"easyzfs/internal/collectors"
+	"easyzfs/internal/config"
+	"easyzfs/internal/db"
+	"easyzfs/internal/httpapi"
+	"easyzfs/internal/hub"
+	"easyzfs/internal/scheduler"
+	"easyzfs/internal/settings"
+	"easyzfs/internal/users"
 )
 
 // Inyectadas por ldflags (-X main.version=... -X main.build=...).
@@ -83,7 +83,7 @@ func main() {
 	srv := httpapi.NewServer(httpapi.Deps{
 		Cfg: cfg, DB: database, Auth: auth.NewManager(database, cfg.SessionSecret, cfg.CookieSecure),
 		Users: userStore, Alerter: alerter, Settings: stStore,
-		Pools: providers.Pools, Disks: providers.Disks,
+		Pools: providers.Pools, Disks: providers.Disks, SysTimers: providers.SysTimers,
 		Actions: act, Sched: sched, Jobs: jobStore, Hub: h,
 		Version: version, Build: build, ZFSVersion: zfsVersion,
 	})
@@ -112,7 +112,7 @@ func main() {
 	go sched.Run(ctx)
 
 	go func() {
-		log.Printf("zfsctl %s escuchando en %s (mock=%v demo=%v)", version, cfg.ListenAddr, cfg.Mock, cfg.Demo)
+		log.Printf("EasyZFS %s escuchando en %s (mock=%v demo=%v)", version, cfg.ListenAddr, cfg.Mock, cfg.Demo)
 		if err := httpSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("http: %v", err)
 		}

@@ -1,4 +1,4 @@
-# zfsctl — build: front (web/) → dist/ → binario estático CGO_ENABLED=0
+# EasyZFS — build: front (web/) → dist/ → binario estático CGO_ENABLED=0
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD   ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.build=$(BUILD)
@@ -17,7 +17,7 @@ web:
 	fi
 
 go:
-	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o zfsctl .
+	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o easyzfs .
 
 clean:
-	rm -f zfsctl
+	rm -f easyzfs

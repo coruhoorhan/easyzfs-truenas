@@ -10,7 +10,9 @@ func (s *Server) listPools(w http.ResponseWriter, r *http.Request) {
 	pools := s.pools.Pools()
 	temps := map[string]float64{}
 	for _, d := range s.disks.Disks() {
-		temps[d.Dev] = d.TempC
+		if d.TempC != nil {
+			temps[d.Dev] = *d.TempC
+		}
 	}
 	for i := range pools {
 		for j := range pools[i].Vdevs {
@@ -22,17 +24,21 @@ func (s *Server) listPools(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pools)
 }
 
-// createPool — POST /api/pools {name, topo, disks[]} → 202.
+// createPool — POST /api/pools {name, topo, disks[], confirm} → 202.
 func (s *Server) createPool(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name  string   `json:"name"`
-		Topo  string   `json:"topo"`
-		Disks []string `json:"disks"`
+		Name    string   `json:"name"`
+		Topo    string   `json:"topo"`
+		Disks   []string `json:"disks"`
+		Confirm string   `json:"confirm"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := s.act.PoolCreate(r.Context(), actor(r), body.Name, body.Topo, body.Disks); err != nil {
+	if !requireConfirm(w, body.Confirm, body.Name) {
+		return
+	}
+	if err := s.act.PoolCreate(r.Context(), actor(r), body.Name, body.Topo, body.Disks, true); err != nil {
 		actionErr(w, err)
 		return
 	}
@@ -100,34 +106,42 @@ func (s *Server) exportPool(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// addVdev — POST /api/pools/{name}/vdev {topo, disks[]} → 202.
+// addVdev — POST /api/pools/{name}/vdev {topo, disks[], confirm} → 202.
 func (s *Server) addVdev(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body struct {
-		Topo  string   `json:"topo"`
-		Disks []string `json:"disks"`
+		Topo    string   `json:"topo"`
+		Disks   []string `json:"disks"`
+		Confirm string   `json:"confirm"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := s.act.VdevAdd(r.Context(), actor(r), name, body.Topo, body.Disks); err != nil {
+	if !requireConfirm(w, body.Confirm, name) {
+		return
+	}
+	if err := s.act.VdevAdd(r.Context(), actor(r), name, body.Topo, body.Disks, true); err != nil {
 		actionErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// replaceDisk — POST /api/pools/{name}/replace {old_dev, new_dev} → 202.
+// replaceDisk — POST /api/pools/{name}/replace {old_dev, new_dev, confirm} → 202.
 func (s *Server) replaceDisk(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body struct {
-		OldDev string `json:"old_dev"`
-		NewDev string `json:"new_dev"`
+		OldDev  string `json:"old_dev"`
+		NewDev  string `json:"new_dev"`
+		Confirm string `json:"confirm"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := s.act.Replace(r.Context(), actor(r), name, body.OldDev, body.NewDev); err != nil {
+	if !requireConfirm(w, body.Confirm, name) {
+		return
+	}
+	if err := s.act.Replace(r.Context(), actor(r), name, body.OldDev, body.NewDev, true); err != nil {
 		actionErr(w, err)
 		return
 	}

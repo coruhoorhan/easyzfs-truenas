@@ -9,15 +9,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/alerts"
-	"github.com/gnacho/zfsctl/internal/executil"
-	"github.com/gnacho/zfsctl/internal/hub"
-	"github.com/gnacho/zfsctl/internal/model"
+	"easyzfs/internal/alerts"
+	"easyzfs/internal/executil"
+	"easyzfs/internal/hub"
+	"easyzfs/internal/model"
 )
+
+// Solo dispositivos físicos: la whitelist admite discos SATA/SAS/IDE/virtio/
+// Xen/NVMe/eMMC y la blacklist excluye explícitamente seudo-dispositivos
+// (zvols ZFS, loop, ram, device-mapper, ópticos, floppy) y las particiones
+// hardware de eMMC (boot0/boot1/rpmb), que no son discos usables.
+var (
+	physDiskRe     = regexp.MustCompile(`^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)$`)
+	excludedDiskRe = regexp.MustCompile(`^(zd\d+|loop\d+|ram\d+|dm-\d+|sr\d+|fd\d+|mmcblk\d+boot\d+|mmcblk\d+rpmb)$`)
+)
+
+// isPhysicalDisk decide si un nombre de dispositivo de lsblk es un disco
+// físico gestionable (true) o ruido del sistema (false).
+func isPhysicalDisk(name string) bool {
+	if excludedDiskRe.MatchString(name) {
+		return false
+	}
+	return physDiskRe.MatchString(name)
+}
 
 const (
 	smartInterval   = 10 * time.Minute
@@ -31,10 +50,10 @@ type SmartCollector struct {
 	al      *alerts.Alerter
 	sensors *SensorsCollector
 
-	mu     sync.RWMutex
-	disks  []model.Disk
-	fails  int
-	stale  bool
+	mu         sync.RWMutex
+	disks      []model.Disk
+	fails      int
+	stale      bool
 	lastSeries map[string]time.Time
 }
 
@@ -154,7 +173,7 @@ func (c *SmartCollector) collectOnce(ctx context.Context) error {
 	}
 	disks := []model.Disk{}
 	for _, bd := range inv.BlockDevices {
-		if bd.Type != "disk" {
+		if bd.Type != "disk" || !isPhysicalDisk(bd.Name) {
 			continue
 		}
 		d := model.Disk{
@@ -162,11 +181,14 @@ func (c *SmartCollector) collectOnce(ctx context.Context) error {
 			Model:     strings.TrimSpace(bd.Model),
 			Serial:    bd.Serial,
 			SizeBytes: bd.Size,
-			Smart:     "ok",
+			// Por defecto "unknown": eMMC / USB sin SAT no hablan smartctl
+			// y no deben aparecer como error ni como "ok".
+			Smart:       "unknown",
+			SmartDetail: "no disponible",
 		}
 		c.fillSmart(ctx, &d)
 		if t, ok := c.sensors.Temp(bd.Name); ok && t > 0 {
-			d.TempC = t // sensores (30 s) tienen preferencia sobre smartctl (10 min)
+			d.TempC = &t // sensores (30 s) tienen preferencia sobre smartctl (10 min)
 		}
 		disks = append(disks, d)
 	}
@@ -200,7 +222,8 @@ func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
 		d.Serial = sj.SerialNumber
 	}
 	if sj.Temperature.Current > 0 {
-		d.TempC = sj.Temperature.Current
+		t := sj.Temperature.Current
+		d.TempC = &t
 	}
 	if sj.PowerOnTime.Hours > 0 {
 		d.Hours = sj.PowerOnTime.Hours
@@ -235,7 +258,8 @@ func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
 	// NVMe: temperatura y avisos críticos viven en otro log.
 	if sj.NVMeSmartHealthLog != nil {
 		if sj.NVMeSmartHealthLog.Temperature > 0 {
-			d.TempC = sj.NVMeSmartHealthLog.Temperature
+			t := sj.NVMeSmartHealthLog.Temperature
+			d.TempC = &t
 		}
 		if sj.NVMeSmartHealthLog.CriticalWarning > 0 {
 			if d.Smart == "ok" {
@@ -250,7 +274,7 @@ func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
 func (c *SmartCollector) persistSeries(ctx context.Context, disks []model.Disk) {
 	now := time.Now()
 	for _, d := range disks {
-		if d.TempC <= 0 {
+		if d.TempC == nil || *d.TempC <= 0 {
 			continue
 		}
 		key := "disk." + d.Dev + ".temp"
@@ -259,7 +283,7 @@ func (c *SmartCollector) persistSeries(ctx context.Context, disks []model.Disk) 
 		}
 		if _, err := c.db.ExecContext(ctx,
 			"INSERT INTO series(source, ts, value) VALUES (?,?,?)",
-			key, now.UTC().Format(time.RFC3339), d.TempC); err != nil {
+			key, now.UTC().Format(time.RFC3339), *d.TempC); err != nil {
 			log.Printf("smart series: %v", err)
 			continue
 		}

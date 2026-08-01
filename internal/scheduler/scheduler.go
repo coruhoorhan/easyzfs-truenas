@@ -10,9 +10,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/actions"
-	"github.com/gnacho/zfsctl/internal/hub"
-	"github.com/gnacho/zfsctl/internal/model"
+	"easyzfs/internal/actions"
+	"easyzfs/internal/hub"
+	"easyzfs/internal/model"
 )
 
 // Job — contrato GET /api/jobs (next_run se calcula en el handler).

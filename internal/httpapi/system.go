@@ -7,13 +7,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gnacho/zfsctl/internal/db"
-	"github.com/gnacho/zfsctl/internal/model"
+	"easyzfs/internal/db"
+	"easyzfs/internal/model"
 )
 
 // getVersion — GET /api/version → estado del backend y del runtime.
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
+		"name":        "EasyZFS",
 		"version":     s.version,
 		"build":       s.build,
 		"go":          runtime.Version(),
@@ -37,10 +38,14 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
-// putSettings — PUT /api/settings (admin) → 204.
+// putSettings — PUT /api/settings (admin) → 204. 400 si los rangos no valen.
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var st settingsBody
 	if !decodeJSON(w, r, &st) {
+		return
+	}
+	if msg := validateSettings(st); msg != "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", msg)
 		return
 	}
 	cur, err := s.settings.Load(r.Context())
@@ -61,6 +66,25 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.act.AuditOnly(r.Context(), actor(r), "settings.update", "settings", st)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validateSettings — rangos duros (400 en vez de corrección silenciosa):
+// cap_warn_pct/cap_crit_pct en 1-100, warn < crit, disk_temp_c en 20-90.
+// Devuelve "" si todo es válido o el mensaje de error.
+func validateSettings(st settingsBody) string {
+	if st.CapWarnPct < 1 || st.CapWarnPct > 100 {
+		return "cap_warn_pct debe estar entre 1 y 100"
+	}
+	if st.CapCritPct < 1 || st.CapCritPct > 100 {
+		return "cap_crit_pct debe estar entre 1 y 100"
+	}
+	if st.CapWarnPct >= st.CapCritPct {
+		return "cap_warn_pct debe ser menor que cap_crit_pct"
+	}
+	if st.DiskTempC < 20 || st.DiskTempC > 90 {
+		return "disk_temp_c debe estar entre 20 y 90"
+	}
+	return ""
 }
 
 // settingsBody — body de PUT /api/settings (idéntico a settings.Settings).
@@ -96,6 +120,12 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// listSystemTimers — GET /api/system-timers → tareas del sistema (cron +
+// systemd timers, solo lectura, desde la caché del colector schedsys).
+func (s *Server) listSystemTimers(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.sysTimers.SysTimers())
 }
 
 // getOverview — GET /api/overview: KPIs agregados desde cachés + BD.
