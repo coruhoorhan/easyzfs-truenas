@@ -131,6 +131,7 @@ func (s *Server) Handler() http.Handler {
 	// discos
 	a.HandleFunc("GET /api/disks", s.listDisks)
 	a.HandleFunc("POST /api/disks/{dev}/smart-test", s.auth.RequireAdmin(s.smartTest))
+	a.HandleFunc("POST /api/disks/{dev}/poweroff", s.auth.RequireAdmin(s.powerOff))
 	// SSE
 	a.Handle("GET /api/events", s.h)
 

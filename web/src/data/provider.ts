@@ -62,4 +62,5 @@ export interface DataProvider {
   // Discos
   getDisks(): Promise<Disk[]>;
   smartTest(dev: string, type: 'short' | 'long'): Promise<void>;
+  poweroffDisk(dev: string): Promise<void>;
 }

@@ -54,7 +54,7 @@ export default function Pools() {
         <button className={`chip ${filter === 'warn' ? 'on' : ''}`} onClick={() => setFilter('warn')}>{t('pools_warn')}</button>
       </div>
       {loading && !data && <Spinner label={t('loading')} />}
-      <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
+      <div className="grid pools" style={{ gridTemplateColumns: '1fr' }}>
         {filtered.map((p) => <PoolCard key={p.name} pool={p} onChanged={reload} />)}
       </div>
       {data && filtered.length === 0 && <div className="empty">{t('empty')}</div>}

@@ -43,7 +43,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
   };
 
   const faulted = pool.vdevs.find((v) => v.status !== 'ONLINE');
-  const free = disks.filter((d) => d.pool === '—' || d.pool === '');
+  const free = disks.filter((d) => (d.pool === '—' || d.pool === '') && !d.in_use);
   const isMirror = pool.topo.startsWith('mirror');
 
   return (
