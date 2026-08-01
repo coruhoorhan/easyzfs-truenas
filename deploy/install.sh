@@ -355,6 +355,49 @@ check_systemd() {
   die "No se detectó systemd en ejecución (PID 1). Este instalador requiere systemd."
 }
 
+# check_resources — pre-flight de disco y RAM (bloquea solo si el disco es crítico).
+check_resources() {
+  local avail=""
+  avail="$(df -Pm / 2>/dev/null | awk 'NR==2 {print $4}')"
+  if [ -n "$avail" ]; then
+    if [ "$avail" -lt 300 ]; then
+      die "Espacio en disco insuficiente: ${avail} MB libres (mínimo 300 MB para ZFS + EasyZFS)."
+    elif [ "$avail" -lt 600 ]; then
+      warn "Poco espacio en disco: ${avail} MB libres (recomendado 600+ MB)."
+    else
+      ok "Espacio en disco: ${avail} MB libres."
+    fi
+  fi
+  local mem=""
+  mem="$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null)"
+  if [ -n "$mem" ] && [ "$mem" -lt 512 ]; then
+    warn "RAM disponible baja: ${mem} MB. ZFS rinde mejor con 512+ MB libres."
+  fi
+}
+
+# port_in_use N — ¿hay algo escuchando en el puerto N? Si no hay herramienta
+# de red (ss/netstat), se asume libre.
+port_in_use() {
+  local p="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}\$"
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}\$"
+  else
+    return 1
+  fi
+}
+
+# next_free_port BASE → imprime el primer puerto libre en (BASE, BASE+20].
+next_free_port() {
+  local p=$(( $1 + 1 )) end=$(( $1 + 21 ))
+  while [ "$p" -le "$end" ]; do
+    if ! port_in_use "$p"; then printf '%s' "$p"; return 0; fi
+    p=$((p + 1))
+  done
+  return 1
+}
+
 # =============================================================================
 # Dependencias: ZFS + herramientas, con mapeo de paquetes por familia
 # =============================================================================
@@ -573,6 +616,19 @@ install_binary() {
         local tmp="" bin=""
         tmp="$(mktemp -d)"
         curl -fsSL "$url" -o "${tmp}/asset" || die "La descarga falló: ${url}"
+        # Verificación sha256 contra el checksums.txt de la misma release.
+        local sums_url="${url%/*}/checksums.txt"
+        if curl -fsSL "$sums_url" -o "${tmp}/checksums.txt" 2>/dev/null; then
+          local want="" got=""
+          want="$(grep "easyzfs-linux-${ARCH}\$" "${tmp}/checksums.txt" | awk '{print $1}' | head -1)"
+          got="$(sha256sum "${tmp}/asset" | awk '{print $1}')"
+          [ -n "$want" ] || die "checksums.txt no lista easyzfs-linux-${ARCH} (¿release sin asset para esta arch?)."
+          [ "$want" = "$got" ] || die "sha256 NO COINCIDE para easyzfs-linux-${ARCH} — descarga corrupta o manipulada."
+          ok "sha256 verificado contra checksums.txt."
+        else
+          warn "La release no publica checksums.txt (${sums_url}): descarga SIN verificar."
+          confirm "¿Continuar sin verificación de integridad?" 1 || die "Instalación cancelada por seguridad."
+        fi
         bin="${tmp}/asset"
         # Si el asset es un .tar.gz, se extrae y se localiza el binario dentro
         if file "${tmp}/asset" 2>/dev/null | grep -qi 'gzip compressed'; then
@@ -717,9 +773,22 @@ random_password() {
 
 # configure_env — /etc/easyzfs/env (0600) con las vars exactas que acepta el
 # binario (internal/config): LISTEN_ADDR, DB_PATH, SESSION_SECRET, ADMIN_PASSWORD.
-# Idempotente: en reinstalaciones reutiliza los secretos ya existentes.
+# Idempotente: en reinstalaciones reutiliza los secretos y el puerto ya existentes.
 configure_env() {
   step "Configuración (${ENV_FILE})"
+
+  # Reutilizar secretos y puerto existentes (idempotencia en reinstalaciones)
+  local existing_secret="" existing_admin="" existing_port=""
+  if [ "$DRY_RUN" != "1" ] && [ -r "$ENV_FILE" ]; then
+    existing_secret="$(sed -n 's/^SESSION_SECRET=//p' "$ENV_FILE" | head -1)"
+    existing_admin="$(sed -n 's/^ADMIN_PASSWORD=//p' "$ENV_FILE" | head -1)"
+    existing_port="$(sed -n 's/^LISTEN_ADDR=://p' "$ENV_FILE" | head -1)"
+  fi
+  # Prioridad del puerto: --port > puerto del env existente > defecto (8080)
+  if [ "$PORT_FROM_FLAG" = "0" ] && [ -n "$existing_port" ]; then
+    OPT_PORT="$existing_port"
+  fi
+
   if [ "$OPT_YES" = "0" ] && [ "$PORT_FROM_FLAG" = "0" ]; then
     prompt OPT_PORT "Puerto de escucha de la interfaz web" "$OPT_PORT"
   fi
@@ -727,11 +796,20 @@ configure_env() {
     die "Puerto inválido: ${OPT_PORT}"
   fi
 
-  # Reutilizar secretos existentes (idempotencia en reinstalaciones)
-  local existing_secret="" existing_admin=""
-  if [ "$DRY_RUN" != "1" ] && [ -r "$ENV_FILE" ]; then
-    existing_secret="$(sed -n 's/^SESSION_SECRET=//p' "$ENV_FILE" | head -1)"
-    existing_admin="$(sed -n 's/^ADMIN_PASSWORD=//p' "$ENV_FILE" | head -1)"
+  # Puerto ocupado: si coincide con el del env existente es NUESTRO propio
+  # servicio corriendo (reinstalación) y no hay conflicto. Si es otro proceso:
+  # --port explícito aborta; sin flag, se busca el siguiente libre (hasta +20).
+  if [ "$DRY_RUN" != "1" ] && [ "$OPT_PORT" != "$existing_port" ] && port_in_use "$OPT_PORT"; then
+    if [ "$PORT_FROM_FLAG" = "1" ]; then
+      die "El puerto ${OPT_PORT} ya está en uso (se pidió con --port). Elige otro: ss -tlnp | grep :${OPT_PORT}"
+    fi
+    local next=""
+    if next="$(next_free_port "$OPT_PORT")"; then
+      warn "El puerto ${OPT_PORT} está en uso por otro proceso; EasyZFS escuchará en ${next}."
+      OPT_PORT="$next"
+    else
+      die "Puerto ${OPT_PORT} ocupado y ninguno libre entre $((OPT_PORT + 1)) y $((OPT_PORT + 21))."
+    fi
   fi
 
   local secret="$existing_secret"
@@ -988,6 +1066,7 @@ main() {
 
   check_root
   check_systemd
+  check_resources
   install_dependencies
   select_binary_source
   install_binary
