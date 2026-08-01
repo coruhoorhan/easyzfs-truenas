@@ -35,6 +35,7 @@ set -euo pipefail
 readonly APP="easyzfs"
 readonly SCRIPT_VERSION="1.0.0"
 readonly INSTALL_BIN="/usr/local/bin/easyzfs"
+readonly SYSD_HELPER="/usr/local/libexec/easyzfs-sysd"
 readonly UNIT_PATH="/etc/systemd/system/easyzfs.service"
 readonly SUDOERS_PATH="/etc/sudoers.d/easyzfs"
 readonly ENV_DIR="/etc/easyzfs"
@@ -606,6 +607,32 @@ install_binary() {
   ok "Binario instalado en ${INSTALL_BIN}"
 }
 
+# install_sysd_helper — helper root confinado (edición/migración de tareas del
+# sistema): local del repo si existe; si no, desde el repo público.
+install_sysd_helper() {
+  step "Helper de tareas del sistema (easyzfs-sysd)"
+  local src=""
+  local script_dir; script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo .)"
+  if [ -f "${script_dir}/easyzfs-sysd" ]; then
+    src="${script_dir}/easyzfs-sysd"
+  elif [ -n "$OPT_BINARY" ] && [ -f "$(dirname "$OPT_BINARY")/easyzfs-sysd" ]; then
+    src="$(dirname "$OPT_BINARY")/easyzfs-sysd"
+  fi
+  if [ -n "$src" ]; then
+    run "${SUDO[@]}" install -m 0755 "$src" "$SYSD_HELPER" \
+      || die "No se pudo instalar el helper en $SYSD_HELPER"
+  else
+    local url="https://raw.githubusercontent.com/gnacho/easyzfs/main/deploy/easyzfs-sysd"
+    info "Descargando helper: $url"
+    local tmp; tmp="$(mktemp)"
+    curl -fsSL "$url" -o "$tmp" || die "No se pudo descargar el helper."
+    run "${SUDO[@]}" install -m 0755 "$tmp" "$SYSD_HELPER" \
+      || die "No se pudo instalar el helper en $SYSD_HELPER"
+    rm -f "$tmp"
+  fi
+  ok "Helper instalado en ${SYSD_HELPER}"
+}
+
 # =============================================================================
 # Cuenta de servicio y sudoers limitado
 # =============================================================================
@@ -647,7 +674,7 @@ write_sudoers() {
   crontab_path="$(command -v crontab 2>/dev/null || echo /usr/bin/crontab)"
   udisksctl_path="$(command -v udisksctl 2>/dev/null || echo /usr/bin/udisksctl)"
   hdparm_path="$(command -v hdparm 2>/dev/null || echo /usr/sbin/hdparm)"
-  content="${SVC_USER} ALL=(root) NOPASSWD: ${zpool_path}, ${zfs_path}, ${smartctl_path}, ${lsblk_path}, ${crontab_path}, ${udisksctl_path}, ${hdparm_path}"
+  content="${SVC_USER} ALL=(root) NOPASSWD: ${zpool_path}, ${zfs_path}, ${smartctl_path}, ${lsblk_path}, ${crontab_path}, ${udisksctl_path}, ${hdparm_path}, ${SYSD_HELPER}"
   if [ "$DRY_RUN" = "1" ]; then
     info "[DRY-RUN] escribiría ${SUDOERS_PATH} (0440) y validaría con visudo -cf:"
     printf '    %s\n' "$content"
@@ -889,6 +916,7 @@ do_uninstall() {
     run "${SUDO[@]}" systemctl daemon-reload || true
   fi
   [ -e "$INSTALL_BIN" ] && { run "${SUDO[@]}" rm -f "$INSTALL_BIN"; ok "Binario eliminado: ${INSTALL_BIN}"; }
+  [ -e "$SYSD_HELPER" ] && { run "${SUDO[@]}" rm -f "$SYSD_HELPER"; ok "Helper eliminado: ${SYSD_HELPER}"; }
   [ -e "$SUDOERS_PATH" ] && { run "${SUDO[@]}" rm -f "$SUDOERS_PATH"; ok "Sudoers eliminado: ${SUDOERS_PATH}"; }
 
   if [ -d "$DATA_DIR" ] || [ -d "$ENV_DIR" ]; then
@@ -961,6 +989,7 @@ main() {
   install_dependencies
   select_binary_source
   install_binary
+  install_sysd_helper
   setup_user_and_sudoers
   setup_dirs
   configure_env

@@ -50,7 +50,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
     } catch (e) { setErr(errorMessage(e, t)); }
   };
 
-  const faulted = pool.vdevs.find((v) => v.status !== 'ONLINE');
+  const faulted = pool.vdevs.find((v) => v.status !== 'ONLINE' && !v.replacing);
   const free = disks.filter((d) => (d.pool === '—' || d.pool === '') && !d.in_use);
   const isMirror = pool.topo.startsWith('mirror');
 
@@ -110,12 +110,28 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
       )}
 
       <div className="vdevs">
-        {pool.vdevs.map((v) => (
+        {pool.vdevs.map((v) => {
+          // Hijo saliente de un replacing-N: no es un error, es el disco viejo
+          // que desaparece solo al terminar la reconstrucción.
+          if (v.replacing && v.status !== 'ONLINE') {
+            return (
+              <div className="vdev" key={v.dev} style={{ opacity: 0.55 }}>
+                <span className="badge info" style={{ padding: '2px 7px' }}>{t('vdev_outgoing')}</span>
+                <span className="dname" title={v.dev}>{shortDev(v)}</span>
+                <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('vdev_outgoing_hint')}</span>
+              </div>
+            );
+          }
+          return (
           <div className="vdev" key={v.dev}>
             <span className={`badge ${v.status === 'ONLINE' ? 'ok' : 'err'}`} style={{ padding: '2px 7px' }}>{v.status}</span>
             <span className="dname" title={v.dev}>{shortDev(v)}</span>
+            {v.replacing && (
+              <span className="badge info" style={{ padding: '1px 7px' }} title={t('vdev_new_hint')}>{t('vdev_new')}</span>
+            )}
             <span>{v.role !== '—' ? v.role : ''}</span>
             <span style={{ marginLeft: 'auto' }}>{v.temp_c}°C</span>
+            {!v.replacing && (<>
             <button className="btn sm" disabled={!isAdmin}
               title={!isAdmin ? t('no_permission') : t('pool_replace_disk', { dev: shortDev(v) })}
               onClick={() => openModal('replace', { pool: pool.name, oldDev: v.dev })}>{t('pool_replace')}</button>
@@ -131,8 +147,10 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
               <button className="btn sm danger" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('vdev_detach_hint')}
                 onClick={() => openModal('detach', { pool: pool.name, dev: v.dev, path: v.path })}>{t('vdev_detach')}</button>
             )}
+            </>)}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {err && <p className="form-err" style={{ padding: '0 16px' }} role="alert">{err}</p>}

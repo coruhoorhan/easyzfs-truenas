@@ -111,7 +111,12 @@ journalctl -u easyzfs -f   # first boot: note the bootstrap password if generate
 
 The backend needs to run a handful of binaries as root (`zpool`, `zfs`,
 `smartctl`, `lsblk`, `crontab` — the last one only to read root's crontab for
-the Tasks view — plus `udisksctl`/`hdparm` to power down free disks). `executil` decides automatically: if the process does **not**
+the Tasks view — plus `udisksctl`/`hdparm` to power down free disks).
+Editing system task schedules and migrating cron entries to systemd timers
+goes through a confined root helper (`/usr/local/libexec/easyzfs-sysd`) that
+only accepts three validated operations (`cron-set`, `timer-set`,
+`cron-to-timer`) on whitelisted files — the service never gets free write
+access to `/etc/cron*` or `/etc/systemd`. `executil` decides automatically: if the process does **not**
 run as root, it prepends `sudo -n` to every command; as root it runs them
 directly. Override with `EASYZFS_SUDO=0|1` (default: auto). Two deployment
 options:

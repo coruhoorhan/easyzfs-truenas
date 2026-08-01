@@ -102,6 +102,8 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("POST /api/alerts/{id}/ack", s.ackAlert)
 	a.HandleFunc("GET /api/overview", s.getOverview)
 	a.HandleFunc("GET /api/system-timers", s.listSystemTimers)
+	a.HandleFunc("POST /api/system-timers/schedule", s.auth.RequireAdmin(s.sysTimerSchedule))
+	a.HandleFunc("POST /api/system-timers/migrate", s.auth.RequireAdmin(s.sysTimerMigrate))
 	// pools (mutaciones: admin — son potencialmente destructivas)
 	a.HandleFunc("GET /api/pools", s.listPools)
 	a.HandleFunc("POST /api/pools", s.auth.RequireAdmin(s.createPool))

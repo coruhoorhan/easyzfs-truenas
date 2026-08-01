@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -126,6 +127,78 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request) {
 // systemd timers, solo lectura, desde la caché del colector schedsys).
 func (s *Server) listSystemTimers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.sysTimers.SysTimers())
+}
+
+// findSysTimer — busca la tarea en la caché del colector por identidad
+// (source+name+origin+line): el cliente no puede inventar objetivos.
+func (s *Server) findSysTimer(b sysTimerID) (model.SysTimer, bool) {
+	for _, t := range s.sysTimers.SysTimers() {
+		if t.Source == b.Source && t.Name == b.Name && t.Origin == b.Origin && t.Line == b.Line {
+			return t, true
+		}
+	}
+	return model.SysTimer{}, false
+}
+
+// sysTimerID — identidad de una tarea del sistema tal como la conoce la UI.
+type sysTimerID struct {
+	Source string `json:"source"`
+	Name   string `json:"name"`
+	Origin string `json:"origin"`
+	Line   int    `json:"line"`
+}
+
+// sysTimerSchedule — POST /api/system-timers/schedule {id…, schedule} → 202.
+func (s *Server) sysTimerSchedule(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		sysTimerID
+		Schedule string `json:"schedule"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	task, ok := s.findSysTimer(body.sysTimerID)
+	if !ok || !task.Editable {
+		writeErr(w, http.StatusNotFound, "not_found", "tarea no encontrada o no editable")
+		return
+	}
+	if err := s.act.SysTaskSetSchedule(r.Context(), actor(r), task, body.Schedule); err != nil {
+		actionErr(w, err)
+		return
+	}
+	s.refreshSysTimers(r.Context())
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// sysTimerMigrate — POST /api/system-timers/migrate {id…, new_name} → 202.
+func (s *Server) sysTimerMigrate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		sysTimerID
+		NewName string `json:"new_name"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	task, ok := s.findSysTimer(body.sysTimerID)
+	if !ok || !task.Editable || task.Source != "cron" {
+		writeErr(w, http.StatusNotFound, "not_found", "tarea no encontrada o no migrable")
+		return
+	}
+	if err := s.act.SysTaskMigrate(r.Context(), actor(r), task, body.NewName); err != nil {
+		actionErr(w, err)
+		return
+	}
+	s.refreshSysTimers(r.Context())
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// refreshSysTimers — fuerza una pasada del colector si lo soporta (no esperar
+// al tick de 5 min tras una edición).
+func (s *Server) refreshSysTimers(ctx context.Context) {
+	type refresher interface{ Refresh(context.Context) }
+	if r, ok := s.sysTimers.(refresher); ok {
+		r.Refresh(ctx)
+	}
 }
 
 // getOverview — GET /api/overview: KPIs agregados desde cachés + BD.

@@ -7,7 +7,7 @@ import type { Job, JobType } from '../data/types';
 import { useData } from '../ui/useData';
 import { errorMessage, useApp } from '../ui/store';
 import { timeAgo } from '../ui/format';
-import { Badge, Spinner, Switch } from '../components/ui';
+import { Badge, InfoBubble, Spinner, Switch } from '../components/ui';
 import { useModal } from '../components/Modal';
 import { describeSchedule } from '../components/Modals';
 import { useState } from 'react';
@@ -17,7 +17,7 @@ const TIPO_CLS: Record<JobType, 'info' | 'ok' | 'warn'> = {
 };
 
 export default function Tasks() {
-  const { t } = useApp();
+  const { t, isAdmin } = useApp();
   const { openModal } = useModal();
   const jobs = useData((p) => p.getJobs());
   const hist = useData((p) => p.getJobHistory());
@@ -109,9 +109,24 @@ export default function Tasks() {
         </div>
       </div>
 
-      {/* Tareas del sistema: timers de systemd y cron (solo lectura) */}
+      {/* Tareas del sistema: timers de systemd y cron */}
       <div className="sect">
-        <h2>{t('tk_system')}</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {t('tk_system')}
+          <InfoBubble title={t('tk_cronvs_title')}>
+            <b>cron</b>
+            <ul>
+              <li>{t('tk_cronvs_cron1')}</li>
+              <li>{t('tk_cronvs_cron2')}</li>
+            </ul>
+            <b>systemd timer</b>
+            <ul>
+              <li>{t('tk_cronvs_sysd1')}</li>
+              <li>{t('tk_cronvs_sysd2')}</li>
+              <li>{t('tk_cronvs_sysd3')}</li>
+            </ul>
+          </InfoBubble>
+        </h2>
         <div className="card">
           {sys.loading && !sys.data && <Spinner label={t('loading')} />}
           {(sys.data ?? []).map((s, i) => (
@@ -127,6 +142,14 @@ export default function Tasks() {
                 </div>
                 <div className="t2 mono">{s.command}</div>
               </div>
+              {isAdmin && s.editable && (
+                <button className="btn sm" title={t('ss_btn_hint')}
+                  onClick={() => openModal('syssched', { task: s })}>{t('edit')}</button>
+              )}
+              {isAdmin && s.editable && s.source === 'cron' && (
+                <button className="btn sm" title={t('sm_btn_hint')}
+                  onClick={() => openModal('sysmigrate', { task: s })}>{t('sm_btn')}</button>
+              )}
             </div>
           ))}
           {sys.data && sys.data.length === 0 && <div className="empty">{t('empty')}</div>}

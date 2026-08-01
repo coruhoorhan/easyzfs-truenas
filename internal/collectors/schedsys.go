@@ -58,6 +58,9 @@ func (c *SchedSysCollector) SysTimers() []model.SysTimer {
 	return out
 }
 
+// Refresh — fuerza una pasada inmediata (tras editar/migrar una tarea).
+func (c *SchedSysCollector) Refresh(ctx context.Context) { c.collectOnce(ctx) }
+
 // collectOnce refresca la caché; cada fuente es independiente y best-effort.
 // Solo se conservan las tareas relacionadas con ZFS (ver isZFSTask): el resto
 // del sistema (logrotate, apt, xfs/e2scrub…) es ruido para esta app.
@@ -68,9 +71,25 @@ func (c *SchedSysCollector) collectOnce(ctx context.Context) {
 			out = append(out, t)
 		}
 	}
+	// OnCalendar solo de las tareas ZFS (pocas): 'systemctl show' por unidad.
+	for i := range out {
+		if out[i].Source == "systemd" && out[i].Schedule == "" {
+			out[i].Schedule = timerOnCalendar(ctx, out[i].Name)
+		}
+	}
 	c.mu.Lock()
 	c.timers = out
 	c.mu.Unlock()
+}
+
+// timerOnCalendar — OnCalendar actual de un timer ('systemctl show -p OnCalendar').
+func timerOnCalendar(ctx context.Context, unit string) string {
+	out, err := executil.RunDirect(ctx, 5*time.Second,
+		"systemctl", "show", "-p", "OnCalendar", "--value", unit)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // zfsTaskRe — una tarea del sistema "es ZFS" si su unidad, comando u origen
@@ -143,6 +162,7 @@ func (c *SchedSysCollector) systemdTimers(ctx context.Context) []model.SysTimer 
 			LastRun: sysdText(t.Last),
 			Command: t.Activates,
 			Origin:  "systemctl list-timers",
+			Editable: strings.HasSuffix(t.Unit, ".timer"),
 		})
 	}
 	return timers
@@ -223,7 +243,10 @@ func cronFiles() []string {
 // (ficheros de /etc) hay un campo de usuario entre el schedule y el comando.
 func parseCrontab(content, origin string, hasUser bool) []model.SysTimer {
 	out := []model.SysTimer{}
+	editable := strings.HasPrefix(origin, "/etc/")
+	lineNo := 0
 	for _, line := range strings.Split(content, "\n") {
+		lineNo++
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -241,7 +264,7 @@ func parseCrontab(content, origin string, hasUser bool) []model.SysTimer {
 			command := strings.Join(cmd, " ")
 			out = append(out, model.SysTimer{
 				Source: "cron", Name: cronName(command, origin), Schedule: fields[0],
-				Command: command, Origin: origin,
+				Command: command, Origin: origin, Line: lineNo, Editable: editable,
 			})
 			continue
 		}
@@ -264,7 +287,7 @@ func parseCrontab(content, origin string, hasUser bool) []model.SysTimer {
 		command := strings.Join(cmd, " ")
 		out = append(out, model.SysTimer{
 			Source: "cron", Name: cronName(command, origin), Schedule: schedule,
-			Command: command, Origin: origin,
+			Command: command, Origin: origin, Line: lineNo, Editable: editable,
 		})
 	}
 	return out

@@ -6,7 +6,7 @@ import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, parseSize } from '../ui/format';
 import { ModalBox, useModal } from './Modal';
 import { Seg } from './ui';
-import type { Dataset, Disk, Job, Pool, Topo } from '../data/types';
+import type { Dataset, Disk, Job, Pool, SystemTimer, Topo } from '../data/types';
 
 // ---------- utilidades comunes ----------
 function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
@@ -53,6 +53,8 @@ export function ModalHost() {
     case 'addvdev': return <PoolDiskModal pool={p.pool as string} mode="vdev" onClose={closeModal} />;
     case 'replace': return <PoolDiskModal pool={p.pool as string} mode="replace" presetOld={p.oldDev as string | undefined} presetNew={p.newDev as string | undefined} onClose={closeModal} />;
     case 'detach': return <DetachModal pool={p.pool as string} dev={p.dev as string} path={p.path as string | undefined} onClose={closeModal} />;
+    case 'syssched': return <SysSchedModal task={p.task as SystemTimer} onClose={closeModal} />;
+    case 'sysmigrate': return <SysMigrateModal task={p.task as SystemTimer} onClose={closeModal} />;
     case 'newuser': return <NewUserModal onClose={closeModal} />;
     case 'mypass': return <MyPasswdModal onClose={closeModal} />;
     case 'passwd': return <PasswdModal user={p.user as string} onClose={closeModal} />;
@@ -495,7 +497,7 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
           <p className="desc" style={{ marginTop: 0, color: 'var(--text2)' }}>{t('rp_proc')}</p>
           <label htmlFor="rp-old">{t('rp_old')}</label>
           <select id="rp-old" value={oldDev} onChange={(e) => setOldDev(e.target.value)} disabled={!!presetOld}>
-            {current.map((v) => (
+            {current.filter((v) => !v.replacing).map((v) => (
               <option key={v.dev} value={v.dev}>
                 {v.path ? v.path.replace('/dev/', '') : v.dev} ({v.role}){v.status !== 'ONLINE' ? ` · ${v.status}` : ''}
               </option>
@@ -540,6 +542,88 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
           <SubmitBtn label={mode === 'vdev' ? t('av_btn') : t('rp_btn')} busy={busy} danger
             disabled={!isAdmin || !confirmed || !valid} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- editar periodicidad de una tarea del sistema ----------
+function SysSchedModal({ task, onClose }: { task: SystemTimer; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [sched, setSched] = useState(task.schedule ?? '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const isCron = task.source === 'cron';
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().setSystemTimerSchedule(task, sched.trim());
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose}>
+      <form onSubmit={submit}>
+        <h3>{t('ss_title')}</h3>
+        <p className="desc">
+          <b className="mono">{task.name}</b> · <span className={`badge ${isCron ? 'warn' : 'info'}`} style={{ padding: '1px 7px' }}>{task.source}</span>
+        </p>
+        <p className="desc mono" style={{ fontSize: 12 }}>{task.command}</p>
+        <label htmlFor="ss-sched">{t('ss_lbl')}</label>
+        <input id="ss-sched" value={sched} onChange={(e) => setSched(e.target.value)}
+          placeholder={isCron ? '0 3 * * *' : 'daily'} autoComplete="off" className="mono" />
+        <p className="desc" style={{ marginTop: 6, fontSize: 12, color: 'var(--text2)' }}>
+          {isCron ? t('ss_hint_cron') : t('ss_hint_sysd')}
+        </p>
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('save')} busy={busy} disabled={!isAdmin || !sched.trim()} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- migrar cron → systemd timer ----------
+function SysMigrateModal({ task, onClose }: { task: SystemTimer; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().migrateSystemTimer(task, name.trim());
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose}>
+      <form onSubmit={submit}>
+        <h3>{t('sm_title')}</h3>
+        <p className="desc">{t('sm_desc')}</p>
+        <p className="desc mono" style={{ fontSize: 12 }}>
+          {task.schedule} · {task.command}
+        </p>
+        <p className="desc" style={{ fontSize: 12, color: 'var(--text2)' }}>{t('sm_note')}</p>
+        <label htmlFor="sm-name">{t('sm_name_lbl')}</label>
+        <input id="sm-name" value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="scrub-semanal" autoComplete="off" className="mono" pattern="[a-z0-9][a-z0-9\-]*" />
+        <p className="desc" style={{ marginTop: 6, fontSize: 12, color: 'var(--text2)' }}>
+          easyzfs-<b>{name || '…'}</b>.timer
+        </p>
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('sm_btn')} busy={busy} disabled={!isAdmin || !/^[a-z0-9][a-z0-9-]*$/.test(name)} />
         </div>
       </form>
     </ModalBox>

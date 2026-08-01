@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ var (
 	ErrInvalidDev    = errors.New("dispositivo inválido")
 	ErrInvalidTopo   = errors.New("topología inválida")
 	ErrInvalidAction = errors.New("acción inválida")
+	ErrInvalidInput  = errors.New("entrada inválida")
 )
 
 // Whitelists de nombres (lección 6 + ejecución segura del skill).
@@ -254,6 +256,68 @@ func (s *Service) PowerOff(ctx context.Context, actor, dev string) error {
 	}
 	if _, err := executil.Run(ctx, 15*time.Second, "hdparm", "-y", "/dev/"+dev); err != nil {
 		return fmt.Errorf("apagar disco: %w", err)
+	}
+	return nil
+}
+
+// --- tareas del sistema (vía helper root confinado easyzfs-sysd) ---
+
+// sysdHelper — única vía de escritura sobre /etc/cron* y /etc/systemd.
+// EASYZFS_SYSD_HELPER permite sobreescribir la ruta (tests).
+var sysdHelper = func() string {
+	if h := os.Getenv("EASYZFS_SYSD_HELPER"); h != "" {
+		return h
+	}
+	return "/usr/local/libexec/easyzfs-sysd"
+}()
+
+var (
+	reCronSched = regexp.MustCompile(`^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|[0-9A-Za-z*,/\-]+( +[0-9A-Za-z*,/\-]+){4})$`)
+	reTaskName  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,40}$`)
+)
+
+// SysTaskSetSchedule — cambia la periodicidad de una tarea del sistema.
+// Cron: schedule de 5 campos o @atajo. Systemd: OnCalendar (valida el helper
+// con systemd-analyze). La identidad de la tarea la valida el handler contra
+// la caché del colector.
+func (s *Service) SysTaskSetSchedule(ctx context.Context, actor string, task model.SysTimer, schedule string) error {
+	s.audit(ctx, actor, "systask.schedule", task.Name,
+		map[string]any{"source": task.Source, "origin": task.Origin, "line": task.Line, "schedule": schedule}, true)
+	if task.Source == "systemd" {
+		if !strings.HasSuffix(task.Name, ".timer") {
+			return ErrInvalidName
+		}
+		if _, err := executil.Run(ctx, 30*time.Second, sysdHelper, "timer-set", task.Name, schedule); err != nil {
+			return fmt.Errorf("cambiar timer: %w", err)
+		}
+		return nil
+	}
+	if !reCronSched.MatchString(schedule) {
+		return ErrInvalidInput
+	}
+	if task.Line < 1 || !strings.HasPrefix(task.Origin, "/etc/") {
+		return ErrInvalidInput
+	}
+	if _, err := executil.Run(ctx, 30*time.Second, sysdHelper, "cron-set",
+		task.Origin, strconv.Itoa(task.Line), schedule); err != nil {
+		return fmt.Errorf("cambiar cron: %w", err)
+	}
+	return nil
+}
+
+// SysTaskMigrate — migra una entrada cron (fichero /etc) a systemd timer.
+func (s *Service) SysTaskMigrate(ctx context.Context, actor string, task model.SysTimer, newName string) error {
+	if task.Source != "cron" || task.Line < 1 || !strings.HasPrefix(task.Origin, "/etc/") {
+		return ErrInvalidInput
+	}
+	if !reTaskName.MatchString(newName) {
+		return ErrInvalidName
+	}
+	s.audit(ctx, actor, "systask.migrate", task.Name,
+		map[string]any{"origin": task.Origin, "line": task.Line, "unit": "easyzfs-" + newName + ".timer"}, true)
+	if _, err := executil.Run(ctx, 30*time.Second, sysdHelper, "cron-to-timer",
+		task.Origin, strconv.Itoa(task.Line), newName); err != nil {
+		return fmt.Errorf("migrar a systemd: %w", err)
 	}
 	return nil
 }
