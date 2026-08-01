@@ -8,14 +8,14 @@
 #
 # Uso:
 #   bash install.sh [opciones]
-#   curl -fsSL <url>/install.sh | bash -s -- --yes
+#   curl -fsSL https://raw.githubusercontent.com/gnacho/easyzfs/main/deploy/install.sh | bash
 #   DRY_RUN=1 bash install.sh --binary ./easyzfs --yes   # ensayo sin cambios
 #
 # Opciones:
 #   --binary <ruta>   Binario local (defecto: ./easyzfs si existe)
 #   --url <url>       URL de release; acepta {arch} (x86_64|aarch64).
-#                     También vía EASYZFS_RELEASE_URL. (Placeholder documentado
-#                     para los futuros GitHub releases oficiales.)
+#                     También vía EASYZFS_RELEASE_URL. Defecto: releases
+#                     oficiales de github.com/gnacho/easyzfs.
 #   --source <dir>    Compila desde el repo fuente (requiere go y make;
 #                     node/npm solo si existe web/ en el fuente)
 #   --port <n>        Puerto de escucha (defecto: 8080)
@@ -42,9 +42,12 @@ readonly ENV_FILE="${ENV_DIR}/env"
 readonly DATA_DIR="/var/lib/easyzfs"
 readonly SVC_USER="easyzfs"
 
+# URL oficial de releases (one-liner curl|bash). {arch} = x86_64|aarch64.
+readonly DEFAULT_RELEASE_URL="https://github.com/gnacho/easyzfs/releases/latest/download/easyzfs-linux-{arch}"
+
 # ---- Opciones (flags / variables de entorno) ----
 OPT_BINARY=""
-OPT_URL="${EASYZFS_RELEASE_URL:-}"
+OPT_URL="${EASYZFS_RELEASE_URL:-$DEFAULT_RELEASE_URL}"
 OPT_SOURCE=""
 OPT_PORT="8080"
 PORT_FROM_FLAG=0
@@ -133,7 +136,7 @@ Opciones:
   --binary <ruta>   Binario local (defecto: ./easyzfs si existe)
   --url <url>       URL de release; acepta {arch} (x86_64|aarch64). Si la URL
                     no apunta a un fichero, se asume <base>/easyzfs-linux-<arch>.
-                    También vía EASYZFS_RELEASE_URL.
+                    También vía EASYZFS_RELEASE_URL. Defecto: releases gnacho/easyzfs.
   --source <dir>    Compila desde el repo fuente (go + make; node/npm si hay web/)
   --port <n>        Puerto de escucha (defecto: 8080)
   --root-mode       El servicio corre como root (sin usuario easyzfs ni sudoers)
@@ -537,7 +540,7 @@ select_binary_source() {
     download)
       BIN_MODE="download"
       prompt OPT_URL "URL de release (acepta {arch})" \
-        "https://github.com/TU-ORG/easyzfs/releases/latest/download/easyzfs-linux-{arch}"
+        "https://github.com/gnacho/easyzfs/releases/latest/download/easyzfs-linux-{arch}"
       ;;
     build)
       BIN_MODE="build"
