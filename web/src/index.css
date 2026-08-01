@@ -4,6 +4,7 @@
 @tailwind utilities;
 
 :root{
+  color-scheme:light;
   --font-sans:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
   --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
   --bg:#f6f6f3; --surface:#ffffff; --surface2:#efefea; --border:#e3e3dc;
@@ -13,6 +14,7 @@
   --radius:12px; --radius-sm:8px; --shadow:0 8px 28px rgba(10,14,10,.18);
 }
 [data-theme="dark"]{
+  color-scheme:dark;
   --bg:#0e1210; --surface:#161b18; --surface2:#1e2521; --border:#2a332d;
   --text:#e8ebe7; --text2:#9aa39b; --accent:#5cb893; --accent-soft:#1d2f27;
   --ok:#5cb893; --warn:#d9a84e; --warn-soft:#33291a; --err:#e0705a; --err-soft:#38211c;
