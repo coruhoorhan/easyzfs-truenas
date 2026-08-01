@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -58,13 +59,31 @@ func (c *SchedSysCollector) SysTimers() []model.SysTimer {
 }
 
 // collectOnce refresca la caché; cada fuente es independiente y best-effort.
+// Solo se conservan las tareas relacionadas con ZFS (ver isZFSTask): el resto
+// del sistema (logrotate, apt, xfs/e2scrub…) es ruido para esta app.
 func (c *SchedSysCollector) collectOnce(ctx context.Context) {
 	out := []model.SysTimer{}
-	out = append(out, c.systemdTimers(ctx)...)
-	out = append(out, c.cronEntries(ctx)...)
+	for _, t := range append(c.systemdTimers(ctx), c.cronEntries(ctx)...) {
+		if isZFSTask(t) {
+			out = append(out, t)
+		}
+	}
 	c.mu.Lock()
 	c.timers = out
 	c.mu.Unlock()
+}
+
+// zfsTaskRe — una tarea del sistema "es ZFS" si su unidad, comando u origen
+// mencionan zfs/zpool o las herramientas clásicas del ecosistema (sanoid,
+// syncoid, znapzend, zrepl, zed, zfs-auto-snapshot). Deliberadamente NO se
+// filtra por "scrub"/"snapshot" a secas: xfs_scrub_all y e2scrub_all no son ZFS.
+var zfsTaskRe = regexp.MustCompile(`(?i)\b(zfs|zpool|zed|sanoid|syncoid|znapzend|zrepl|zfs-auto-snap[a-z-]*)\b`)
+
+// isZFSTask decide si una tarea del sistema está relacionada con ZFS.
+func isZFSTask(t model.SysTimer) bool {
+	return zfsTaskRe.MatchString(t.Name) ||
+		zfsTaskRe.MatchString(t.Command) ||
+		zfsTaskRe.MatchString(t.Schedule)
 }
 
 // sysdTimerJSON — subconjunto tolerante de `systemctl list-timers --output=json`
@@ -253,9 +272,21 @@ func parseCrontab(content, origin string, hasUser bool) []model.SysTimer {
 
 // cronName deriva un nombre legible: base del primer ejecutable del comando.
 func cronName(command, origin string) string {
-	first := strings.Fields(command)
-	if len(first) == 0 {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
 		return origin
 	}
-	return filepath.Base(first[0])
+	first := filepath.Base(fields[0])
+	// Comandos envueltos en shell ("if [ … ]; then /ruta/real; fi"): el
+	// primer token es ruido sintáctico; mejor el primer path absoluto.
+	switch first {
+	case "if", "[", "test", "then", "(", "env":
+		for _, f := range fields[1:] {
+			if strings.HasPrefix(f, "/") {
+				return filepath.Base(f)
+			}
+		}
+		return origin
+	}
+	return first
 }
