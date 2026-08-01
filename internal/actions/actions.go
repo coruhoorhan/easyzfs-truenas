@@ -194,6 +194,28 @@ func (s *Service) VdevAdd(ctx context.Context, actor, pool, topo string, disks [
 	return nil
 }
 
+// VdevAction — 'zpool offline|online|detach <pool> <dev>'.
+// offline/online no son destructivos (detach sí: confirmed debe venir validado).
+// Nota: detach solo es válido en mirrors (lo restringe el propio zpool).
+func (s *Service) VdevAction(ctx context.Context, actor, pool, dev, action string, confirmed bool) error {
+	if !rePool.MatchString(pool) {
+		return ErrInvalidName
+	}
+	if !reDev.MatchString(dev) {
+		return ErrInvalidDev
+	}
+	switch action {
+	case "offline", "online", "detach":
+	default:
+		return ErrInvalidAction
+	}
+	s.audit(ctx, actor, "pool.vdev."+action, pool, map[string]any{"dev": dev}, confirmed)
+	if _, err := executil.Run(ctx, 60*time.Second, "zpool", action, pool, dev); err != nil {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+	return nil
+}
+
 // Replace — 'zpool replace <pool> <old> <new>'; el resilver se observa en el colector.
 // confirmed debe ser true solo si el handler validó {"confirm":pool}.
 func (s *Service) Replace(ctx context.Context, actor, pool, oldDev, newDev string, confirmed bool) error {

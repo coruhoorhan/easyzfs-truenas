@@ -109,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("POST /api/pools/{name}/scrub", s.auth.RequireAdmin(s.scrubPool))
 	a.HandleFunc("POST /api/pools/{name}/export", s.auth.RequireAdmin(s.exportPool))
 	a.HandleFunc("POST /api/pools/{name}/vdev", s.auth.RequireAdmin(s.addVdev))
+	a.HandleFunc("POST /api/pools/{name}/vdev/action", s.auth.RequireAdmin(s.vdevAction))
 	a.HandleFunc("POST /api/pools/{name}/replace", s.auth.RequireAdmin(s.replaceDisk))
 	// datasets
 	a.HandleFunc("GET /api/datasets", s.listDatasets)

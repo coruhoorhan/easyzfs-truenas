@@ -51,7 +51,8 @@ export function ModalHost() {
     case 'sched': return <EditScheduleModal job={p.job as Job} onClose={closeModal} />;
     case 'export': return <ExportPoolModal pool={p.pool as string} onClose={closeModal} />;
     case 'addvdev': return <PoolDiskModal pool={p.pool as string} mode="vdev" onClose={closeModal} />;
-    case 'replace': return <PoolDiskModal pool={p.pool as string} mode="replace" onClose={closeModal} />;
+    case 'replace': return <PoolDiskModal pool={p.pool as string} mode="replace" presetOld={p.oldDev as string | undefined} presetNew={p.newDev as string | undefined} onClose={closeModal} />;
+    case 'detach': return <DetachModal pool={p.pool as string} dev={p.dev as string} path={p.path as string | undefined} onClose={closeModal} />;
     case 'newuser': return <NewUserModal onClose={closeModal} />;
     case 'mypass': return <MyPasswdModal onClose={closeModal} />;
     case 'passwd': return <PasswdModal user={p.user as string} onClose={closeModal} />;
@@ -398,14 +399,14 @@ function ExportPoolModal({ pool, onClose }: { pool: string; onClose: () => void 
 // ---------- añadir vdev / sustituir disco (confirmación escrita) ----------
 // Modal genérico para las dos operaciones destructivas de pool: pide el
 // nombre del pool para confirmar y envía {confirm} al backend.
-function PoolDiskModal({ pool, mode, onClose }: { pool: string; mode: 'vdev' | 'replace'; onClose: () => void }) {
+function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: string; mode: 'vdev' | 'replace'; presetOld?: string; presetNew?: string; onClose: () => void }) {
   const { t, refresh, isAdmin } = useApp();
   const disks = useLoad(() => getProvider().getDisks());
   const pools = useLoad(() => getProvider().getPools());
   const [topo, setTopo] = useState<Topo>('mirror');
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [oldDev, setOldDev] = useState('');
-  const [newDev, setNewDev] = useState('');
+  const [oldDev, setOldDev] = useState(presetOld ?? '');
+  const [newDev, setNewDev] = useState(presetNew ?? '');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -420,7 +421,10 @@ function PoolDiskModal({ pool, mode, onClose }: { pool: string; mode: 'vdev' | '
 
   useEffect(() => {
     if (mode === 'replace') {
-      if (!oldDev && current.length) setOldDev(current[0].dev);
+      if (!oldDev && current.length) {
+        const bad = current.find((v) => v.status !== 'ONLINE');
+        setOldDev((bad ?? current[0]).dev);
+      }
       if (!newDev && free.length) setNewDev(free[0].dev);
     }
   }, [mode, current, free, oldDev, newDev]);
@@ -472,14 +476,19 @@ function PoolDiskModal({ pool, mode, onClose }: { pool: string; mode: 'vdev' | '
         </>)}
 
         {mode === 'replace' && (<>
+          <p className="desc" style={{ marginTop: 0, color: 'var(--text2)' }}>{t('rp_proc')}</p>
           <label htmlFor="rp-old">{t('rp_old')}</label>
-          <select id="rp-old" value={oldDev} onChange={(e) => setOldDev(e.target.value)}>
-            {current.map((v) => <option key={v.dev} value={v.dev}>{v.dev} ({v.role})</option>)}
+          <select id="rp-old" value={oldDev} onChange={(e) => setOldDev(e.target.value)} disabled={!!presetOld}>
+            {current.map((v) => (
+              <option key={v.dev} value={v.dev}>
+                {v.path ? v.path.replace('/dev/', '') : v.dev} ({v.role}){v.status !== 'ONLINE' ? ` · ${v.status}` : ''}
+              </option>
+            ))}
           </select>
           <label htmlFor="rp-new">{t('rp_new')}</label>
           {free.length === 0 && <p className="desc" style={{ marginTop: 8 }}>{t('np_no_disks')}</p>}
           {free.length > 0 && (
-            <select id="rp-new" value={newDev} onChange={(e) => setNewDev(e.target.value)}>
+            <select id="rp-new" value={newDev} onChange={(e) => setNewDev(e.target.value)} disabled={!!presetNew}>
               {free.map((d) => <option key={d.dev} value={d.dev}>{d.dev} · {d.model} · {fmtBytes(d.size_bytes)}</option>)}
             </select>
           )}
@@ -493,6 +502,41 @@ function PoolDiskModal({ pool, mode, onClose }: { pool: string; mode: 'vdev' | '
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
           <SubmitBtn label={mode === 'vdev' ? t('av_btn') : t('rp_btn')} busy={busy} danger
             disabled={!isAdmin || !confirmed || !valid} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- retirar disco de un mirror (confirmación escrita) ----------
+function DetachModal({ pool, dev, path, onClose }: { pool: string; dev: string; path?: string; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const label = path ? path.replace('/dev/', '') : dev;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().vdevAction(pool, dev, 'detach', confirm.trim());
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose}>
+      <form onSubmit={submit}>
+        <h3>{t('dt_title')}</h3>
+        <p className="desc">{t('dt_desc', { dev: label, pool })}</p>
+        <label htmlFor="dt-confirm">{t('ex_confirm_lbl')}</label>
+        <input id="dt-confirm" placeholder={pool} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('vdev_detach')} busy={busy} danger
+            disabled={!isAdmin || confirm.trim() !== pool} />
         </div>
       </form>
     </ModalBox>

@@ -51,8 +51,13 @@ const es = {
   pool_errors: 'errores', pool_scrub_running: 'Scrub en curso',
   pool_scrub_left: 'restantes', pool_scrub_now: 'Scrub ahora',
   pool_scrub_pause: 'Pausar scrub', pool_add_vdev: 'Añadir vdev',
-  pool_replace: 'Sustituir disco', pool_export: 'Exportar',
+  pool_replace: 'Sustituir', pool_replace_disk: 'Sustituir {dev}', pool_export: 'Exportar',
   pool_eta_min: 'min restantes', pool_in_progress: 'en curso',
+  pool_rebuild: 'Disco libre detectado: {dev} ({size}). ¿Reconstruir el RAID sustituyendo {old}?',
+  pool_rebuild_btn: 'Reconstruir RAID',
+  vdev_offline: 'Offline', vdev_online: 'Reactivar', vdev_detach: 'Retirar',
+  vdev_offline_hint: 'Marcar offline antes de extraer el disco',
+  vdev_detach_hint: 'Retirar del mirror de forma permanente (zpool detach)',
 
   // Crear pool
   np_title: 'Crear pool', np_desc: 'Asistente en 2 pasos: topología y discos.',
@@ -81,8 +86,13 @@ const es = {
   av_btn: 'Añadir vdev',
   rp_title: 'Sustituir disco',
   rp_desc: 'Se sustituirá el disco elegido por uno nuevo y se reconstruirán los datos (resilver). Pool:',
+  rp_proc: 'Procedimiento: apaga el equipo (o extrae en caliente si tu hardware lo permite), cambia el disco y vuelve aquí. El disco nuevo aparecerá en la lista al conectarlo.',
   rp_old: 'Disco a sustituir', rp_new: 'Disco nuevo',
   rp_btn: 'Sustituir disco',
+
+  // Retirar disco de un mirror
+  dt_title: 'Retirar disco',
+  dt_desc: 'Se retirará {dev} del pool {pool} de forma permanente. Los datos quedan a salvo en el resto del mirror.',
 
   // Datasets
   ds_name: 'Dataset', ds_type: 'Tipo', ds_comp: 'Compresión', ds_used: 'Usado',
@@ -258,8 +268,13 @@ const en: Record<I18nKey, string> = {
   pool_errors: 'errors', pool_scrub_running: 'Scrub running',
   pool_scrub_left: 'left', pool_scrub_now: 'Scrub now',
   pool_scrub_pause: 'Pause scrub', pool_add_vdev: 'Add vdev',
-  pool_replace: 'Replace disk', pool_export: 'Export',
+  pool_replace: 'Replace', pool_replace_disk: 'Replace {dev}', pool_export: 'Export',
   pool_eta_min: 'min left', pool_in_progress: 'in progress',
+  pool_rebuild: 'Free disk detected: {dev} ({size}). Rebuild the RAID replacing {old}?',
+  pool_rebuild_btn: 'Rebuild RAID',
+  vdev_offline: 'Offline', vdev_online: 'Online', vdev_detach: 'Detach',
+  vdev_offline_hint: 'Mark offline before removing the disk',
+  vdev_detach_hint: 'Permanently detach from the mirror (zpool detach)',
 
   np_title: 'Create pool', np_desc: '2-step wizard: topology and disks.',
   np_step1: '1. Topology', np_step2: '2. Disks',
@@ -285,8 +300,12 @@ const en: Record<I18nKey, string> = {
   av_btn: 'Add vdev',
   rp_title: 'Replace disk',
   rp_desc: 'The chosen disk will be replaced by a new one and data will be rebuilt (resilver). Pool:',
+  rp_proc: 'Procedure: power off the machine (or hot-swap if your hardware supports it), swap the disk and come back here. The new disk will appear in the list once connected.',
   rp_old: 'Disk to replace', rp_new: 'New disk',
   rp_btn: 'Replace disk',
+
+  dt_title: 'Detach disk',
+  dt_desc: '{dev} will be permanently detached from pool {pool}. Data stays safe on the rest of the mirror.',
 
   ds_name: 'Dataset', ds_type: 'Type', ds_comp: 'Compression', ds_used: 'Used',
   ds_avail: 'Available', ds_quota: 'Quota',

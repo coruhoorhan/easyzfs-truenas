@@ -81,6 +81,7 @@ export interface ScrubInfo {
 }
 export interface Vdev {
   dev: string;
+  path?: string;
   role: string;
   status: string;
   temp_c: number;

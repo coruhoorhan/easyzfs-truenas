@@ -185,7 +185,7 @@ func (m *Mock) build() {
 	m.pools = []model.Pool{
 		{
 			Name:       "tank",
-			Status:     "ONLINE",
+			Status:     "DEGRADED",
 			Topo:       "raidz1",
 			UsedBytes:  6*uint64(tib) + 420*uint64(gib),
 			TotalBytes: 12 * uint64(tib), // 3×4 TB raidz1 ≈ 8 TB útiles; total bruto 12 TB
@@ -195,7 +195,9 @@ func (m *Mock) build() {
 			Vdevs: []model.Vdev{
 				{Dev: "sdb", Role: "raidz1", Status: "ONLINE", TempC: 34},
 				{Dev: "sdc", Role: "raidz1", Status: "ONLINE", TempC: 35},
-				{Dev: "sdd", Role: "raidz1", Status: "ONLINE", TempC: 36},
+				// Caso real (pool heredado): vdev nombrado por PARTUUID y
+				// FAULTED; sin Path porque el disco ya no responde.
+				{Dev: "8ab95469-2ae7-411a-af39-47b1d4f39d3c", Role: "raidz1", Status: "FAULTED"},
 			},
 		},
 		{

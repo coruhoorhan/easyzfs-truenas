@@ -65,13 +65,13 @@ export class MockProvider implements DataProvider {
 
   private pools: Pool[] = [
     {
-      name: 'tank', status: 'ONLINE', topo: 'mirror-0 (2×1,86 TB NVMe)',
+      name: 'tank', status: 'DEGRADED', topo: 'mirror-0 (2×1,86 TB NVMe)',
       used_bytes: Math.round(4.9 * TiB), total_bytes: Math.round(7.2 * TiB),
       frag_pct: 12, comp_ratio: 1.42,
       scrub: { state: 'done', pct: 100, eta_sec: 0, ts: iso(daysAgo(6, 2)), errors: 0 },
       vdevs: [
-        { dev: 'nvme0n1', role: 'mirror-0', status: 'ONLINE', temp_c: 48 },
-        { dev: 'nvme1n1', role: 'mirror-0', status: 'ONLINE', temp_c: 48 },
+        { dev: 'nvme0n1', path: '/dev/nvme0n1', role: 'mirror-0', status: 'ONLINE', temp_c: 48 },
+        { dev: '8ab95469-2ae7-411a-af39-47b1d4f39d3c', role: 'mirror-0', status: 'FAULTED', temp_c: 0 },
       ],
     },
     {
@@ -79,7 +79,7 @@ export class MockProvider implements DataProvider {
       used_bytes: Math.round(0.31 * TiB), total_bytes: Math.round(0.93 * TiB),
       frag_pct: 4, comp_ratio: 1.18,
       scrub: { state: 'running', pct: 62, eta_sec: 12 * 60, ts: iso(daysAgo(0, 5)), errors: 0 },
-      vdevs: [{ dev: 'nvme3n1', role: '—', status: 'ONLINE', temp_c: 55 }],
+      vdevs: [{ dev: 'nvme3n1', path: '/dev/nvme3n1', role: '—', status: 'ONLINE', temp_c: 55 }],
     },
   ];
 
@@ -300,11 +300,25 @@ export class MockProvider implements DataProvider {
     const p = this.pools.find((x) => x.name === pool);
     if (!p) throw new ApiError(404, 'not_found', 'Pool no encontrado');
     const v = p.vdevs.find((x) => x.dev === oldDev);
-    if (v) v.dev = newDev;
+    if (v) { v.dev = newDev; v.path = '/dev/' + newDev; v.status = 'ONLINE'; }
     const oldD = this.disks.find((x) => x.dev === oldDev);
     if (oldD) oldD.pool = '—';
     const newD = this.disks.find((x) => x.dev === newDev);
     if (newD) newD.pool = pool;
+    emitEvent({ type: 'overview' });
+  };
+  vdevAction = async (pool: string, dev: string, action: 'offline' | 'online' | 'detach', confirm?: string) => {
+    await delay(300);
+    const p = this.pools.find((x) => x.name === pool);
+    if (!p) throw new ApiError(404, 'not_found', 'Pool no encontrado');
+    const v = p.vdevs.find((x) => x.dev === dev);
+    if (!v) throw new ApiError(404, 'not_found', 'Vdev no encontrado');
+    if (action === 'detach') {
+      if (confirm !== pool) throw new ApiError(400, 'confirm_required', `Escribe "${pool}" para confirmar`);
+      p.vdevs = p.vdevs.filter((x) => x.dev !== dev);
+    } else {
+      v.status = action === 'offline' ? 'OFFLINE' : 'ONLINE';
+    }
     emitEvent({ type: 'overview' });
   };
 

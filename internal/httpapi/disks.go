@@ -15,6 +15,9 @@ func (s *Server) listDisks(w http.ResponseWriter, r *http.Request) {
 		names = append(names, p.Name)
 		for _, v := range p.Vdevs {
 			vdevs[p.Name] = append(vdevs[p.Name], v.Dev)
+			if v.Path != "" {
+				vdevs[p.Name] = append(vdevs[p.Name], v.Path)
+			}
 		}
 	}
 	for i := range disks {

@@ -75,6 +75,8 @@ export class HttpProvider implements DataProvider {
     post<void>(`/pools/${enc(pool)}/vdev`, { topo, disks, confirm });
   replaceDisk = (pool: string, oldDev: string, newDev: string, confirm: string) =>
     post<void>(`/pools/${enc(pool)}/replace`, { old_dev: oldDev, new_dev: newDev, confirm });
+  vdevAction = (pool: string, dev: string, action: 'offline' | 'online' | 'detach', confirm?: string) =>
+    post<void>(`/pools/${enc(pool)}/vdev/action`, { dev, action, confirm });
 
   getDatasets = () => get<Dataset[]>('/datasets');
   createDataset = (r: CreateDatasetReq) => post<void>('/datasets', r);
