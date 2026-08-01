@@ -147,8 +147,11 @@ export default function Settings() {
             { v: 'compact', label: t('s_density_compact') },
           ]} />
         <label>{t('s_lang')}</label>
-        <Seg value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
-          options={[{ v: 'auto', label: 'Auto' }, { v: 'es', label: 'Español' }, { v: 'en', label: 'English' }]} />
+        <select value={langMode} onChange={(e) => setLang(e.target.value as typeof langMode)} aria-label={t('s_lang')}>
+          <option value="auto">Auto</option>
+          <option value="es">Español</option>
+          <option value="en">English</option>
+        </select>
       </div>
 
       {/* ---- Usuarios (solo admin) ---- */}
@@ -247,6 +250,21 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* ---- Sistema ---- */}
+      {version && (
+        <div className="sect">
+          <h2>{t('ab_system')}</h2>
+          <div className="card pad">
+            <div className="kv"><span>{t('ab_ver')}</span><span>{version.version} (build {version.build})</span></div>
+            <div className="kv"><span>{t('ab_rt')}</span><span className="mono">{version.go} {version.os_arch}</span></div>
+            <div className="kv"><span>{t('ab_up')}</span><span>{fmtDuration(version.uptime_sec)}</span></div>
+            <div className="kv"><span>{t('ab_mem')}</span><span>{fmtBytes(version.rss_bytes)}</span></div>
+            <div className="kv"><span>{t('ab_db')}</span><span>{fmtBytes(version.db_bytes)} · {version.db_path}</span></div>
+            <div className="kv"><span>ZFS</span><span className="mono">{version.zfs_version}</span></div>
+            <div className="kv"><span>{t('ab_lic')}</span><span>AGPL-3.0</span></div>
+          </div>
+        </div>
+      )}
       {/* ---- Acerca de (estilo netpulse) ---- */}
       <div className="sect">
         <h2>{t('s_about')}</h2>
@@ -309,26 +327,11 @@ export default function Settings() {
           </div>
 
           <div className="aboutfoot mono">
-            {version?.name ?? 'EasyZFS'} v{version?.version ?? '0.1.0'} · {version?.zfs_version ?? 'OpenZFS'} · MIT
+            {version?.name ?? 'EasyZFS'} v{version?.version ?? '0.1.0'} · {version?.zfs_version ?? 'OpenZFS'} · AGPL-3.0
           </div>
         </div>
       </div>
 
-      {/* ---- Sistema ---- */}
-      {version && (
-        <div className="sect">
-          <h2>{t('ab_system')}</h2>
-          <div className="card pad">
-            <div className="kv"><span>{t('ab_ver')}</span><span>{version.version} (build {version.build})</span></div>
-            <div className="kv"><span>{t('ab_rt')}</span><span className="mono">{version.go} {version.os_arch}</span></div>
-            <div className="kv"><span>{t('ab_up')}</span><span>{fmtDuration(version.uptime_sec)}</span></div>
-            <div className="kv"><span>{t('ab_mem')}</span><span>{fmtBytes(version.rss_bytes)}</span></div>
-            <div className="kv"><span>{t('ab_db')}</span><span>{fmtBytes(version.db_bytes)} · {version.db_path}</span></div>
-            <div className="kv"><span>ZFS</span><span className="mono">{version.zfs_version}</span></div>
-            <div className="kv"><span>{t('ab_lic')}</span><span>MIT</span></div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
