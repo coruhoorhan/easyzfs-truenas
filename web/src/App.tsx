@@ -148,13 +148,13 @@ function Shell() {
     <>
       <div className="app-shell">
         <aside className="sidebar">
-          <div className="brand">
+          <a className="brand" href="#/dash" aria-label={t('brand_home')}>
             <Logo size={30} />
             <div>
               <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em' }}>EasyZFS</div>
               <div style={{ fontSize: 11, color: 'var(--text2)' }}>{user.user} · {user.role}</div>
             </div>
-          </div>
+          </a>
           <nav>
             {navItems.map((n) => {
               const Ico = n.icon;
