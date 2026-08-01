@@ -58,6 +58,8 @@ export interface DataProvider {
   runJob(id: number): Promise<void>;
   getJobHistory(): Promise<JobHistoryItem[]>;
   getSystemTimers(): Promise<SystemTimer[]>;
+  setSystemTimerSchedule(t: SystemTimer, schedule: string): Promise<void>;
+  migrateSystemTimer(t: SystemTimer, newName: string): Promise<void>;
 
   // Discos
   getDisks(): Promise<Disk[]>;

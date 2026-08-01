@@ -155,6 +155,7 @@ func (m *Mock) SysTimers() []model.SysTimer {
 			NextRun: now.Add(11 * 24 * time.Hour).Format(time.RFC3339),
 			LastRun: now.Add(-19 * 24 * time.Hour).Format(time.RFC3339),
 			Command: "zfs-scrub@tank-monthly.service", Origin: "systemctl list-timers",
+			Editable: true,
 		},
 		{
 			Source: "systemd", Name: "logrotate.timer", Schedule: "daily",
@@ -171,7 +172,7 @@ func (m *Mock) SysTimers() []model.SysTimer {
 		{
 			Source: "cron", Name: "backup-tank.sh", Schedule: "30 3 * * *",
 			Command: "/usr/local/bin/backup-tank.sh --pool tank --dest /mnt/usb",
-			Origin:  "/etc/cron.d/backup",
+			Origin:  "/etc/cron.d/backup", Line: 7, Editable: true,
 		},
 	}
 }
@@ -202,7 +203,7 @@ func (m *Mock) build() {
 		},
 		{
 			Name:       "ssd",
-			Status:     "ONLINE",
+			Status:     "DEGRADED",
 			Topo:       "mirror",
 			UsedBytes:  420 * uint64(gib),
 			TotalBytes: 2 * uint64(tib),
@@ -211,7 +212,9 @@ func (m *Mock) build() {
 			Scrub:      model.ScrubInfo{State: "running", Kind: "resilver", Pct: 23, EtaSec: 1500, Ts: m.scrubStart.UTC(), Errors: 0},
 			Vdevs: []model.Vdev{
 				{Dev: "nvme0n1", Role: "mirror", Status: "ONLINE", TempC: 41},
-				{Dev: "nvme1n1", Role: "mirror", Status: "ONLINE", TempC: 42},
+				// Pareja replacing- real: viejo saliente (CANT_OPEN) + nuevo ya ONLINE
+				{Dev: "13501483247074580929", Role: "mirror", Status: "CANT_OPEN", Replacing: true},
+				{Dev: "nvme1n1", Role: "mirror", Status: "ONLINE", TempC: 42, Replacing: true},
 			},
 		},
 	}

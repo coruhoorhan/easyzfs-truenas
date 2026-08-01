@@ -86,6 +86,7 @@ export interface Vdev {
   role: string;
   status: string;
   temp_c: number;
+  replacing?: boolean; // hijo de un 'replacing-N' (sustitución en curso)
 }
 export interface Pool {
   name: string;
@@ -155,13 +156,17 @@ export interface Disk {
   hours: number;
 }
 
-// Tarea del sistema (GET /api/system-timers): timers de systemd y cron, solo lectura
+// Tarea del sistema (GET /api/system-timers): timers de systemd y cron
 export interface SystemTimer {
   source: 'systemd' | 'cron';
   name: string;
   schedule: string;
   next_run: string; // RFC3339 UTC; '' si no se conoce
+  last_run?: string;
   command: string;
+  origin?: string;
+  line?: number;
+  editable?: boolean;
 }
 
 // --- Peticiones ---

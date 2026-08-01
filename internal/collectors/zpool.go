@@ -287,7 +287,7 @@ func (c *ZpoolCollector) parseStatusJSON(out []byte, p *model.Pool) bool {
 	}
 	roles := map[string]bool{}
 	for _, root := range pj.Vdevs {
-		c.walkVdev(root, "stripe", p, roles)
+		c.walkVdev(root, "stripe", p, roles, false)
 	}
 	p.Topo = topoFromRoles(roles)
 	if ss := pj.ScanStats; ss != nil {
@@ -362,18 +362,24 @@ func parseHumanSize(s string) (uint64, bool) {
 }
 
 // walkVdev recorre el árbol JSON de vdevs recogiendo discos hoja y roles.
-func (c *ZpoolCollector) walkVdev(v jsonVdev, role string, p *model.Pool, roles map[string]bool) {
+// Los hijos de un contenedor 'replacing-N' se marcan Replacing: son la pareja
+// viejo+nuevo de una sustitución en curso (el viejo desaparece al terminar).
+func (c *ZpoolCollector) walkVdev(v jsonVdev, role string, p *model.Pool, roles map[string]bool, replacing bool) {
 	t := vdevRole(v.Name, v.VdevType)
 	if t != "" {
 		role = t
 		roles[t] = true
 	}
+	if strings.HasPrefix(v.Name, "replacing-") {
+		replacing = true
+	}
 	if len(v.Vdevs) == 0 {
 		if v.Name != p.Name && v.VdevType != "root" {
 			p.Vdevs = append(p.Vdevs, model.Vdev{
-				Dev:    baseName(v.Name),
-				Role:   role,
-				Status: v.State,
+				Dev:       baseName(v.Name),
+				Role:      role,
+				Status:    v.State,
+				Replacing: replacing,
 			})
 		}
 		return
@@ -386,7 +392,7 @@ func (c *ZpoolCollector) walkVdev(v jsonVdev, role string, p *model.Pool, roles 
 	sort.Strings(names)
 	for _, n := range names {
 		child := v.Vdevs[n]
-		c.walkVdev(child, role, p, roles)
+		c.walkVdev(child, role, p, roles, replacing)
 	}
 }
 
@@ -444,6 +450,7 @@ func (c *ZpoolCollector) parseStatusText(out string, p *model.Pool) {
 	roles := map[string]bool{}
 	curRole := "stripe"
 	inConfig := false
+	replIndent := -1 // indentación del contenedor 'replacing-N' activo (-1 = no)
 	for _, line := range strings.Split(out, "\n") {
 		if strings.Contains(line, "config:") {
 			inConfig = true
@@ -452,7 +459,15 @@ func (c *ZpoolCollector) parseStatusText(out string, p *model.Pool) {
 		if inConfig {
 			m := vdevLineRe.FindStringSubmatch(line)
 			if m != nil {
-				name, state := m[2], m[3]
+				indent, name, state := len(m[1]), m[2], m[3]
+				if strings.HasPrefix(name, "replacing-") {
+					replIndent = indent
+					continue
+				}
+				replacing := replIndent >= 0 && indent > replIndent
+				if replIndent >= 0 && indent <= replIndent {
+					replIndent = -1
+				}
 				if r := vdevRole(name, ""); r != "" {
 					curRole = r
 					roles[r] = true
@@ -462,9 +477,10 @@ func (c *ZpoolCollector) parseStatusText(out string, p *model.Pool) {
 					continue
 				}
 				p.Vdevs = append(p.Vdevs, model.Vdev{
-					Dev:    baseName(name),
-					Role:   curRole,
-					Status: state,
+					Dev:       baseName(name),
+					Role:      curRole,
+					Status:    state,
+					Replacing: replacing,
 				})
 			}
 		}

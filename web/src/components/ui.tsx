@@ -123,6 +123,19 @@ export function Spinner({ label }: { label: string }) {
   return <div className="empty" role="status">{label}</div>;
 }
 
+// InfoBubble — "?" con burbuja explicativa al pasar el ratón (tokens del tema).
+export function InfoBubble({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <span className="infobubble" tabIndex={0} aria-label={title}>
+      ?
+      <span className="infobubble-pop" role="tooltip">
+        {title && <b style={{ display: 'block', marginBottom: 6 }}>{title}</b>}
+        {children}
+      </span>
+    </span>
+  );
+}
+
 // Pie de tarjeta KPI con valor opcional de porcentaje
 export function KpiCard({ label, value, small, foot, meter }: {
   label: string; value: ReactNode; small?: string; foot?: ReactNode; meter?: number;

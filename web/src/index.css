@@ -257,6 +257,25 @@ table.data td.num{font-family:var(--font-mono);font-size:12.5px}
   border-radius:8px;font-size:13px;font-weight:500;flex-wrap:wrap;
 }
 
+/* burbuja de ayuda (?) */
+.infobubble{
+  position:relative;display:inline-grid;place-items:center;width:18px;height:18px;
+  border-radius:50%;background:var(--info-soft);color:var(--info);
+  font-size:11px;font-weight:700;cursor:help;vertical-align:middle;flex-shrink:0;
+}
+.infobubble-pop{
+  position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) translateY(4px);
+  width:290px;padding:12px 14px;border-radius:10px;z-index:60;
+  background:var(--surface2);color:var(--text);border:1px solid var(--border);
+  box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:12px;font-weight:400;line-height:1.5;
+  opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;
+}
+.infobubble:hover .infobubble-pop,.infobubble:focus .infobubble-pop{
+  opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;
+}
+.infobubble-pop ul{margin:4px 0 0;padding-left:16px}
+.infobubble-pop li{margin-bottom:3px}
+
 /* tabla usuarios */
 .rolebadge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px}
 .rolebadge.admin{background:var(--accent-soft);color:var(--accent)}

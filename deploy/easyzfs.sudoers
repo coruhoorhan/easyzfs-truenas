@@ -6,4 +6,4 @@
 # Instalación:
 #   install -m 0440 -o root -g root deploy/easyzfs.sudoers /etc/sudoers.d/easyzfs
 #   visudo -cf /etc/sudoers.d/easyzfs    # validar sintaxis antes de recargar
-easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/sbin/lsblk, /usr/bin/crontab, /usr/bin/udisksctl, /usr/sbin/hdparm
+easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/sbin/lsblk, /usr/bin/crontab, /usr/bin/udisksctl, /usr/sbin/hdparm, /usr/local/libexec/easyzfs-sysd

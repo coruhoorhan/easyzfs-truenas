@@ -17,11 +17,12 @@ type ScrubInfo struct {
 
 // Vdev — dispositivo de un pool (contrato: pools[].vdevs[]).
 type Vdev struct {
-	Dev    string  `json:"dev"`
-	Path   string  `json:"path,omitempty"` // ruta real resuelta ('/dev/sda1'); "" si no resoluble (p.ej. disco retirado)
-	Role   string  `json:"role"`           // "stripe" | "mirror" | "raidz1" | "raidz2" | "raidz3" | "spare" | "log" | "cache"
-	Status string  `json:"status"`
-	TempC  float64 `json:"temp_c"`
+	Dev       string  `json:"dev"`
+	Path      string  `json:"path,omitempty"`      // ruta real resuelta ('/dev/sda1'); "" si no resoluble (p.ej. disco retirado)
+	Role      string  `json:"role"`                // "stripe" | "mirror" | "raidz1" | "raidz2" | "raidz3" | "spare" | "log" | "cache"
+	Status    string  `json:"status"`
+	TempC     float64 `json:"temp_c"`
+	Replacing bool    `json:"replacing,omitempty"` // hijo de un vdev 'replacing-N' (sustitución en curso)
 }
 
 // Pool — contrato GET /api/pools.
@@ -90,6 +91,8 @@ type SysTimer struct {
 	LastRun  string `json:"last_run"` // systemd: LAST; cron: ""
 	Command  string `json:"command"`  // unidad activada (systemd) o comando (cron)
 	Origin   string `json:"origin"`   // "systemctl list-timers", "crontab", "/etc/crontab", "/etc/cron.d/<f>", "/etc/cron.daily"…
+	Line     int    `json:"line,omitempty"`     // cron: nº de línea (1-based) en el fichero origen
+	Editable bool   `json:"editable,omitempty"` // cron de fichero (/etc) o timer systemd → se puede editar/migrar
 }
 
 // Alert — contrato GET /api/alerts y evento SSE alert.new.

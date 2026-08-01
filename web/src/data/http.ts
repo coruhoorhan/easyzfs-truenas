@@ -98,6 +98,10 @@ export class HttpProvider implements DataProvider {
   runJob = (id: number) => post<void>(`/jobs/${id}/run`);
   getJobHistory = () => get<JobHistoryItem[]>('/jobs/history');
   getSystemTimers = () => get<SystemTimer[]>('/system-timers');
+  setSystemTimerSchedule = (t: SystemTimer, schedule: string) =>
+    post<void>('/system-timers/schedule', { source: t.source, name: t.name, origin: t.origin ?? '', line: t.line ?? 0, schedule });
+  migrateSystemTimer = (t: SystemTimer, newName: string) =>
+    post<void>('/system-timers/migrate', { source: t.source, name: t.name, origin: t.origin ?? '', line: t.line ?? 0, new_name: newName });
 
   getDisks = () => get<Disk[]>('/disks');
   smartTest = (dev: string, type: 'short' | 'long') => post<void>(`/disks/${enc(dev)}/smart-test`, { type });
