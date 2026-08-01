@@ -42,7 +42,7 @@ export default function Dashboard() {
     if (ev.type === 'overview' || ev.type === 'alert.new' || ev.type === 'pool.status') ov.reload();
     if (ev.type === 'scrub.progress') {
       pools.setData((cur) => cur?.map((p) => p.name === ev.pool
-        ? { ...p, scrub: { ...p.scrub, state: 'running', pct: ev.pct, eta_sec: ev.eta_sec } }
+        ? { ...p, scrub: { ...p.scrub, state: 'running', kind: ev.kind ?? p.scrub.kind, pct: ev.pct, eta_sec: ev.eta_sec } }
         : p) ?? cur);
       if (ev.pct >= 100) { pools.reload(); ov.reload(); }
     }

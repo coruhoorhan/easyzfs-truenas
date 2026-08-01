@@ -22,7 +22,7 @@ export default function Pools() {
   useEffect(() => subscribeEvents((ev) => {
     if (ev.type === 'scrub.progress') {
       setData((cur) => cur?.map((p) => p.name === ev.pool
-        ? { ...p, scrub: { ...p.scrub, state: ev.pct >= 100 ? 'done' : 'running', pct: ev.pct, eta_sec: ev.eta_sec } }
+        ? { ...p, scrub: { ...p.scrub, state: ev.pct >= 100 ? 'done' : 'running', kind: ev.kind ?? p.scrub.kind, pct: ev.pct, eta_sec: ev.eta_sec } }
         : p) ?? cur);
       if (ev.pct >= 100) reload();
     }

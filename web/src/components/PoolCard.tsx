@@ -11,6 +11,13 @@ import { useEffect, useState } from 'react';
 const shortDev = (v: { dev: string; path?: string }) =>
   v.path ? v.path.replace('/dev/', '') : (v.dev.length > 13 ? v.dev.slice(0, 8) + '…' : v.dev);
 
+// fmtEta — "~45 min" / "~13 h 23 m" según magnitud.
+const fmtEta = (sec: number): string => {
+  const min = Math.max(1, Math.round(sec / 60));
+  if (min < 90) return `~${min} min`;
+  return `~${Math.floor(min / 60)} h ${min % 60} m`;
+};
+
 export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => void }) {
   const { t, isAdmin } = useApp();
   const { openModal } = useModal();
@@ -18,6 +25,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
   const [disks, setDisks] = useState<Disk[]>([]);
   const pct = pool.total_bytes > 0 ? (pool.used_bytes / pool.total_bytes) * 100 : 0;
   const running = pool.scrub.state === 'running';
+  const resilvering = running && pool.scrub.kind === 'resilver';
   const ok = pool.status === 'ONLINE';
 
   useEffect(() => {
@@ -79,12 +87,13 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
 
       {running && (<>
         <div style={{ padding: '0 16px 4px', fontSize: 12.5, color: 'var(--info)', fontWeight: 600 }}>
-          {t('pool_scrub_running')} · {Math.round(pool.scrub.pct)}% · ~{Math.max(1, Math.round(pool.scrub.eta_sec / 60))} {t('pool_eta_min')}
+          {resilvering ? t('pool_resilvering') : t('pool_scrub_running')} · {Math.round(pool.scrub.pct)}%
+          {pool.scrub.eta_sec > 0 && <> · {fmtEta(pool.scrub.eta_sec)}</>}
         </div>
         <div className="scrubbar"><i style={{ width: `${pool.scrub.pct}%` }} /></div>
       </>)}
 
-      {isAdmin && faulted && free.length > 0 && (
+      {isAdmin && !running && faulted && free.length > 0 && (
         <div className="rebuildbar">
           <span style={{ flex: 1, minWidth: 220 }}>
             {t('pool_rebuild', {
@@ -93,7 +102,8 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
               old: shortDev(faulted),
             })}
           </span>
-          <button className="btn sm warn" onClick={() => openModal('replace', { pool: pool.name, oldDev: faulted.dev, newDev: free[0].dev })}>
+          <button className="btn sm warn" title={t('pool_rebuild_hint')}
+            onClick={() => openModal('replace', { pool: pool.name, oldDev: faulted.dev, newDev: free[0].dev })}>
             {t('pool_rebuild_btn')}
           </button>
         </div>
@@ -128,13 +138,16 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
       {err && <p className="form-err" style={{ padding: '0 16px' }} role="alert">{err}</p>}
 
       <div style={{ display: 'flex', gap: 7, padding: '0 16px 15px', flexWrap: 'wrap' }}>
-        <button className="btn sm" onClick={() => scrub(running ? 'pause' : 'start')}>
-          {running ? t('pool_scrub_pause') : t('pool_scrub_now')}
-        </button>
-        {running && <button className="btn sm" onClick={() => scrub('stop')}>Stop</button>}
-        <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}
+        {!resilvering && (
+          <button className="btn sm" title={running ? t('pool_scrub_pause_hint') : t('pool_scrub_hint')}
+            onClick={() => scrub(running ? 'pause' : 'start')}>
+            {running ? t('pool_scrub_pause') : t('pool_scrub_now')}
+          </button>
+        )}
+        {running && !resilvering && <button className="btn sm" onClick={() => scrub('stop')}>Stop</button>}
+        <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('pool_add_vdev_hint')}
           onClick={() => openModal('addvdev', { pool: pool.name })}>{t('pool_add_vdev')}</button>
-        <button className="btn sm danger" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}
+        <button className="btn sm danger" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('pool_export_hint')}
           onClick={() => openModal('export', { pool: pool.name })}>
           {t('pool_export')}
         </button>
