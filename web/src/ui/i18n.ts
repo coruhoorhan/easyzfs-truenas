@@ -4,6 +4,7 @@ export type LangMode = 'auto' | 'es' | 'en';
 const es = {
   // Navegación
   dash: 'Panel', pools: 'Pools', data: 'Datasets', snaps: 'Snapshots',
+  brand_home: 'Ir al Panel',
   tasks: 'Tareas', disks: 'Discos', settings: 'Ajustes',
   sub_dash: 'Resumen del sistema', sub_pools: 'Estado y topología de pools',
   sub_data: 'Datasets y volúmenes', sub_snaps: 'Instantáneas por dataset',
@@ -261,6 +262,7 @@ export type I18nKey = keyof typeof es;
 
 const en: Record<I18nKey, string> = {
   dash: 'Dashboard', pools: 'Pools', data: 'Datasets', snaps: 'Snapshots',
+  brand_home: 'Go to Dashboard',
   tasks: 'Tasks', disks: 'Disks', settings: 'Settings',
   sub_dash: 'System overview', sub_pools: 'Pool status and topology',
   sub_data: 'Datasets and volumes', sub_snaps: 'Snapshots per dataset',
