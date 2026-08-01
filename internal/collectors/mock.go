@@ -242,7 +242,7 @@ func (m *Mock) build() {
 		{Dev: "sda", Model: "CT500MX500SSD1", Serial: "2034E5A1B2C3", SizeBytes: 500 * uint64(gib), TempC: f64ptr(33), Smart: "ok", SmartDetail: "PASSED", Pool: "", Hours: 18200},
 		{Dev: "sdb", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA01", SizeBytes: 4 * uint64(tib), TempC: f64ptr(34), Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41230},
 		{Dev: "sdc", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA02", SizeBytes: 4 * uint64(tib), TempC: f64ptr(35), Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41231},
-		{Dev: "sdd", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA03", SizeBytes: 4 * uint64(tib), TempC: f64ptr(36), Smart: "warn", SmartDetail: "PASSED (realloc=2 pending=0)", Pool: "tank", Hours: 42010},
+		{Dev: "sdd", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA03", SizeBytes: 4 * uint64(tib), TempC: f64ptr(36), Smart: "warn", SmartDetail: "PASSED (realloc=2 pending=0)", ReallocSectors: 2, Pool: "tank", Hours: 42010},
 		{Dev: "nvme0n1", Model: "Samsung SSD 980 1TB", Serial: "S649NL0R111111", SizeBytes: 1 * uint64(tib), TempC: f64ptr(41), Smart: "ok", SmartDetail: "PASSED", Pool: "ssd", Hours: 9800},
 		{Dev: "nvme1n1", Model: "Samsung SSD 980 1TB", Serial: "S649NL0R222222", SizeBytes: 1 * uint64(tib), TempC: f64ptr(42), Smart: "ok", SmartDetail: "PASSED", Pool: "ssd", Hours: 9812},
 		// Caso real: eMMC de placa (smartctl no la soporta → "unknown", sin

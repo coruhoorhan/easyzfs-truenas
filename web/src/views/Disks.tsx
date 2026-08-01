@@ -6,6 +6,24 @@ import { useData } from '../ui/useData';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtInt } from '../ui/format';
 import { Badge, Spinner } from '../components/ui';
+import type { Disk } from '../data/types';
+
+const TIPO_SMART: Record<string, 'ok' | 'warn' | 'err' | 'info'> = {
+  ok: 'ok', warn: 'warn', crit: 'err', unknown: 'info',
+};
+
+// smartLabel — estado SMART en lenguaje humano (los contadores crudos
+// quedan en el title como respaldo).
+function smartLabel(d: Disk, t: (k: string, v?: Record<string, string | number>) => string): string {
+  if (d.smart === 'unknown') return t('dk_smart_na');
+  if (d.smart === 'crit') return t('dk_smart_failed');
+  const parts: string[] = [];
+  if ((d.realloc_sectors ?? 0) > 0) parts.push(t('dk_realloc', { n: d.realloc_sectors! }));
+  if ((d.pending_sectors ?? 0) > 0) parts.push(t('dk_pending', { n: d.pending_sectors! }));
+  if ((d.nvme_warn ?? 0) > 0) parts.push(t('dk_nvme_warn', { n: d.nvme_warn! }));
+  const base = t('dk_smart_ok');
+  return parts.length ? `${base} · ${parts.join(' · ')}` : base;
+}
 
 export default function Disks() {
   const { t, isAdmin } = useApp();
@@ -70,9 +88,10 @@ export default function Disks() {
                 </td>
                 <td className="num">{fmtBytes(d.size_bytes)}</td>
                 <td className="num">{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
-                <td>{d.smart === 'unknown'
-                  ? <Badge tone="info" dot={false}>{t('dk_smart_na')}</Badge>
-                  : <Badge tone={d.smart === 'ok' ? 'ok' : d.smart === 'warn' ? 'warn' : 'err'}>{d.smart_detail}</Badge>}
+                <td>
+                  <span title={d.smart_detail}>
+                    <Badge tone={TIPO_SMART[d.smart] ?? 'info'} dot={d.smart !== 'unknown'}>{smartLabel(d, t)}</Badge>
+                  </span>
                 </td>
                 <td>
                   {d.pool}

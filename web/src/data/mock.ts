@@ -126,7 +126,7 @@ export class MockProvider implements DataProvider {
     { dev: 'nvme1n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A02', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: 'tank', hours: 8725 },
     { dev: 'nvme2n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A03', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: '—', hours: 8725 },
     // Caso real: disco USB montado (en uso) — no debe ofrecerse como libre.
-    { dev: 'sda', model: 'Seagate Expansion 4TB', serial: 'NAABC123', size_bytes: Math.round(3.64 * TiB), temp_c: 38, smart: 'ok', smart_detail: 'PASSED', pool: '—', in_use: true, hours: 22100 },
+    { dev: 'sda', model: 'Seagate Expansion 4TB', serial: 'NAABC123', size_bytes: Math.round(3.64 * TiB), temp_c: 38, smart: 'warn', smart_detail: 'PASSED (realloc=48 pending=0)', realloc_sectors: 48, pool: '—', in_use: true, hours: 22100 },
   ];
 
   private systemTimers: SystemTimer[] = [

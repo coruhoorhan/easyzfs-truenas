@@ -36,7 +36,7 @@ const es = {
   login_remember: 'Recordar contraseña',
 
   // Panel
-  kpi_health: 'Salud general', kpi_health_ok: 'todo ONLINE', kpi_health_warn: 'hay avisos',
+  kpi_health: 'Salud general', kpi_health_ok: 'todo en línea', kpi_health_warn: 'hay avisos',
   kpi_cap: 'Capacidad total', kpi_cap_used: 'usado',
   kpi_snaps: 'Snapshots', kpi_snaps_foot: 'tareas programadas activas',
   kpi_scrub: 'Último scrub', kpi_scrub_errors: 'errores',
@@ -193,6 +193,12 @@ const es = {
   dk_poweroff: 'Apagar', dk_poweroff_arm: '¿Confirmar?',
   dk_poweroff_hint: 'Apagar el disco para extraerlo (power-off)',
   dk_powered: 'Disco apagado', dk_in_use: 'en uso',
+  st_online: 'En línea', st_degraded: 'Degradado', st_faulted: 'Con fallos',
+  st_offline: 'Apagado', st_unavail: 'No disponible', st_removed: 'Retirado',
+  st_cant_open: 'Sin acceso',
+  dk_smart_ok: 'Correcto', dk_smart_failed: 'FALLO',
+  dk_realloc: '{n} sectores reasignados', dk_pending: '{n} sectores pendientes',
+  dk_nvme_warn: 'aviso NVMe {n}',
   dk_hours: 'horas encendido',
   dk_smart_na: 'no disponible',
 
@@ -290,7 +296,7 @@ const en: Record<I18nKey, string> = {
   login_checking: 'Connecting to the server…',
   login_remember: 'Remember password',
 
-  kpi_health: 'Overall health', kpi_health_ok: 'all ONLINE', kpi_health_warn: 'warnings present',
+  kpi_health: 'Overall health', kpi_health_ok: 'all online', kpi_health_warn: 'warnings present',
   kpi_cap: 'Total capacity', kpi_cap_used: 'used',
   kpi_snaps: 'Snapshots', kpi_snaps_foot: 'active scheduled tasks',
   kpi_scrub: 'Last scrub', kpi_scrub_errors: 'errors',
@@ -438,6 +444,12 @@ const en: Record<I18nKey, string> = {
   dk_poweroff: 'Power off', dk_poweroff_arm: 'Confirm?',
   dk_poweroff_hint: 'Power the disk down for removal',
   dk_powered: 'Disk powered off', dk_in_use: 'in use',
+  st_online: 'Online', st_degraded: 'Degraded', st_faulted: 'Faulted',
+  st_offline: 'Offline', st_unavail: 'Unavailable', st_removed: 'Removed',
+  st_cant_open: 'Cannot open',
+  dk_smart_ok: 'Healthy', dk_smart_failed: 'FAILED',
+  dk_realloc: '{n} reallocated sectors', dk_pending: '{n} pending sectors',
+  dk_nvme_warn: 'NVMe warning {n}',
   dk_hours: 'power-on hours',
   dk_smart_na: 'not available',
 
