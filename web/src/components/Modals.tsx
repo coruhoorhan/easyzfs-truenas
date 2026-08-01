@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, parseSize } from '../ui/format';
+import { statusLabel } from '../ui/labels';
 import { ModalBox, useModal } from './Modal';
 import { Seg } from './ui';
 import type { Dataset, Disk, Job, Pool, SystemTimer, Topo } from '../data/types';
@@ -499,7 +500,7 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
           <select id="rp-old" value={oldDev} onChange={(e) => setOldDev(e.target.value)} disabled={!!presetOld}>
             {current.filter((v) => !v.replacing).map((v) => (
               <option key={v.dev} value={v.dev}>
-                {v.path ? v.path.replace('/dev/', '') : v.dev} ({v.role}){v.status !== 'ONLINE' ? ` · ${v.status}` : ''}
+                {v.path ? v.path.replace('/dev/', '') : v.dev} ({v.role}){v.status !== 'ONLINE' ? ` · ${statusLabel(v.status, t)}` : ''}
               </option>
             ))}
           </select>

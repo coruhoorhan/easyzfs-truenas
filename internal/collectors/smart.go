@@ -252,6 +252,8 @@ func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
 			if d.Smart == "ok" {
 				d.Smart = "warn"
 			}
+			d.ReallocSectors = realloc
+			d.PendingSectors = pending
 			d.SmartDetail = fmt.Sprintf("%s (realloc=%d pending=%d)", d.SmartDetail, realloc, pending)
 		}
 	}
@@ -265,6 +267,7 @@ func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
 			if d.Smart == "ok" {
 				d.Smart = "warn"
 			}
+			d.NvmeWarn = sj.NVMeSmartHealthLog.CriticalWarning
 			d.SmartDetail = fmt.Sprintf("%s (nvme warning=%d)", d.SmartDetail, sj.NVMeSmartHealthLog.CriticalWarning)
 		}
 	}

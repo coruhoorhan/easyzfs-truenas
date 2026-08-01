@@ -3,6 +3,7 @@ import { getProvider } from '../data';
 import type { Disk, Pool } from '../data/types';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtBytesPair, fmtPct, fmtRatio, timeAgo } from '../ui/format';
+import { statusLabel } from '../ui/labels';
 import { Badge, Meter } from './ui';
 import { useModal } from './Modal';
 import { useEffect, useState } from 'react';
@@ -59,7 +60,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
       <div className="poolhead">
         <div className="grow">
           <div className="t1" style={{ fontSize: 16, fontWeight: 700, display: 'flex', gap: 9, alignItems: 'center' }}>
-            {pool.name} <Badge tone={ok ? 'ok' : 'warn'}>{pool.status}</Badge>
+            {pool.name} <Badge tone={ok ? 'ok' : 'warn'}>{statusLabel(pool.status, t)}</Badge>
           </div>
           <div className="t2">{pool.topo}</div>
           <Meter pct={pct} />
@@ -126,7 +127,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
           }
           return (
           <div className="vdev" key={v.dev} style={v.replacing ? { flexWrap: 'wrap' } : undefined}>
-            <span className={`badge ${v.status === 'ONLINE' ? 'ok' : 'err'}`} style={{ padding: '2px 7px' }}>{v.status}</span>
+            <span className={`badge ${v.status === 'ONLINE' ? 'ok' : 'err'}`} style={{ padding: '2px 7px' }}>{statusLabel(v.status, t)}</span>
             <span className="dname" title={v.dev}>{shortDev(v)}</span>
             {v.replacing && (
               <span className="badge info" style={{ padding: '1px 7px' }} title={t('vdev_new_hint')}>{t('vdev_new')}</span>

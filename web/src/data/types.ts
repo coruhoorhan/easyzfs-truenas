@@ -151,6 +151,9 @@ export interface Disk {
   temp_c: number | null; // null = sensor no disponible (p. ej. eMMC)
   smart: 'ok' | 'warn' | 'crit' | 'unknown'; // unknown = SMART no disponible
   smart_detail: string;
+  realloc_sectors?: number;
+  pending_sectors?: number;
+  nvme_warn?: number;
   pool: string;
   in_use?: boolean; // particiones montadas o swap activo (no elegible como libre)
   hours: number;

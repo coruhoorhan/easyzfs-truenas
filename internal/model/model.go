@@ -75,9 +75,14 @@ type Disk struct {
 	TempC       *float64 `json:"temp_c"`
 	Smart       string   `json:"smart"` // "ok" | "warn" | "crit" | "unknown" (sin smartctl: eMMC, USB sin SAT)
 	SmartDetail string   `json:"smart_detail"`
-	Pool        string   `json:"pool"`
-	InUse       bool     `json:"in_use,omitempty"` // particiones montadas o swap activo (no elegible como "libre")
-	Hours       uint64   `json:"hours"`
+	// Contadores SMART estructurados (la UI los traduce a texto humano;
+	// SmartDetail queda como forma cruda de respaldo).
+	ReallocSectors int64 `json:"realloc_sectors,omitempty"`
+	PendingSectors int64 `json:"pending_sectors,omitempty"`
+	NvmeWarn       int   `json:"nvme_warn,omitempty"`
+	Pool           string `json:"pool"`
+	InUse          bool   `json:"in_use,omitempty"` // particiones montadas o swap activo (no elegible como "libre")
+	Hours          uint64 `json:"hours"`
 }
 
 // SysTimer — contrato GET /api/system-timers: temporizadores que YA existen
