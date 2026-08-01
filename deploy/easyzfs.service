@@ -20,7 +20,7 @@ LimitNOFILE=4096
 # limitado — ver deploy/easyzfs.sudoers y README). NO poner NoNewPrivileges=yes:
 # sudo necesita el bit setuid para elevar privilegios.
 ProtectSystem=full
-ReadWritePaths=/var/lib/easyzfs
+ReadWritePaths=/var/lib/easyzfs /etc/cron.d /etc/crontab /etc/systemd/system
 ProtectHome=yes
 PrivateTmp=yes
 

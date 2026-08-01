@@ -611,6 +611,8 @@ install_binary() {
 # sistema): local del repo si existe; si no, desde el repo público.
 install_sysd_helper() {
   step "Helper de tareas del sistema (easyzfs-sysd)"
+  run "${SUDO[@]}" mkdir -p "$(dirname "$SYSD_HELPER")" \
+    || die "No se pudo crear $(dirname "$SYSD_HELPER")"
   local src=""
   local script_dir; script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo .)"
   if [ -f "${script_dir}/easyzfs-sysd" ]; then
@@ -801,7 +803,7 @@ LimitNOFILE=4096
 # Hardening (${nota})
 ${nnp}
 ProtectSystem=full
-ReadWritePaths=${DATA_DIR}
+ReadWritePaths=${DATA_DIR} /etc/cron.d /etc/crontab /etc/systemd/system
 ProtectHome=yes
 PrivateTmp=yes
 
