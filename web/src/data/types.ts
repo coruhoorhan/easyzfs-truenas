@@ -74,6 +74,7 @@ export type PoolStatus = 'ONLINE' | 'DEGRADED' | 'FAULTED';
 export type Topo = 'stripe' | 'mirror' | 'raidz1' | 'raidz2' | 'raidz3';
 export interface ScrubInfo {
   state: 'none' | 'running' | 'done';
+  kind?: 'scrub' | 'resilver' | '';
   pct: number;
   eta_sec: number;
   ts: string;
@@ -178,7 +179,7 @@ export interface CreateUserReq { user: string; password: string; role: Role }
 // --- Eventos SSE ---
 export type AppEvent =
   | { type: 'pool.status'; name: string; status: PoolStatus }
-  | { type: 'scrub.progress'; pool: string; pct: number; eta_sec: number }
+  | { type: 'scrub.progress'; pool: string; pct: number; eta_sec: number; kind?: 'scrub' | 'resilver' | '' }
   | { type: 'disk.temp'; dev: string; temp_c: number }
   | { type: 'alert.new'; alert: Alert }
   | { type: 'job.finished'; id: number; ok: boolean; detail: string }

@@ -208,7 +208,7 @@ func (m *Mock) build() {
 			TotalBytes: 2 * uint64(tib),
 			FragPct:    4,
 			CompRatio:  1.09,
-			Scrub:      model.ScrubInfo{State: "running", Pct: 23, EtaSec: 1500, Ts: m.scrubStart.UTC(), Errors: 0},
+			Scrub:      model.ScrubInfo{State: "running", Kind: "resilver", Pct: 23, EtaSec: 1500, Ts: m.scrubStart.UTC(), Errors: 0},
 			Vdevs: []model.Vdev{
 				{Dev: "nvme0n1", Role: "mirror", Status: "ONLINE", TempC: 41},
 				{Dev: "nvme1n1", Role: "mirror", Status: "ONLINE", TempC: 42},

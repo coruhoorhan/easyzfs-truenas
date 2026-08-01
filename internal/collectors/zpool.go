@@ -222,11 +222,15 @@ type zpoolStatusJSON struct {
 		State     string              `json:"state"`
 		Vdevs     map[string]jsonVdev `json:"vdevs"`
 		ScanStats *struct {
-			State         string  `json:"state"`
-			Percentage    float64 `json:"percentage"`
+			Function    string  `json:"function"` // "SCRUB" | "RESILVER"
+			State       string  `json:"state"`
+			Percentage  float64 `json:"percentage"` // puede faltar en resilver
+			ToExamine   string  `json:"to_examine"`
+			Examined    string  `json:"examined"`
+			PassStart   flexInt `json:"pass_start"` // epoch
 			TotalSecsLeft flexInt `json:"total_secs_left"`
-			Errors        flexInt `json:"errors"`
-			EndTime       string  `json:"end_time"`
+			Errors      flexInt `json:"errors"`
+			EndTime     string  `json:"end_time"`
 		} `json:"scan_stats"`
 	} `json:"pools"`
 }
@@ -287,16 +291,74 @@ func (c *ZpoolCollector) parseStatusJSON(out []byte, p *model.Pool) bool {
 	}
 	p.Topo = topoFromRoles(roles)
 	if ss := pj.ScanStats; ss != nil {
+		kind := "scrub"
+		if ss.Function == "RESILVER" {
+			kind = "resilver"
+		}
 		switch ss.State {
-		case "DSS_SCANNING":
-			p.Scrub = model.ScrubInfo{State: "running", Pct: ss.Percentage,
-				EtaSec: int64(ss.TotalSecsLeft), Ts: time.Now().UTC(), Errors: int64(ss.Errors)}
-		case "DSS_FINISHED":
-			p.Scrub = model.ScrubInfo{State: "done", Pct: 100,
+		case "DSS_SCANNING", "SCANNING":
+			pct := ss.Percentage
+			if pct == 0 {
+				// resilver sin percentage: examined/to_examine ("34.0G"/"35.2T")
+				if tot, ok := parseHumanSize(ss.ToExamine); ok && tot > 0 {
+					if ex, ok2 := parseHumanSize(ss.Examined); ok2 {
+						pct = float64(ex) * 100 / float64(tot)
+					}
+				}
+			}
+			eta := int64(ss.TotalSecsLeft)
+			if eta == 0 && pct > 0.05 && ss.PassStart > 0 {
+				// ETA por tasa media desde el inicio del pase
+				elapsed := time.Now().Unix() - int64(ss.PassStart)
+				if elapsed > 0 {
+					eta = int64(float64(elapsed) * (100 - pct) / pct)
+				}
+			}
+			p.Scrub = model.ScrubInfo{State: "running", Kind: kind, Pct: pct,
+				EtaSec: eta, Ts: time.Now().UTC(), Errors: int64(ss.Errors)}
+		case "DSS_FINISHED", "FINISHED":
+			p.Scrub = model.ScrubInfo{State: "done", Kind: kind, Pct: 100,
 				Ts: parseZfsTime(ss.EndTime), Errors: int64(ss.Errors)}
 		}
 	}
 	return true
+}
+
+// parseHumanSize — tamaños de zpool status ("35.2T", "34.0G", "0B", "748K").
+func parseHumanSize(s string) (uint64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "-" {
+		return 0, false
+	}
+	mult := uint64(1)
+	last := s[len(s)-1]
+	if last < '0' || last > '9' {
+		s = s[:len(s)-1]
+		switch last {
+		case 'B': // "0B": la letra es solo unidad
+			mult = 1
+			if len(s) > 0 && (s[len(s)-1] < '0' || s[len(s)-1] > '9') {
+				return 0, false
+			}
+		case 'K':
+			mult = 1 << 10
+		case 'M':
+			mult = 1 << 20
+		case 'G':
+			mult = 1 << 30
+		case 'T':
+			mult = 1 << 40
+		case 'P':
+			mult = 1 << 50
+		default:
+			return 0, false
+		}
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return uint64(f * float64(mult)), true
 }
 
 // walkVdev recorre el árbol JSON de vdevs recogiendo discos hoja y roles.
@@ -427,8 +489,12 @@ func (c *ZpoolCollector) parseStatusText(out string, p *model.Pool) {
 // parseScanLine interpreta la línea 'scan:' del estado.
 func (c *ZpoolCollector) parseScanLine(line string, p *model.Pool) {
 	switch {
-	case strings.Contains(line, "scrub in progress"):
-		p.Scrub = model.ScrubInfo{State: "running", Ts: time.Now().UTC()}
+	case strings.Contains(line, "scrub in progress") || strings.Contains(line, "resilver in progress"):
+		kind := "scrub"
+		if strings.Contains(line, "resilver") {
+			kind = "resilver"
+		}
+		p.Scrub = model.ScrubInfo{State: "running", Kind: kind, Ts: time.Now().UTC()}
 		if m := scrubPctRe.FindStringSubmatch(line); m != nil {
 			p.Scrub.Pct, _ = strconv.ParseFloat(m[1], 64)
 		}
@@ -438,8 +504,12 @@ func (c *ZpoolCollector) parseScanLine(line string, p *model.Pool) {
 			se, _ := strconv.Atoi(m[3])
 			p.Scrub.EtaSec = int64(h*3600 + mi*60 + se)
 		}
-	case strings.Contains(line, "scrub repaired") || strings.Contains(line, "scrub resilvered"):
-		st := model.ScrubInfo{State: "done", Pct: 100, Ts: time.Now().UTC()}
+	case strings.Contains(line, "scrub repaired") || strings.Contains(line, "scrub resilvered") || strings.Contains(line, "resilvered "):
+		kind := "scrub"
+		if strings.Contains(line, "resilver") {
+			kind = "resilver"
+		}
+		st := model.ScrubInfo{State: "done", Kind: kind, Pct: 100, Ts: time.Now().UTC()}
 		if m := scrubDoneRe.FindStringSubmatch(line); m != nil {
 			st.Errors, _ = strconv.ParseInt(m[1], 10, 64)
 			st.Ts = parseZfsTime(m[2])
@@ -571,13 +641,13 @@ func (c *ZpoolCollector) publishChanges(pools []model.Pool) {
 		pct := int(p.Scrub.Pct)
 		if p.Scrub.State == "running" && c.prevPct[p.Name] != pct {
 			c.h.Publish("scrub.progress", map[string]any{
-				"pool": p.Name, "pct": p.Scrub.Pct, "eta_sec": p.Scrub.EtaSec,
+				"pool": p.Name, "pct": p.Scrub.Pct, "eta_sec": p.Scrub.EtaSec, "kind": p.Scrub.Kind,
 			})
 			c.prevPct[p.Name] = pct
 		}
 		if p.Scrub.State == "done" && c.prevPct[p.Name] != 100 {
 			c.h.Publish("scrub.progress", map[string]any{
-				"pool": p.Name, "pct": 100.0, "eta_sec": int64(0),
+				"pool": p.Name, "pct": 100.0, "eta_sec": int64(0), "kind": p.Scrub.Kind,
 			})
 			c.prevPct[p.Name] = 100
 			changed = true

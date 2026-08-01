@@ -5,9 +5,10 @@ package model
 
 import "time"
 
-// ScrubInfo — estado del scrub de un pool (contrato: pools[].scrub).
+// ScrubInfo — estado del scrub/resilver de un pool (contrato: pools[].scrub).
 type ScrubInfo struct {
 	State  string    `json:"state"` // "none" | "running" | "done"
+	Kind   string    `json:"kind"`  // "scrub" | "resilver" (vacío si none)
 	Pct    float64   `json:"pct"`
 	EtaSec int64     `json:"eta_sec"`
 	Ts     time.Time `json:"ts"`

@@ -79,8 +79,8 @@ export default function Disks() {
                   {d.in_use && <Badge tone="warn" dot={false}> {t('dk_in_use')}</Badge>}
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn sm" disabled={d.smart === 'unknown'} onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
-                  <button className="btn sm" disabled={d.smart === 'unknown'} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>{' '}
+                  <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_short_hint')} onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
+                  <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_long_hint')} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>{' '}
                   {(d.pool === '—' || d.pool === '') && !d.in_use && (
                     <button className={`btn sm ${arm === d.dev ? 'danger' : ''}`} disabled={!isAdmin}
                       title={!isAdmin ? t('no_permission') : t('dk_poweroff_hint')}

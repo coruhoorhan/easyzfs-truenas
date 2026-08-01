@@ -58,6 +58,44 @@ func TestResolveVdevPaths(t *testing.T) {
 	}
 }
 
+func TestParseStatusJSONResilver(t *testing.T) {
+	out := []byte(`{"pools":{"tank":{"name":"tank","state":"DEGRADED","vdevs":{
+		"tank":{"name":"tank","vdev_type":"root","state":"DEGRADED","vdevs":{
+			"raidz1-0":{"name":"raidz1-0","vdev_type":"raidz1","state":"DEGRADED","vdevs":{
+				"sdb1":{"name":"sdb1","vdev_type":"disk","state":"ONLINE"}
+			}}
+		}}
+	},
+	"scan_stats":{"function":"RESILVER","state":"SCANNING","to_examine":"35.2T","examined":"3.52T","pass_start":"1785606676","errors":"0"}}}}`)
+	p := &model.Pool{Name: "tank", Vdevs: []model.Vdev{}}
+	c := &ZpoolCollector{}
+	if !c.parseStatusJSON(out, p) {
+		t.Fatal("parseStatusJSON devolvió false")
+	}
+	if p.Scrub.State != "running" || p.Scrub.Kind != "resilver" {
+		t.Fatalf("scrub=%+v, esperaba running resilver", p.Scrub)
+	}
+	if p.Scrub.Pct < 9.9 || p.Scrub.Pct > 10.1 {
+		t.Fatalf("pct=%v, esperaba ~10", p.Scrub.Pct)
+	}
+	if p.Scrub.EtaSec <= 0 {
+		t.Fatalf("eta=%v, esperaba >0 (calculada por tasa)", p.Scrub.EtaSec)
+	}
+}
+
+func TestParseHumanSize(t *testing.T) {
+	cases := map[string]uint64{"35.2T": 38702809297715, "0B": 0, "748K": 765952, "34.0G": 36507222016}
+	for in, want := range cases {
+		got, ok := parseHumanSize(in)
+		if !ok || got != want {
+			t.Errorf("parseHumanSize(%q)=%d,%v esperaba %d", in, got, ok, want)
+		}
+	}
+	if _, ok := parseHumanSize("-"); ok {
+		t.Error("'-' no debería parsear")
+	}
+}
+
 func TestReUUID(t *testing.T) {
 	if !reUUID.MatchString("8ab95469-2ae7-411a-af39-47b1d4f39d3c") {
 		t.Fatal("UUID no reconocido")
