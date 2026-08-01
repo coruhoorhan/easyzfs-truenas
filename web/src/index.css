@@ -276,6 +276,17 @@ table.data td.num{font-family:var(--font-mono);font-size:12.5px}
 .infobubble-pop ul{margin:4px 0 0;padding-left:16px}
 .infobubble-pop li{margin-bottom:3px}
 
+/* vdev nuevo incorporándose al RAID: etiqueta info + barra fina */
+.vdevjoin{
+  font-size:11.5px;font-weight:600;color:var(--info);
+  background:var(--info-soft);border-radius:99px;padding:3px 9px;white-space:nowrap;
+}
+.vdevbar{flex-basis:100%;height:3px;border-radius:99px;background:var(--surface2);margin:7px 0 2px;overflow:hidden}
+.vdevbar>i{display:block;height:100%;border-radius:99px;transition:width .6s ease}
+.vdevbar.low>i{background:var(--err)}
+.vdevbar.mid>i{background:var(--warn)}
+.vdevbar.high>i{background:var(--ok)}
+
 /* tabla usuarios */
 .rolebadge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px}
 .rolebadge.admin{background:var(--accent-soft);color:var(--accent)}

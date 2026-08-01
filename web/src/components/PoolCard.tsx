@@ -110,7 +110,9 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
       )}
 
       <div className="vdevs">
-        {pool.vdevs.map((v) => {
+        {[...pool.vdevs]
+          .sort((a, b) => Number(a.replacing && a.status !== 'ONLINE') - Number(b.replacing && b.status !== 'ONLINE'))
+          .map((v) => {
           // Hijo saliente de un replacing-N: no es un error, es el disco viejo
           // que desaparece solo al terminar la reconstrucción.
           if (v.replacing && v.status !== 'ONLINE') {
@@ -123,7 +125,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
             );
           }
           return (
-          <div className="vdev" key={v.dev}>
+          <div className="vdev" key={v.dev} style={v.replacing ? { flexWrap: 'wrap' } : undefined}>
             <span className={`badge ${v.status === 'ONLINE' ? 'ok' : 'err'}`} style={{ padding: '2px 7px' }}>{v.status}</span>
             <span className="dname" title={v.dev}>{shortDev(v)}</span>
             {v.replacing && (
@@ -131,7 +133,11 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
             )}
             <span>{v.role !== '—' ? v.role : ''}</span>
             <span style={{ marginLeft: 'auto' }}>{v.temp_c}°C</span>
-            {!v.replacing && (<>
+            {v.replacing ? (
+              <span className="vdevjoin" title={t('vdev_joining_hint')}>
+                {t('vdev_joining')} · {Math.round(pool.scrub.pct)}%
+              </span>
+            ) : (<>
             <button className="btn sm" disabled={!isAdmin}
               title={!isAdmin ? t('no_permission') : t('pool_replace_disk', { dev: shortDev(v) })}
               onClick={() => openModal('replace', { pool: pool.name, oldDev: v.dev })}>{t('pool_replace')}</button>
@@ -148,6 +154,11 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
                 onClick={() => openModal('detach', { pool: pool.name, dev: v.dev, path: v.path })}>{t('vdev_detach')}</button>
             )}
             </>)}
+            {v.replacing && (
+              <div className={`vdevbar ${pool.scrub.pct <= 30 ? 'low' : pool.scrub.pct <= 90 ? 'mid' : 'high'}`}>
+                <i style={{ width: `${Math.max(1, pool.scrub.pct)}%` }} />
+              </div>
+            )}
           </div>
           );
         })}
