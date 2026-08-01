@@ -13,7 +13,7 @@ import { describeSchedule } from '../components/Modals';
 import { useState } from 'react';
 
 const TIPO_CLS: Record<JobType, 'info' | 'ok' | 'warn'> = {
-  snapshot: 'info', scrub: 'ok', smart_short: 'warn', smart_long: 'warn',
+  snapshot: 'info', scrub: 'ok', smart_short: 'warn', smart_long: 'warn', poweroff: 'warn',
 };
 
 export default function Tasks() {

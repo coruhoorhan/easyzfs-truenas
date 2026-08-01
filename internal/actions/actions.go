@@ -216,6 +216,48 @@ func (s *Service) VdevAction(ctx context.Context, actor, pool, dev, action strin
 	return nil
 }
 
+// VdevSize — tamaño en bytes de un vdev hoja ('zpool list -Hp -v').
+// Devuelve 0 si no se encuentra (el llamador decide tolerarlo).
+func (s *Service) VdevSize(ctx context.Context, pool, dev string) (uint64, error) {
+	if !rePool.MatchString(pool) {
+		return 0, ErrInvalidName
+	}
+	out, err := executil.Run(ctx, 15*time.Second, "zpool", "list", "-Hp", "-v",
+		"-o", "name,size", pool)
+	if err != nil {
+		return 0, fmt.Errorf("vdev size: %w", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Split(line, "\t")
+		if len(f) < 2 {
+			continue
+		}
+		name := strings.TrimPrefix(f[0], "/dev/")
+		if name == dev || f[0] == dev {
+			sz, _ := strconv.ParseUint(f[1], 10, 64)
+			return sz, nil
+		}
+	}
+	return 0, nil
+}
+
+// PowerOff — apaga un disco para extracción: 'udisksctl power-off' y, si no
+// está disponible, 'hdparm -y' (standby). El handler debe vetar miembros de
+// pool y discos montados.
+func (s *Service) PowerOff(ctx context.Context, actor, dev string) error {
+	if !reDev.MatchString(dev) {
+		return ErrInvalidDev
+	}
+	s.audit(ctx, actor, "disk.poweroff", dev, nil, false)
+	if _, err := executil.Run(ctx, 15*time.Second, "udisksctl", "power-off", "-b", "/dev/"+dev); err == nil {
+		return nil
+	}
+	if _, err := executil.Run(ctx, 15*time.Second, "hdparm", "-y", "/dev/"+dev); err != nil {
+		return fmt.Errorf("apagar disco: %w", err)
+	}
+	return nil
+}
+
 // Replace — 'zpool replace <pool> <old> <new>'; el resilver se observa en el colector.
 // confirmed debe ser true solo si el handler validó {"confirm":pool}.
 func (s *Service) Replace(ctx context.Context, actor, pool, oldDev, newDev string, confirmed bool) error {

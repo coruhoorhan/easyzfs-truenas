@@ -38,6 +38,11 @@ label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin:12p
 
 /* ---------- layout ---------- */
 .app-shell{max-width:1180px;margin:0 auto;display:flex;min-height:100vh}
+/* pantallas muy anchas: aprovechar el ancho (pools a 2 columnas) */
+@media(min-width:1500px){
+  .app-shell{max-width:1560px}
+  .grid.pools{grid-template-columns:1fr 1fr !important;align-items:start}
+}
 aside.sidebar{
   display:none; width:218px; flex-shrink:0; padding:22px 14px;
   border-right:1px solid var(--border); position:sticky; top:0; height:100vh;

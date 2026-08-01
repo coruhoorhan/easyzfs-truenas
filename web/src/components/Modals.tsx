@@ -396,6 +396,16 @@ function ExportPoolModal({ pool, onClose }: { pool: string; onClose: () => void 
   );
 }
 
+// devBase — nombre base del dispositivo ('/dev/sda1'→'sda', 'nvme0n1p2'→'nvme0n1').
+function devBase(dev: string): string {
+  const d = dev.replace(/^\/dev\//, '');
+  const pi = d.lastIndexOf('p');
+  if (pi > 0 && /^\d+$/.test(d.slice(pi + 1)) && !/^\d+$/.test(d.slice(0, pi))) return d.slice(0, pi);
+  const m = d.match(/^(xvd|sd|vd|hd)([a-z]+)\d+$/);
+  if (m) return m[1] + m[2];
+  return d;
+}
+
 // ---------- añadir vdev / sustituir disco (confirmación escrita) ----------
 // Modal genérico para las dos operaciones destructivas de pool: pide el
 // nombre del pool para confirmar y envía {confirm} al backend.
@@ -411,8 +421,14 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const free = useMemo(() => (disks ?? []).filter((d) => d.pool === '—' || d.pool === ''), [disks]);
+  const free = useMemo(() => (disks ?? []).filter((d) => (d.pool === '—' || d.pool === '') && !d.in_use), [disks]);
   const current = useMemo(() => pools?.find((pl) => pl.name === pool)?.vdevs ?? [], [pools, pool]);
+  const [showAll, setShowAll] = useState(false);
+  // tamaño del vdev a sustituir (si el disco viejo sigue visible): el nuevo debe ser >=
+  const oldVdev = current.find((v) => v.dev === oldDev);
+  const oldSize = (disks ?? []).find((d) => oldVdev?.path && d.dev === devBase(oldVdev.path))?.size_bytes ?? 0;
+  const suitable = useMemo(() => free.filter((d) => oldSize === 0 || d.size_bytes >= oldSize), [free, oldSize]);
+  const hidden = free.length - suitable.length;
   const toggle = (dev: string) => setSel((s) => {
     const n = new Set(s);
     if (n.has(dev)) n.delete(dev); else n.add(dev);
@@ -425,9 +441,9 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
         const bad = current.find((v) => v.status !== 'ONLINE');
         setOldDev((bad ?? current[0]).dev);
       }
-      if (!newDev && free.length) setNewDev(free[0].dev);
+      if (!newDev && suitable.length) setNewDev(suitable[0].dev);
     }
-  }, [mode, current, free, oldDev, newDev]);
+  }, [mode, current, suitable, oldDev, newDev]);
 
   const confirmed = confirm.trim() === pool;
   const minDisks = TOPO_MIN[topo];
@@ -486,12 +502,34 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
             ))}
           </select>
           <label htmlFor="rp-new">{t('rp_new')}</label>
-          {free.length === 0 && <p className="desc" style={{ marginTop: 8 }}>{t('np_no_disks')}</p>}
-          {free.length > 0 && (
-            <select id="rp-new" value={newDev} onChange={(e) => setNewDev(e.target.value)} disabled={!!presetNew}>
-              {free.map((d) => <option key={d.dev} value={d.dev}>{d.dev} · {d.model} · {fmtBytes(d.size_bytes)}</option>)}
-            </select>
-          )}
+          {(() => {
+            const list = showAll ? free : suitable;
+            return (<>
+              {list.length === 0 && (
+                <p className="desc" style={{ marginTop: 8 }}>
+                  {t('np_no_disks')}{hidden > 0 && ` ${t('rp_small_hidden', { n: hidden })}`}
+                </p>
+              )}
+              {list.length > 0 && (
+                <select id="rp-new" value={newDev} onChange={(e) => setNewDev(e.target.value)} disabled={!!presetNew}>
+                  {list.map((d) => {
+                    const small = oldSize > 0 && d.size_bytes < oldSize;
+                    return (
+                      <option key={d.dev} value={d.dev} disabled={small && !showAll}>
+                        {d.dev} · {d.model} · {fmtBytes(d.size_bytes)}{small ? ` (${t('rp_small')})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+              {hidden > 0 && (
+                <label style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6, fontSize: 12.5, color: 'var(--text2)', cursor: 'pointer' }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+                  {t('rp_show_all', { n: hidden })}
+                </label>
+              )}
+            </>);
+          })()}
         </>)}
 
         <label htmlFor="pd-confirm">{t('ex_confirm_lbl')}</label>

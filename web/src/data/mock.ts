@@ -125,6 +125,8 @@ export class MockProvider implements DataProvider {
     { dev: 'nvme0n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A01', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: 'tank', hours: 8725 },
     { dev: 'nvme1n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A02', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: 'tank', hours: 8725 },
     { dev: 'nvme2n1', model: 'ORICO NVMe SSD', serial: 'ORC2024A03', size_bytes: Math.round(1.86 * TiB), temp_c: 48, smart: 'ok', smart_detail: 'PASSED', pool: '—', hours: 8725 },
+    // Caso real: disco USB montado (en uso) — no debe ofrecerse como libre.
+    { dev: 'sda', model: 'Seagate Expansion 4TB', serial: 'NAABC123', size_bytes: Math.round(3.64 * TiB), temp_c: 38, smart: 'ok', smart_detail: 'PASSED', pool: '—', in_use: true, hours: 22100 },
   ];
 
   private systemTimers: SystemTimer[] = [
@@ -412,8 +414,15 @@ export class MockProvider implements DataProvider {
 
   // ---- Discos ----
   getDisks = async () => { await delay(); return this.disks.map((d) => ({ ...d })); };
-  smartTest = async (dev: string, type: 'short' | 'long') => {
-    await delay(200);
+  smartTest = async (dev: string, type: 'short' | 'long') => {    await delay(200);
     this.history.unshift({ ts: iso(new Date()), tipo: type === 'short' ? 'smart_short' : 'smart_long', target: dev, ok: true, detail: 'test iniciado' });
+  };
+  poweroffDisk = async (dev: string) => {
+    await delay(300);
+    const d = this.disks.find((x) => x.dev === dev);
+    if (!d) throw new ApiError(404, 'not_found', 'Disco no encontrado');
+    if (d.pool !== '—' && d.pool !== '') throw new ApiError(409, 'dev_in_use', `el disco pertenece al pool '${d.pool}'`);
+    if (d.in_use) throw new ApiError(409, 'dev_mounted', 'el disco tiene particiones montadas o swap activo');
+    this.history.unshift({ ts: iso(new Date()), tipo: 'poweroff', target: dev, ok: true, detail: 'disco apagado' });
   };
 }

@@ -89,6 +89,8 @@ const es = {
   rp_proc: 'Procedimiento: apaga el equipo (o extrae en caliente si tu hardware lo permite), cambia el disco y vuelve aquí. El disco nuevo aparecerá en la lista al conectarlo.',
   rp_old: 'Disco a sustituir', rp_new: 'Disco nuevo',
   rp_btn: 'Sustituir disco',
+  rp_small: 'pequeño', rp_small_hidden: '({n} oculto(s) por tamaño)',
+  rp_show_all: 'Mostrar también los {n} disco(s) de tamaño insuficiente',
 
   // Retirar disco de un mirror
   dt_title: 'Retirar disco',
@@ -157,6 +159,9 @@ const es = {
   dk_temp: 'Temp.', dk_smart: 'Salud SMART', dk_pool: 'Pool',
   dk_test_short: 'Test corto', dk_test_long: 'Test largo',
   dk_test_started: 'Test SMART iniciado',
+  dk_poweroff: 'Apagar', dk_poweroff_arm: '¿Confirmar?',
+  dk_poweroff_hint: 'Apagar el disco para extraerlo (power-off)',
+  dk_powered: 'Disco apagado', dk_in_use: 'en uso',
   dk_hours: 'horas encendido',
   dk_smart_na: 'no disponible',
 
@@ -303,6 +308,8 @@ const en: Record<I18nKey, string> = {
   rp_proc: 'Procedure: power off the machine (or hot-swap if your hardware supports it), swap the disk and come back here. The new disk will appear in the list once connected.',
   rp_old: 'Disk to replace', rp_new: 'New disk',
   rp_btn: 'Replace disk',
+  rp_small: 'too small', rp_small_hidden: '({n} hidden by size)',
+  rp_show_all: 'Also show the {n} undersized disk(s)',
 
   dt_title: 'Detach disk',
   dt_desc: '{dev} will be permanently detached from pool {pool}. Data stays safe on the rest of the mirror.',
@@ -366,6 +373,9 @@ const en: Record<I18nKey, string> = {
   dk_temp: 'Temp.', dk_smart: 'SMART health', dk_pool: 'Pool',
   dk_test_short: 'Short test', dk_test_long: 'Long test',
   dk_test_started: 'SMART test started',
+  dk_poweroff: 'Power off', dk_poweroff_arm: 'Confirm?',
+  dk_poweroff_hint: 'Power the disk down for removal',
+  dk_powered: 'Disk powered off', dk_in_use: 'in use',
   dk_hours: 'power-on hours',
   dk_smart_na: 'not available',
 

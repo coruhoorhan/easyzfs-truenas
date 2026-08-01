@@ -166,6 +166,16 @@ func (s *Server) replaceDisk(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Guarda: el disco nuevo debe ser al menos tan grande como el sustituido.
+	if oldSz, err := s.act.VdevSize(r.Context(), name, body.OldDev); err == nil && oldSz > 0 {
+		for _, d := range s.disks.Disks() {
+			if d.Dev == newBase && d.SizeBytes > 0 && d.SizeBytes < oldSz {
+				writeErr(w, http.StatusConflict, "dev_too_small",
+					"el disco nuevo es más pequeño que el sustituido")
+				return
+			}
+		}
+	}
 	if err := s.act.Replace(r.Context(), actor(r), name, body.OldDev, body.NewDev, true); err != nil {
 		actionErr(w, err)
 		return

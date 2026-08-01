@@ -636,15 +636,18 @@ setup_user_and_sudoers() {
 }
 
 # write_sudoers — NOPASSWD solo para zpool/zfs/smartctl/lsblk/crontab (este
-# último, solo lectura del crontab de root para la vista Tareas); visudo -cf.
+# último, solo lectura del crontab de root para la vista Tareas) y
+# udisksctl/hdparm (apagado de discos libres); visudo -cf.
 write_sudoers() {
-  local zpool_path zfs_path smartctl_path lsblk_path crontab_path content
+  local zpool_path zfs_path smartctl_path lsblk_path crontab_path udisksctl_path hdparm_path content
   zpool_path="$(command -v zpool 2>/dev/null || echo /usr/sbin/zpool)"
   zfs_path="$(command -v zfs 2>/dev/null || echo /usr/sbin/zfs)"
   smartctl_path="$(command -v smartctl 2>/dev/null || echo /usr/sbin/smartctl)"
   lsblk_path="$(command -v lsblk 2>/dev/null || echo /usr/sbin/lsblk)"
   crontab_path="$(command -v crontab 2>/dev/null || echo /usr/bin/crontab)"
-  content="${SVC_USER} ALL=(root) NOPASSWD: ${zpool_path}, ${zfs_path}, ${smartctl_path}, ${lsblk_path}, ${crontab_path}"
+  udisksctl_path="$(command -v udisksctl 2>/dev/null || echo /usr/bin/udisksctl)"
+  hdparm_path="$(command -v hdparm 2>/dev/null || echo /usr/sbin/hdparm)"
+  content="${SVC_USER} ALL=(root) NOPASSWD: ${zpool_path}, ${zfs_path}, ${smartctl_path}, ${lsblk_path}, ${crontab_path}, ${udisksctl_path}, ${hdparm_path}"
   if [ "$DRY_RUN" = "1" ]; then
     info "[DRY-RUN] escribiría ${SUDOERS_PATH} (0440) y validaría con visudo -cf:"
     printf '    %s\n' "$content"

@@ -121,7 +121,7 @@ export interface SnapshotGroup {
   snaps: Snapshot[];
 }
 
-export type JobType = 'snapshot' | 'scrub' | 'smart_short' | 'smart_long';
+export type JobType = 'snapshot' | 'scrub' | 'smart_short' | 'smart_long' | 'poweroff';
 export interface Job {
   id: number;
   tipo: JobType;
@@ -150,6 +150,7 @@ export interface Disk {
   smart: 'ok' | 'warn' | 'crit' | 'unknown'; // unknown = SMART no disponible
   smart_detail: string;
   pool: string;
+  in_use?: boolean; // particiones montadas o swap activo (no elegible como libre)
   hours: number;
 }
 

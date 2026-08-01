@@ -101,4 +101,5 @@ export class HttpProvider implements DataProvider {
 
   getDisks = () => get<Disk[]>('/disks');
   smartTest = (dev: string, type: 'short' | 'long') => post<void>(`/disks/${enc(dev)}/smart-test`, { type });
+  poweroffDisk = (dev: string) => post<void>(`/disks/${enc(dev)}/poweroff`, {});
 }

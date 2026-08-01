@@ -8,9 +8,10 @@ import { fmtBytes, fmtInt } from '../ui/format';
 import { Badge, Spinner } from '../components/ui';
 
 export default function Disks() {
-  const { t } = useApp();
+  const { t, isAdmin } = useApp();
   const { data, loading, setData } = useData((p) => p.getDisks());
   const [msg, setMsg] = useState('');
+  const [arm, setArm] = useState('');
 
   // Temperaturas en tiempo real vía eventos
   useEffect(() => subscribeEvents((ev) => {
@@ -25,6 +26,23 @@ export default function Disks() {
     try {
       await getProvider().smartTest(dev, type);
       setMsg(`${t('dk_test_started')}: ${dev} (${type})`);
+    } catch (e) { setMsg(errorMessage(e, t)); }
+  };
+
+  // Apagar disco: doble clic (1º arma "¿Confirmar?", 2º ejecuta). Se desarma a los 3 s.
+  useEffect(() => {
+    if (!arm) return;
+    const id = setTimeout(() => setArm(''), 3000);
+    return () => clearTimeout(id);
+  }, [arm]);
+
+  const poweroff = async (dev: string) => {
+    if (arm !== dev) { setArm(dev); return; }
+    setArm('');
+    setMsg('');
+    try {
+      await getProvider().poweroffDisk(dev);
+      setMsg(`${t('dk_powered')}: ${dev}`);
     } catch (e) { setMsg(errorMessage(e, t)); }
   };
 
@@ -56,10 +74,20 @@ export default function Disks() {
                   ? <Badge tone="info" dot={false}>{t('dk_smart_na')}</Badge>
                   : <Badge tone={d.smart === 'ok' ? 'ok' : d.smart === 'warn' ? 'warn' : 'err'}>{d.smart_detail}</Badge>}
                 </td>
-                <td>{d.pool}</td>
+                <td>
+                  {d.pool}
+                  {d.in_use && <Badge tone="warn" dot={false}> {t('dk_in_use')}</Badge>}
+                </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="btn sm" disabled={d.smart === 'unknown'} onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
-                  <button className="btn sm" disabled={d.smart === 'unknown'} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>
+                  <button className="btn sm" disabled={d.smart === 'unknown'} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>{' '}
+                  {(d.pool === '—' || d.pool === '') && !d.in_use && (
+                    <button className={`btn sm ${arm === d.dev ? 'danger' : ''}`} disabled={!isAdmin}
+                      title={!isAdmin ? t('no_permission') : t('dk_poweroff_hint')}
+                      onClick={() => poweroff(d.dev)}>
+                      {arm === d.dev ? t('dk_poweroff_arm') : t('dk_poweroff')}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

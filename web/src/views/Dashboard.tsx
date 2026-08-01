@@ -81,7 +81,7 @@ export default function Dashboard() {
               <button className="btn sm" onClick={() => navigate('pools')}>{t('dash_see_all')}</button>
             </span>
           </h2>
-          <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
+          <div className="grid pools" style={{ gridTemplateColumns: '1fr' }}>
             {(pools.data ?? []).map((p) => (
               <PoolCard key={p.name} pool={p} onChanged={() => { pools.reload(); ov.reload(); }} />
             ))}

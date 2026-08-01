@@ -74,6 +74,7 @@ type Disk struct {
 	Smart       string   `json:"smart"` // "ok" | "warn" | "crit" | "unknown" (sin smartctl: eMMC, USB sin SAT)
 	SmartDetail string   `json:"smart_detail"`
 	Pool        string   `json:"pool"`
+	InUse       bool     `json:"in_use,omitempty"` // particiones montadas o swap activo (no elegible como "libre")
 	Hours       uint64   `json:"hours"`
 }
 
