@@ -815,10 +815,17 @@ verify_service() {
     return 1
   fi
   ok "Servicio activo (systemd)."
-  # /api/version: 200 si responde, 401 si exige login — ambos prueban que escucha
-  local code=""
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-      "http://127.0.0.1:${OPT_PORT}/api/version" 2>/dev/null || echo 000)"
+  # /api/version: 200 si responde, 401 si exige login — ambos prueban que escucha.
+  # OJO: curl imprime "000" con -w incluso al fallar la conexión; no concatenar
+  # otro "000" con `|| echo 000` (salía "000000"). Reintenta unos segundos:
+  # el servicio puede tardar un poco en bindear tras el restart.
+  local code="000" i
+  for i in $(seq 1 10); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+        "http://127.0.0.1:${OPT_PORT}/api/version" 2>/dev/null)" || true
+    [ "$code" != "000" ] && break
+    sleep 1
+  done
   if [ "$code" = "000" ]; then
     warn "Sin respuesta HTTP en 127.0.0.1:${OPT_PORT} (¿firewall o arranque lento?)."
     warn "Comprueba: systemctl status easyzfs && journalctl -u easyzfs -n 50"
@@ -849,7 +856,7 @@ EOF
     journalctl -u easyzfs -f
     systemctl restart easyzfs
   Config: ${ENV_FILE}  ·  Datos: ${DATA_DIR}
-  Desinstalar: bash $0 --uninstall
+  Desinstalar: curl -fsSL https://raw.githubusercontent.com/gnacho/easyzfs/main/deploy/install.sh | bash -s -- --uninstall
 EOF
 }
 
