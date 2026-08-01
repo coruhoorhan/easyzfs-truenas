@@ -64,6 +64,12 @@ Dependencias Go (justificación, regla del skill: 1-3 deps):
 
 ### Instalador interactivo (recomendado)
 
+One-liner (descarga el binario de la última release para tu arquitectura e instala todo):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gnacho/easyzfs/main/deploy/install.sh | bash
+```
+
 `deploy/install.sh` automatiza todo: detecta la distro, instala ZFS +
 smartmontools si faltan, crea la cuenta de servicio (o modo root con
 `--root-mode`), escribe `/etc/easyzfs/env` y la unit de systemd, y verifica el
