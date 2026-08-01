@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -145,6 +147,7 @@ func (c *ZpoolCollector) collectOnce(ctx context.Context) error {
 	for i := range pools {
 		c.fillStatus(ctx, &pools[i]) // tolerante: degrada, no falla la pasada
 		c.fillCompressRatio(ctx, &pools[i])
+		c.resolveVdevPaths(ctx, &pools[i])
 	}
 	datasets, err := c.listDatasets(ctx)
 	if err != nil {
@@ -445,6 +448,43 @@ func (c *ZpoolCollector) parseScanLine(line string, p *model.Pool) {
 	case strings.Contains(line, "none requested"):
 		p.Scrub = model.ScrubInfo{State: "none"}
 	}
+}
+
+// --- resolución de vdevs a dispositivos reales ---
+
+// reUUID — nombres de vdev que son UUID (pools heredados que usan PARTUUID
+// como nombre, p.ej. venidos de TrueNAS: zpool status muestra el UUID en vez
+// de la ruta del dispositivo).
+var reUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// resolveVdevPaths rellena Vdev.Path con la ruta real del dispositivo:
+// - nombre normal ('sdb1') → '/dev/sdb1' si existe.
+// - nombre UUID (pools heredados que usan PARTUUID, p.ej. TrueNAS) →
+//   symlink /dev/disk/by-partuuid/<uuid>.
+// - nombre by-id ('nvme-XXXX', 'ata-XXXX-part1') → symlink /dev/disk/by-id/<nombre>.
+// Si nada resuelve (disco retirado), Path queda "".
+func (c *ZpoolCollector) resolveVdevPaths(_ context.Context, p *model.Pool) {
+	for j := range p.Vdevs {
+		p.Vdevs[j].Path = resolveDevPath(p.Vdevs[j].Dev)
+	}
+}
+
+// resolveDevPath traduce el nombre de un vdev a su ruta /dev real ("" si no).
+func resolveDevPath(dev string) string {
+	candidates := []string{"/dev/" + dev}
+	if reUUID.MatchString(dev) {
+		candidates = append([]string{"/dev/disk/by-partuuid/" + strings.ToLower(dev)}, candidates...)
+	} else {
+		candidates = append(candidates, "/dev/disk/by-id/"+dev)
+	}
+	for _, cand := range candidates {
+		if target, err := filepath.EvalSymlinks(cand); err == nil {
+			if st, err := os.Stat(target); err == nil && st.Mode()&os.ModeDevice != 0 {
+				return target
+			}
+		}
+	}
+	return ""
 }
 
 // --- datasets y snapshots ---

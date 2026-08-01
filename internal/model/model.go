@@ -17,7 +17,8 @@ type ScrubInfo struct {
 // Vdev — dispositivo de un pool (contrato: pools[].vdevs[]).
 type Vdev struct {
 	Dev    string  `json:"dev"`
-	Role   string  `json:"role"` // "stripe" | "mirror" | "raidz1" | "raidz2" | "raidz3" | "spare" | "log" | "cache"
+	Path   string  `json:"path,omitempty"` // ruta real resuelta ('/dev/sda1'); "" si no resoluble (p.ej. disco retirado)
+	Role   string  `json:"role"`           // "stripe" | "mirror" | "raidz1" | "raidz2" | "raidz3" | "spare" | "log" | "cache"
 	Status string  `json:"status"`
 	TempC  float64 `json:"temp_c"`
 }
