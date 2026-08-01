@@ -8,6 +8,8 @@ Type=simple
 User=zfsctl
 Group=zfsctl
 EnvironmentFile=/etc/zfsctl/env
+# PATH con los wrappers sudo de zpool/zfs/smartctl primero (ver deploy/bin/)
+Environment="PATH=/usr/local/lib/zfsctl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/usr/local/bin/zfsctl
 Restart=on-failure
 RestartSec=5
@@ -16,8 +18,8 @@ RestartSec=5
 MemoryMax=256M
 LimitNOFILE=4096
 
-# Hardening (la app ejecuta zpool/zfs/smartctl vía sudoers limitado — ver README)
-NoNewPrivileges=yes
+# Hardening. OJO: NO poner NoNewPrivileges=yes — los wrappers necesitan sudo (setuid).
+# La superficie root queda limitada por /etc/sudoers.d/zfsctl a 3 comandos concretos.
 ProtectSystem=full
 ReadWritePaths=/var/lib/zfsctl
 ProtectHome=yes

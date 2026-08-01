@@ -1,0 +1,3 @@
+# /etc/sudoers.d/zfsctl — el usuario zfsctl solo puede ejecutar estos 3 comandos como root.
+# Los invocan los wrappers de /usr/local/lib/zfsctl/bin/ (PATH del servicio).
+zfsctl ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl
