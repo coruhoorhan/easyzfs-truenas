@@ -18,7 +18,7 @@ export default function Datasets() {
           <thead>
             <tr>
               <th>{t('ds_name')}</th><th>{t('ds_type')}</th><th>{t('ds_comp')}</th>
-              <th>{t('ds_used')}</th><th>{t('ds_avail')}</th><th>{t('ds_quota')}</th><th />
+              <th className="num">{t('ds_used')}</th><th className="num">{t('ds_avail')}</th><th className="num">{t('ds_quota')}</th><th />
             </tr>
           </thead>
           <tbody>
@@ -28,9 +28,9 @@ export default function Datasets() {
                 <td className="mono" style={{ fontWeight: 600 }}>{d.name}</td>
                 <td style={{ color: 'var(--text2)' }}>{d.type === 'volume' ? t('ds_vol') : t('ds_fs')}</td>
                 <td>{d.compression}</td>
-                <td>{fmtBytes(d.used_bytes)}</td>
-                <td>{fmtBytes(d.avail_bytes)}</td>
-                <td>{d.quota_bytes ? fmtBytes(d.quota_bytes) : '—'}</td>
+                <td className="num">{fmtBytes(d.used_bytes)}</td>
+                <td className="num">{fmtBytes(d.avail_bytes)}</td>
+                <td className="num">{d.quota_bytes ? fmtBytes(d.quota_bytes) : '—'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); openModal('newsnap', { dataset: d.name }); }}>
                     {t('ds_snapshot')}

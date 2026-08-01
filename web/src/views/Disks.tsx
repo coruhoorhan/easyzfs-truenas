@@ -36,8 +36,8 @@ export default function Disks() {
         <table className="data">
           <thead>
             <tr>
-              <th>{t('dk_disk')}</th><th>{t('dk_model')}</th><th>{t('dk_size')}</th>
-              <th>{t('dk_temp')}</th><th>{t('dk_smart')}</th><th>{t('dk_pool')}</th><th />
+              <th>{t('dk_disk')}</th><th>{t('dk_model')}</th><th className="num">{t('dk_size')}</th>
+              <th className="num">{t('dk_temp')}</th><th>{t('dk_smart')}</th><th>{t('dk_pool')}</th><th />
             </tr>
           </thead>
           <tbody>
@@ -50,8 +50,8 @@ export default function Disks() {
                     {d.serial} · {fmtInt(d.hours)} {t('dk_hours')}
                   </div>
                 </td>
-                <td>{fmtBytes(d.size_bytes)}</td>
-                <td>{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
+                <td className="num">{fmtBytes(d.size_bytes)}</td>
+                <td className="num">{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
                 <td>{d.smart === 'unknown'
                   ? <Badge tone="info" dot={false}>{t('dk_smart_na')}</Badge>
                   : <Badge tone={d.smart === 'ok' ? 'ok' : d.smart === 'warn' ? 'warn' : 'err'}>{d.smart_detail}</Badge>}

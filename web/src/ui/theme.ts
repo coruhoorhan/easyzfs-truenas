@@ -1,11 +1,11 @@
 // Apariencia: tema claro/oscuro/sistema, color de acento y densidad.
 // - Tema: 'light' | 'dark' | 'auto' (= sigue prefers-color-scheme del SO).
 // - Acento: 4 colores con valores distintos para claro/oscuro; se aplican
-//   como variables CSS (--accent, --accent-soft y --ok) en <html>.
+//   como variables CSS (--accent, --accent-soft) en <html>.
 // - Densidad: 'cozy' | 'compact' (compacta = html font-size 13.5px + zoom).
 // Todo persiste en localStorage (claves zfc-theme / zfc-accent / zfc-density).
 export type ThemeMode = 'auto' | 'light' | 'dark';
-export type AccentId = 'cyan' | 'violet' | 'emerald' | 'amber';
+export type AccentId = 'cyan' | 'steel' | 'emerald' | 'amber';
 export type Density = 'cozy' | 'compact';
 
 const THEME_KEY = 'zfc-theme';
@@ -16,7 +16,7 @@ const subs = new Set<() => void>();
 // [color, soft] por tema. emerald = verde original de la app.
 export const ACCENTS: Record<AccentId, { light: [string, string]; dark: [string, string] }> = {
   cyan:    { light: ['#0e7c93', '#dff0f4'], dark: ['#4cc3d9', '#13292f'] },
-  violet:  { light: ['#6d5bd0', '#e9e6f8'], dark: ['#9d8fef', '#25203b'] },
+  steel:   { light: ['#3a6ea5', '#e2ebf4'], dark: ['#7ba7d9', '#1b2634'] },
   emerald: { light: ['#2f7d5f', '#e3f0e9'], dark: ['#5cb893', '#1d2f27'] },
   amber:   { light: ['#a8741f', '#f6ecd9'], dark: ['#d9a84e', '#33291a'] },
 };
@@ -86,7 +86,8 @@ export function applyAccent(): void {
   const st = document.documentElement.style;
   st.setProperty('--accent', accent);
   st.setProperty('--accent-soft', soft);
-  st.setProperty('--ok', accent); // el verde "ok" original sigue al acento
+  // --ok NO sigue al acento: es semántico (salud OK). Si ok=accent, con el
+  // acento amber un estado sano y un aviso serían indistinguibles.
 }
 
 export function setAccent(id: AccentId): void {
