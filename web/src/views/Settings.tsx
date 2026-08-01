@@ -148,9 +148,9 @@ export default function Settings() {
           ]} />
         <label>{t('s_lang')}</label>
         <select value={langMode} onChange={(e) => setLang(e.target.value as typeof langMode)} aria-label={t('s_lang')}>
-          <option value="auto">Auto</option>
-          <option value="es">Español</option>
-          <option value="en">English</option>
+          <option value="auto">🌐 Auto</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="en">🇬🇧 English</option>
         </select>
       </div>
 
