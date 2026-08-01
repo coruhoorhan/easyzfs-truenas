@@ -265,7 +265,7 @@ export default function Settings() {
           </div>
 
           <div className="abouttiles">
-            <a className="abouttile" href="https://github.com/easyzfs/easyzfs" target="_blank" rel="noreferrer">
+            <a className="abouttile" href="https://github.com/gnacho/easyzfs" target="_blank" rel="noreferrer">
               <span className="t-ico"><IconCode size={16} /></span>
               <b>{t('ab_code')}</b>
               <span>{t('ab_code_d')}</span>
