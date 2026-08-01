@@ -53,6 +53,7 @@ OPT_SOURCE=""
 OPT_PORT="8080"
 PORT_FROM_FLAG=0
 OPT_ROOT_MODE=0
+OPT_DEMO=0
 OPT_UNINSTALL=0
 OPT_YES=0
 DRY_RUN="${DRY_RUN:-0}"
@@ -140,6 +141,7 @@ Opciones:
                     También vía EASYZFS_RELEASE_URL. Defecto: releases gnacho/easyzfs.
   --source <dir>    Compila desde el repo fuente (go + make; node/npm si hay web/)
   --port <n>        Puerto de escucha (defecto: 8080)
+  --demo            Arranca en modo demo (DEMO=1: datos de muestra, mutaciones 403)
   --root-mode       El servicio corre como root (sin usuario easyzfs ni sudoers)
   --uninstall       Desinstala unit, binario y sudoers (pregunta por los datos)
   --yes, -y         No interactivo: todo por defecto
@@ -798,13 +800,30 @@ configure_env() {
 
   # Puerto ocupado: si coincide con el del env existente es NUESTRO propio
   # servicio corriendo (reinstalación) y no hay conflicto. Si es otro proceso:
-  # --port explícito aborta; sin flag, se busca el siguiente libre (hasta +20).
+  # --port explícito aborta; interactivo pregunta (sugiere el siguiente libre);
+  # no interactivo usa el siguiente libre con aviso.
   if [ "$DRY_RUN" != "1" ] && [ "$OPT_PORT" != "$existing_port" ] && port_in_use "$OPT_PORT"; then
     if [ "$PORT_FROM_FLAG" = "1" ]; then
       die "El puerto ${OPT_PORT} ya está en uso (se pidió con --port). Elige otro: ss -tlnp | grep :${OPT_PORT}"
     fi
     local next=""
-    if next="$(next_free_port "$OPT_PORT")"; then
+    next="$(next_free_port "$OPT_PORT")" || next=""
+    if [ "$OPT_YES" = "0" ] && tty_ok; then
+      local elegido=""
+      while true; do
+        prompt elegido "El puerto ${OPT_PORT} está ocupado. ¿En qué puerto escucha EasyZFS?" "${next:-}"
+        if ! [[ "$elegido" =~ ^[0-9]+$ ]] || [ "$elegido" -lt 1 ] || [ "$elegido" -gt 65535 ]; then
+          warn "Puerto inválido: ${elegido} (1-65535)."
+          continue
+        fi
+        if port_in_use "$elegido"; then
+          warn "El puerto ${elegido} también está en uso."
+          continue
+        fi
+        OPT_PORT="$elegido"
+        break
+      done
+    elif [ -n "$next" ]; then
       warn "El puerto ${OPT_PORT} está en uso por otro proceso; EasyZFS escuchará en ${next}."
       OPT_PORT="$next"
     else
@@ -833,16 +852,33 @@ configure_env() {
     fi
   fi
 
+  # Modo demo: --demo, o pregunta en instalaciones nuevas interactivas.
+  if [ "$OPT_DEMO" = "0" ] && [ ! -r "$ENV_FILE" ] && [ "$OPT_YES" = "0" ] && [ "$DRY_RUN" != "1" ]; then
+    if confirm "¿Arrancar en MODO DEMO? (pools/discos de muestra para explorar; tus discos no se tocan)" 0; then
+      OPT_DEMO=1
+    fi
+  fi
+
   if [ "$DRY_RUN" = "1" ]; then
     info "[DRY-RUN] escribiría ${ENV_FILE} (modo 0600):"
     printf '    %s\n' "LISTEN_ADDR=:${OPT_PORT}" "DB_PATH=${DATA_DIR}/app.db" \
-      "SESSION_SECRET=***" "ADMIN_PASSWORD=***"
+      "SESSION_SECRET=***" "ADMIN_PASSWORD=***" "$( [ "$OPT_DEMO" = "1" ] && echo 'DEMO=1' || true)"
   else
-    printf 'LISTEN_ADDR=:%s\nDB_PATH=%s/app.db\nSESSION_SECRET=%s\nADMIN_PASSWORD=%s\n' \
-      "$OPT_PORT" "$DATA_DIR" "$secret" "$admin" | write_root_file "$ENV_FILE" 0600
+    if [ "$OPT_DEMO" = "1" ]; then
+      printf 'LISTEN_ADDR=:%s\nDB_PATH=%s/app.db\nSESSION_SECRET=%s\nADMIN_PASSWORD=%s\nDEMO=1\n' \
+        "$OPT_PORT" "$DATA_DIR" "$secret" "$admin" | write_root_file "$ENV_FILE" 0600
+    else
+      printf 'LISTEN_ADDR=:%s\nDB_PATH=%s/app.db\nSESSION_SECRET=%s\nADMIN_PASSWORD=%s\n' \
+        "$OPT_PORT" "$DATA_DIR" "$secret" "$admin" | write_root_file "$ENV_FILE" 0600
+    fi
   fi
   ok "Configuración escrita en ${ENV_FILE} (modo 600)."
-  info "Opcionales que puedes añadir: COOKIE_SECURE=1 (tras proxy TLS), RETENTION_DAYS=30, DEMO=1, MOCK=1."
+  if [ "$OPT_DEMO" = "1" ]; then
+    info "MODO DEMO activado (DEMO=1): datos de muestra; las mutaciones responden 403 demo_mode."
+    info "Para pasar a producción: quita DEMO=1 de ${ENV_FILE} y reinicia el servicio."
+  else
+    info "Opcionales que puedes añadir: COOKIE_SECURE=1 (tras proxy TLS), RETENTION_DAYS=30, DEMO=1, MOCK=1."
+  fi
 }
 
 # write_unit — unit basada en deploy/easyzfs.service del repo, con el usuario elegido.
@@ -966,6 +1002,18 @@ EOF
     journalctl -u easyzfs -f
     systemctl restart easyzfs
   Config: ${ENV_FILE}  ·  Datos: ${DATA_DIR}
+EOF
+  if [ "$OPT_DEMO" = "1" ]; then
+    cat <<EOF
+  MODO DEMO activo: pools y discos de muestra; nada se modifica (403 demo_mode).
+  Para usar tus discos reales: quita DEMO=1 de ${ENV_FILE} y reinicia.
+EOF
+  else
+    cat <<EOF
+  Para explorar primero con datos de muestra: añade DEMO=1 a ${ENV_FILE} y reinicia.
+EOF
+  fi
+  cat <<EOF
   Desinstalar: curl -fsSL https://raw.githubusercontent.com/gnacho/easyzfs/main/deploy/install.sh | bash -s -- --uninstall
 EOF
 }
@@ -1032,6 +1080,7 @@ parse_args() {
       --source=*)  OPT_SOURCE="${1#*=}"; shift ;;
       --port)     [ $# -ge 2 ] || die "--port requiere un valor"; OPT_PORT="$2"; PORT_FROM_FLAG=1; shift 2 ;;
       --port=*)    OPT_PORT="${1#*=}"; PORT_FROM_FLAG=1; shift ;;
+      --demo)      OPT_DEMO=1; shift ;;
       --root-mode) OPT_ROOT_MODE=1; shift ;;
       --uninstall) OPT_UNINSTALL=1; shift ;;
       --yes|-y)    OPT_YES=1; shift ;;
