@@ -15,6 +15,7 @@ import (
 
 	"easyzfs/internal/hub"
 	"easyzfs/internal/model"
+	"easyzfs/internal/push"
 	"easyzfs/internal/settings"
 )
 
@@ -23,9 +24,10 @@ var webhookClient = &http.Client{Timeout: 5 * time.Second}
 
 // Alerter evalúa umbrales y persiste/emite alertas.
 type Alerter struct {
-	db  *sql.DB
-	hub *hub.Hub
-	st  *settings.Store
+	db   *sql.DB
+	hub  *hub.Hub
+	st   *settings.Store
+	push *push.Sender // puede ser nil (push no configurado)
 }
 
 // New crea el Alerter.
@@ -33,10 +35,20 @@ func New(d *sql.DB, h *hub.Hub, st *settings.Store) *Alerter {
 	return &Alerter{db: d, hub: h, st: st}
 }
 
-// Raise inserta una alerta (si no hay otra idéntica sin reconocer) y la emite
-// por SSE. target es el destino navegable en la UI ("pools:tank",
-// "disks:nvme1n1", "tasks", "settings"; "" si no aplica).
+// SetPush conecta el sender Web Push (opcional; nil = sin notificaciones push).
+func (a *Alerter) SetPush(s *push.Sender) { a.push = s }
+
+// Raise inserta una alerta sin metadatos estructurados (kind "").
 func (a *Alerter) Raise(ctx context.Context, level, source, target, message string) {
+	a.RaiseKind(ctx, level, source, target, message, "", nil)
+}
+
+// RaiseKind inserta una alerta (si no hay otra idéntica sin reconocer) y la
+// emite por SSE. target es el destino navegable en la UI ("pools:tank",
+// "disks:nvme1n1", "tasks", "settings"; "" si no aplica). kind+params son los
+// metadatos estructurados (alerts.meta) que el sender push usa para componer
+// el texto i18n; message sigue en español (compat UI).
+func (a *Alerter) RaiseKind(ctx context.Context, level, source, target, message, kind string, params map[string]any) {
 	var exists int
 	err := a.db.QueryRowContext(ctx,
 		"SELECT 1 FROM alerts WHERE source=? AND message=? AND acked_at IS NULL LIMIT 1",
@@ -44,10 +56,16 @@ func (a *Alerter) Raise(ctx context.Context, level, source, target, message stri
 	if err == nil {
 		return // ya hay una idéntica activa
 	}
+	meta := ""
+	if kind != "" {
+		if raw, err := json.Marshal(map[string]any{"kind": kind, "params": params}); err == nil {
+			meta = string(raw)
+		}
+	}
 	now := time.Now().UTC()
 	res, err := a.db.ExecContext(ctx,
-		"INSERT INTO alerts(ts, level, source, target, message) VALUES (?,?,?,?,?)",
-		now.Format(time.RFC3339), level, source, target, message)
+		"INSERT INTO alerts(ts, level, source, target, message, meta) VALUES (?,?,?,?,?,?)",
+		now.Format(time.RFC3339), level, source, target, message, meta)
 	if err != nil {
 		log.Printf("alerts: insert: %v", err)
 		return
@@ -57,6 +75,11 @@ func (a *Alerter) Raise(ctx context.Context, level, source, target, message stri
 		"alert": model.Alert{ID: id, Ts: now, Level: level, Source: source, Target: target, Message: message},
 	})
 	a.notifyWebhook(level, source, target, message, now)
+	// Push (app cerrada): fire-and-forget; el sender decide a quién y nunca falla.
+	if a.push != nil && kind != "" {
+		go a.push.Notify(context.Background(),
+			push.Alert{Level: level, Source: source, Target: target, Kind: kind, Params: params})
+	}
 }
 
 // notifyWebhook envía la alerta al webhook de settings (si no está vacío) en
@@ -100,20 +123,25 @@ func (a *Alerter) EvaluatePools(ctx context.Context, pools []model.Pool) {
 		pct := int(p.UsedBytes * 100 / p.TotalBytes)
 		switch {
 		case pct >= st.CapCritPct:
-			a.Raise(ctx, "crit", "pool."+p.Name, "pools:"+p.Name,
-				fmt.Sprintf("Pool %s al %d%% de capacidad (crítico ≥ %d%%)", p.Name, pct, st.CapCritPct))
+			a.RaiseKind(ctx, "crit", "pool."+p.Name, "pools:"+p.Name,
+				fmt.Sprintf("Pool %s al %d%% de capacidad (crítico ≥ %d%%)", p.Name, pct, st.CapCritPct),
+				"pool_capacity", map[string]any{"pool": p.Name, "pct": pct, "threshold": st.CapCritPct})
 		case pct >= st.CapWarnPct:
-			a.Raise(ctx, "warn", "pool."+p.Name, "pools:"+p.Name,
-				fmt.Sprintf("Pool %s al %d%% de capacidad (aviso ≥ %d%%)", p.Name, pct, st.CapWarnPct))
+			a.RaiseKind(ctx, "warn", "pool."+p.Name, "pools:"+p.Name,
+				fmt.Sprintf("Pool %s al %d%% de capacidad (aviso ≥ %d%%)", p.Name, pct, st.CapWarnPct),
+				"pool_capacity", map[string]any{"pool": p.Name, "pct": pct, "threshold": st.CapWarnPct})
 		}
 		if p.Status == "DEGRADED" {
-			a.Raise(ctx, "crit", "pool."+p.Name, "pools:"+p.Name, "Pool "+p.Name+" DEGRADED")
+			a.RaiseKind(ctx, "crit", "pool."+p.Name, "pools:"+p.Name, "Pool "+p.Name+" DEGRADED",
+				"pool_status", map[string]any{"pool": p.Name, "status": "DEGRADED"})
 		} else if p.Status == "FAULTED" {
-			a.Raise(ctx, "crit", "pool."+p.Name, "pools:"+p.Name, "Pool "+p.Name+" FAULTED")
+			a.RaiseKind(ctx, "crit", "pool."+p.Name, "pools:"+p.Name, "Pool "+p.Name+" FAULTED",
+				"pool_status", map[string]any{"pool": p.Name, "status": "FAULTED"})
 		}
 		if st.NotifyScrubErrors && p.Scrub.State == "done" && p.Scrub.Errors > 0 {
-			a.Raise(ctx, "warn", "scrub."+p.Name, "pools:"+p.Name,
-				fmt.Sprintf("Scrub de %s terminó con %d errores", p.Name, p.Scrub.Errors))
+			a.RaiseKind(ctx, "warn", "scrub."+p.Name, "pools:"+p.Name,
+				fmt.Sprintf("Scrub de %s terminó con %d errores", p.Name, p.Scrub.Errors),
+				"scrub_errors", map[string]any{"pool": p.Name, "errors": p.Scrub.Errors})
 		}
 	}
 }
@@ -126,19 +154,22 @@ func (a *Alerter) EvaluateDisks(ctx context.Context, disks []model.Disk) {
 	}
 	for _, d := range disks {
 		if d.TempC != nil && int(*d.TempC) >= st.DiskTempC {
-			a.Raise(ctx, "warn", "disk."+d.Dev, "disks:"+d.Dev,
-				fmt.Sprintf("Disco %s a %.0f °C (umbral %d °C)", d.Dev, *d.TempC, st.DiskTempC))
+			a.RaiseKind(ctx, "warn", "disk."+d.Dev, "disks:"+d.Dev,
+				fmt.Sprintf("Disco %s a %.0f °C (umbral %d °C)", d.Dev, *d.TempC, st.DiskTempC),
+				"disk_temp", map[string]any{"dev": d.Dev, "temp": int(*d.TempC), "threshold": st.DiskTempC})
 		}
 		if !st.NotifySmartChange {
 			continue
 		}
 		switch d.Smart {
 		case "crit":
-			a.Raise(ctx, "crit", "smart."+d.Dev, "disks:"+d.Dev,
-				fmt.Sprintf("SMART crítico en %s: %s", d.Dev, d.SmartDetail))
+			a.RaiseKind(ctx, "crit", "smart."+d.Dev, "disks:"+d.Dev,
+				fmt.Sprintf("SMART crítico en %s: %s", d.Dev, d.SmartDetail),
+				"smart_status", map[string]any{"dev": d.Dev, "detail": d.SmartDetail})
 		case "warn":
-			a.Raise(ctx, "warn", "smart."+d.Dev, "disks:"+d.Dev,
-				fmt.Sprintf("SMART con avisos en %s: %s", d.Dev, d.SmartDetail))
+			a.RaiseKind(ctx, "warn", "smart."+d.Dev, "disks:"+d.Dev,
+				fmt.Sprintf("SMART con avisos en %s: %s", d.Dev, d.SmartDetail),
+				"smart_status", map[string]any{"dev": d.Dev, "detail": d.SmartDetail})
 		}
 	}
 }

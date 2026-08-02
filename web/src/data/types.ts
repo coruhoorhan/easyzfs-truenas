@@ -193,6 +193,14 @@ export type AppEvent =
   | { type: 'job.finished'; id: number; ok: boolean; detail: string }
   | { type: 'overview' };
 
+// --- Notificaciones push (Web Push) ---
+// Suscripción tal como la devuelve PushSubscription.toJSON() en el navegador.
+export interface PushSubscriptionJSON {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: { p256dh: string; auth: string };
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;

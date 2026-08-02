@@ -7,6 +7,7 @@ import { fmtBytes, fmtDuration, timeAgo } from '../ui/format';
 import { Seg, Select, Spinner, Badge } from '../components/ui';
 import { Logo, IconCode, IconList, IconHome, IconShield, IconDownload } from '../components/icons';
 import { useModal } from '../components/Modal';
+import { usePush } from '../data/push';
 import {
   ACCENTS, getAccent, setAccent, getDensity, setDensity,
 } from '../ui/theme';
@@ -44,6 +45,66 @@ function ThemePreview({ mode }: { mode: ThemeMode }) {
     <div className="tpreview" aria-hidden="true">
       {mode !== 'dark' && mini('l', '#f6f6f3', '#dcdcd4')}
       {mode !== 'light' && mini('d', '#0e1210', '#2a332d')}
+    </div>
+  );
+}
+
+// Sección "Notificaciones push": tarjeta explicativa ANTES del prompt nativo
+// (qué alertas llegarán y que requiere la app cerrada para notar el efecto).
+// El prompt nativo solo sale del gesto del botón "Activar alertas" (subscribe).
+// Estados: activadas (con desactivar), denied (instrucciones, NO re-pedir),
+// unsupported, iOS sin PWA (guía de instalación), demo y sin claves VAPID
+// (nota informativa sin botón).
+function PushSection() {
+  const { t } = useApp();
+  const { state, error, subscribe, unsubscribe } = usePush();
+
+  return (
+    <div className="sect">
+      <h2>{t('s_push')}</h2>
+      <div className="card pad">
+        <p style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('s_push_d')}</p>
+
+        {state === 'unknown' && (
+          <p style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('loading')}</p>
+        )}
+
+        {(state === 'idle' || state === 'subscribing' || state === 'error') && (
+          <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+            <button className="btn primary" disabled={state === 'subscribing'}
+              onClick={() => { void subscribe(); }}>
+              {state === 'subscribing' ? t('s_push_enabling') : t('s_push_enable')}
+            </button>
+          </div>
+        )}
+        {state === 'error' && (
+          <p className="form-err" role="alert">{t('s_push_error')}{error ? ` (${error})` : ''}</p>
+        )}
+
+        {state === 'subscribed' && (
+          <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+            <Badge tone="ok" dot={false}>{t('s_push_on')}</Badge>
+            <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('s_push_on_d')}</span>
+            <button className="btn sm" onClick={() => { void unsubscribe(); }}>{t('s_push_disable')}</button>
+          </div>
+        )}
+
+        {state === 'denied' && (
+          <p style={{ fontSize: 12.5, color: 'var(--warn)', marginTop: 10 }} role="alert">{t('s_push_denied')}</p>
+        )}
+        {state === 'unsupported' && (
+          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_unsupported')}</p>
+        )}
+        {state === 'needs-ios-install' && (
+          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_ios')}</p>
+        )}
+        {state === 'demo' && (
+          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_demo')}</p>
+        )}
+        {state === 'not-configured' && (
+          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_notcfg')}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -232,6 +293,9 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* ---- Notificaciones push (todos los usuarios) ---- */}
+      <PushSection />
 
       {msg && <p style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600, marginTop: 12 }} role="status">{msg}</p>}
       {err && <p className="form-err" role="alert">{err}</p>}

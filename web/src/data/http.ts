@@ -4,8 +4,8 @@ import { ApiError } from './types';
 import { notifyAuthExpired } from './events';
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, SessionUser, Settings, SnapshotGroup,
-  SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
+  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushSubscriptionJSON, SessionUser, Settings,
+  SnapshotGroup, SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 const BASE = '/api';
@@ -106,4 +106,9 @@ export class HttpProvider implements DataProvider {
   getDisks = () => get<Disk[]>('/disks');
   smartTest = (dev: string, type: 'short' | 'long') => post<void>(`/disks/${enc(dev)}/smart-test`, { type });
   poweroffDisk = (dev: string) => post<void>(`/disks/${enc(dev)}/poweroff`, {});
+
+  getPushVapidKey = () => get<{ publicKey: string }>('/push/vapid-public-key');
+  pushSubscribe = (sub: PushSubscriptionJSON, lang: 'es' | 'en') =>
+    post<void>('/push/subscribe', { endpoint: sub.endpoint, keys: sub.keys, lang });
+  pushUnsubscribe = (endpoint: string) => del<void>('/push/unsubscribe', { endpoint });
 }

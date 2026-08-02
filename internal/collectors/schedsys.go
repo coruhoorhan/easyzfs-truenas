@@ -156,12 +156,12 @@ func (c *SchedSysCollector) systemdTimers(ctx context.Context) []model.SysTimer 
 			continue
 		}
 		timers = append(timers, model.SysTimer{
-			Source:  "systemd",
-			Name:    t.Unit,
-			NextRun: sysdText(t.Next),
-			LastRun: sysdText(t.Last),
-			Command: t.Activates,
-			Origin:  "systemctl list-timers",
+			Source:   "systemd",
+			Name:     t.Unit,
+			NextRun:  sysdText(t.Next),
+			LastRun:  sysdText(t.Last),
+			Command:  t.Activates,
+			Origin:   "systemctl list-timers",
 			Editable: strings.HasSuffix(t.Unit, ".timer"),
 		})
 	}

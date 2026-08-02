@@ -222,15 +222,15 @@ type zpoolStatusJSON struct {
 		State     string              `json:"state"`
 		Vdevs     map[string]jsonVdev `json:"vdevs"`
 		ScanStats *struct {
-			Function    string  `json:"function"` // "SCRUB" | "RESILVER"
-			State       string  `json:"state"`
-			Percentage  float64 `json:"percentage"` // puede faltar en resilver
-			ToExamine   string  `json:"to_examine"`
-			Examined    string  `json:"examined"`
-			PassStart   flexInt `json:"pass_start"` // epoch
+			Function      string  `json:"function"` // "SCRUB" | "RESILVER"
+			State         string  `json:"state"`
+			Percentage    float64 `json:"percentage"` // puede faltar en resilver
+			ToExamine     string  `json:"to_examine"`
+			Examined      string  `json:"examined"`
+			PassStart     flexInt `json:"pass_start"` // epoch
 			TotalSecsLeft flexInt `json:"total_secs_left"`
-			Errors      flexInt `json:"errors"`
-			EndTime     string  `json:"end_time"`
+			Errors        flexInt `json:"errors"`
+			EndTime       string  `json:"end_time"`
 		} `json:"scan_stats"`
 	} `json:"pools"`
 }
@@ -544,10 +544,11 @@ func (c *ZpoolCollector) parseScanLine(line string, p *model.Pool) {
 var reUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // resolveVdevPaths rellena Vdev.Path con la ruta real del dispositivo:
-// - nombre normal ('sdb1') → '/dev/sdb1' si existe.
-// - nombre UUID (pools heredados que usan PARTUUID, p.ej. TrueNAS) →
-//   symlink /dev/disk/by-partuuid/<uuid>.
-// - nombre by-id ('nvme-XXXX', 'ata-XXXX-part1') → symlink /dev/disk/by-id/<nombre>.
+//   - nombre normal ('sdb1') → '/dev/sdb1' si existe.
+//   - nombre UUID (pools heredados que usan PARTUUID, p.ej. TrueNAS) →
+//     symlink /dev/disk/by-partuuid/<uuid>.
+//   - nombre by-id ('nvme-XXXX', 'ata-XXXX-part1') → symlink /dev/disk/by-id/<nombre>.
+//
 // Si nada resuelve (disco retirado), Path queda "".
 func (c *ZpoolCollector) resolveVdevPaths(_ context.Context, p *model.Pool) {
 	for j := range p.Vdevs {

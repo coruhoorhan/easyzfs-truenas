@@ -150,6 +150,25 @@ in nginx also add `proxy_buffering off` for `/api/events`.
 - `MOCK=1` — same mock data but mutations try to run the real commands (they will
   fail without ZFS). For frontend development without a ZFS host.
 
+## Push notifications
+
+EasyZFS can send **Web Push** alerts to your phone/browser **with the app closed**
+(pool capacity, DEGRADED/FAULTED pools, scrubs with errors, disk temperature,
+SMART warnings). With the app open you already get them live over SSE — push is
+only for closed-app devices, except critical alerts, which always notify.
+
+- **VAPID keys**: the installer generates them automatically on first install
+  (`easyzfs -generate-vapid`) and stores `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
+  and `VAPID_SUBJECT` in `/etc/easyzfs/env`. Reinstalls keep the existing keys
+  (regenerating them would invalidate every subscription). Without keys the
+  server simply starts with push disabled.
+- **HTTPS required**: Web Push only works on secure contexts. `localhost` works
+  as-is; for remote access put EasyZFS behind Nginx Proxy Manager with SSL.
+- **iOS/iPadOS**: push requires the PWA installed on the Home Screen
+  (Share → "Add to Home Screen"), then enable alerts from Settings.
+- Enable them per device in **Settings → Push notifications** ("Enable alerts"
+  button; the browser permission prompt appears only after that click).
+
 ## Configuration (env)
 
 | Var | Default | Description |
@@ -163,6 +182,9 @@ in nginx also add `proxy_buffering off` for `/api/events`.
 | `COOKIE_SECURE` | — | `1` = Secure cookie (behind TLS proxy) |
 | `EASYZFS_SUDO` | auto | `1`/`0` forces or disables `sudo -n` on zpool/zfs/smartctl/lsblk/crontab |
 | `RETENTION_DAYS` | `30` | Series retention (daily purge 03:30) |
+| `VAPID_PUBLIC_KEY` | — | Web Push public key (installer-generated) |
+| `VAPID_PRIVATE_KEY` | — | Web Push private key (server only; push disabled if missing) |
+| `VAPID_SUBJECT` | `mailto:easyzfs@localhost` | VAPID contact (`mailto:`, required by Safari) |
 
 ## Job schedule format
 

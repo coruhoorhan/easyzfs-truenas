@@ -781,10 +781,14 @@ configure_env() {
 
   # Reutilizar secretos y puerto existentes (idempotencia en reinstalaciones)
   local existing_secret="" existing_admin="" existing_port=""
+  local existing_vapid_pub="" existing_vapid_priv="" existing_vapid_sub=""
   if [ "$DRY_RUN" != "1" ] && [ -r "$ENV_FILE" ]; then
     existing_secret="$(sed -n 's/^SESSION_SECRET=//p' "$ENV_FILE" | head -1)"
     existing_admin="$(sed -n 's/^ADMIN_PASSWORD=//p' "$ENV_FILE" | head -1)"
     existing_port="$(sed -n 's/^LISTEN_ADDR=://p' "$ENV_FILE" | head -1)"
+    existing_vapid_pub="$(sed -n 's/^VAPID_PUBLIC_KEY=//p' "$ENV_FILE" | head -1)"
+    existing_vapid_priv="$(sed -n 's/^VAPID_PRIVATE_KEY=//p' "$ENV_FILE" | head -1)"
+    existing_vapid_sub="$(sed -n 's/^VAPID_SUBJECT=//p' "$ENV_FILE" | head -1)"
   fi
   # Prioridad del puerto: --port > puerto del env existente > defecto (8080)
   if [ "$PORT_FROM_FLAG" = "0" ] && [ -n "$existing_port" ]; then
@@ -859,18 +863,55 @@ configure_env() {
     fi
   fi
 
+  # Claves VAPID (notificaciones Web Push): se generan UNA vez con el binario
+  # recién instalado (-generate-vapid). Idempotente: si ya existen en el env
+  # se conservan — regenerarlas invalidaría todas las suscripciones push.
+  local vapid_pub="$existing_vapid_pub" vapid_priv="$existing_vapid_priv"
+  local vapid_sub="$existing_vapid_sub"
+  [ -z "$vapid_sub" ] && vapid_sub="mailto:easyzfs@localhost"
+  if [ -z "$vapid_priv" ]; then
+    if [ "$DRY_RUN" = "1" ]; then
+      vapid_pub="dry-run-vapid-public"
+      vapid_priv="dry-run-vapid-private"
+    else
+      local vapid_keys=""
+      if vapid_keys="$("${SUDO[@]}" "$INSTALL_BIN" -generate-vapid 2>/dev/null)"; then
+        vapid_pub="$(printf '%s\n' "$vapid_keys" | sed -n 's/^VAPID_PUBLIC_KEY=//p' | head -1)"
+        vapid_priv="$(printf '%s\n' "$vapid_keys" | sed -n 's/^VAPID_PRIVATE_KEY=//p' | head -1)"
+      fi
+      if [ -z "$vapid_priv" ]; then
+        warn "No se pudieron generar las claves VAPID: push desactivado (el servicio arrancará igual; añade VAPID_* a ${ENV_FILE} a mano)."
+      fi
+    fi
+  else
+    info "Claves VAPID ya presentes en ${ENV_FILE}: se conservan."
+  fi
+
+  # OJO: $(...) elimina los \n finales; por eso el contenido se compone con
+  # saltos de línea literales y se escribe con un único printf '%s\n'.
+  local env_content="LISTEN_ADDR=:${OPT_PORT}
+DB_PATH=${DATA_DIR}/app.db
+SESSION_SECRET=${secret}
+ADMIN_PASSWORD=${admin}"
+  if [ -n "$vapid_priv" ]; then
+    env_content+="
+VAPID_PUBLIC_KEY=${vapid_pub}
+VAPID_PRIVATE_KEY=${vapid_priv}
+VAPID_SUBJECT=${vapid_sub}"
+  fi
+  if [ "$OPT_DEMO" = "1" ]; then
+    env_content+="
+DEMO=1"
+  fi
+
   if [ "$DRY_RUN" = "1" ]; then
     info "[DRY-RUN] escribiría ${ENV_FILE} (modo 0600):"
     printf '    %s\n' "LISTEN_ADDR=:${OPT_PORT}" "DB_PATH=${DATA_DIR}/app.db" \
-      "SESSION_SECRET=***" "ADMIN_PASSWORD=***" "$( [ "$OPT_DEMO" = "1" ] && echo 'DEMO=1' || true)"
+      "SESSION_SECRET=***" "ADMIN_PASSWORD=***" \
+      "VAPID_PUBLIC_KEY=***" "VAPID_PRIVATE_KEY=***" "VAPID_SUBJECT=${vapid_sub}" \
+      "$(if [ "$OPT_DEMO" = "1" ]; then echo 'DEMO=1'; fi)"
   else
-    if [ "$OPT_DEMO" = "1" ]; then
-      printf 'LISTEN_ADDR=:%s\nDB_PATH=%s/app.db\nSESSION_SECRET=%s\nADMIN_PASSWORD=%s\nDEMO=1\n' \
-        "$OPT_PORT" "$DATA_DIR" "$secret" "$admin" | write_root_file "$ENV_FILE" 0600
-    else
-      printf 'LISTEN_ADDR=:%s\nDB_PATH=%s/app.db\nSESSION_SECRET=%s\nADMIN_PASSWORD=%s\n' \
-        "$OPT_PORT" "$DATA_DIR" "$secret" "$admin" | write_root_file "$ENV_FILE" 0600
-    fi
+    printf '%s\n' "$env_content" | write_root_file "$ENV_FILE" 0600
   fi
   ok "Configuración escrita en ${ENV_FILE} (modo 600)."
   if [ "$OPT_DEMO" = "1" ]; then
