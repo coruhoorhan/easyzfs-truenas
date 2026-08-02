@@ -43,10 +43,11 @@ label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin:12p
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 
 /* ---------- layout ---------- */
-.app-shell{max-width:1180px;margin:0 auto;display:flex;min-height:100vh}
-/* pantallas muy anchas: aprovechar el ancho (pools a 2 columnas) */
+/* El contenido aprovecha TODO el ancho de la ventana (regla del usuario
+   2-Ago-2026: nada de columna centrada con márgenes vacíos en desktop) */
+.app-shell{display:flex;min-height:100vh}
+/* pantallas muy anchas: pools a 2 columnas */
 @media(min-width:1500px){
-  .app-shell{max-width:1560px}
   .grid.pools{grid-template-columns:1fr 1fr !important;align-items:start}
 }
 aside.sidebar{
@@ -84,7 +85,7 @@ aside.sidebar nav a:hover:not(.active){background:var(--surface2)}
 }
 .sideactions a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .sideactions a:hover:not(.active){background:var(--surface2)}
-.iconbtn.fold{flex-shrink:0;border:1px solid var(--border)}
+.sideactions .iconbtn{flex-shrink:0;border:1px solid var(--border)}
 
 /* sidebar colapsado a raíl de iconos (64px, manual; persiste en localStorage) */
 aside.sidebar.collapsed{width:64px;padding:22px 8px;align-items:center}
@@ -136,6 +137,9 @@ main.main{flex:1;padding:20px 18px calc(86px + env(safe-area-inset-bottom));min-
 .bottomnav svg{width:22px;height:22px}
 /* Desktop: sidebar visible, bottom-nav oculta (después de las reglas base por especificidad) */
 @media(min-width:860px){ aside.sidebar{display:flex;flex-direction:column} main.main{padding:28px 34px 40px} .bottomnav{display:none} }
+/* El toggle de tema del topbar solo aplica en móvil; en desktop vive en el
+   pie del sidebar (patrón webapp-shell: [tema | Ajustes | plegar]) */
+@media(min-width:860px){ .head-actions .themebtn{display:none} }
 
 /* ---------- header ---------- */
 header.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px}

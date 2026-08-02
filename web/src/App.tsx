@@ -199,6 +199,10 @@ function Shell() {
               )}
             </button>
             <div className="sideactions">
+              <button type="button" className="iconbtn" onClick={toggleTheme}
+                aria-label={t('a11y_theme')} title={t('a11y_theme')}>
+                {themeEff === 'dark' ? <IconSun /> : <IconMoon />}
+              </button>
               <a href="#/settings" className={active === 'settings' ? 'active' : ''}
                 aria-current={active === 'settings' ? 'page' : undefined}
                 title={collapsed ? t('settings' as never) : undefined}>
@@ -242,7 +246,7 @@ function Shell() {
                 <IconBell />
                 {hasPending && <span className="ping" />}
               </button>
-              <button className="iconbtn" title={t('a11y_theme')} aria-label={t('a11y_theme')} onClick={toggleTheme}>
+              <button className="iconbtn themebtn" title={t('a11y_theme')} aria-label={t('a11y_theme')} onClick={toggleTheme}>
                 {themeEff === 'dark' ? <IconSun /> : <IconMoon />}
               </button>
               {showAlerts && <AlertsPanel onClose={() => setShowAlerts(false)} />}
