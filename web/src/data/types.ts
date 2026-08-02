@@ -40,6 +40,25 @@ export interface Settings {
   webhook: string;
   notify_scrub_errors: boolean;
   notify_smart_change: boolean;
+  backup_enabled: boolean;
+  backup_freq_hours: number;
+  backup_retention_days: number;
+}
+
+// Copia de seguridad de la BD (GET /api/backup/status)
+export interface BackupFile {
+  file: string;
+  ts: string;
+  bytes: number;
+}
+export interface BackupStatus {
+  enabled: boolean;
+  freq_hours: number;
+  retention_days: number;
+  running: boolean;
+  last: BackupFile | null;
+  next_run: string | null;
+  dir: string;
 }
 
 export type AlertLevel = 'info' | 'warn' | 'crit';

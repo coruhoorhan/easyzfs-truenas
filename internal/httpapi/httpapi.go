@@ -15,6 +15,7 @@ import (
 	"easyzfs/internal/actions"
 	"easyzfs/internal/alerts"
 	"easyzfs/internal/auth"
+	"easyzfs/internal/backup"
 	"easyzfs/internal/collectors"
 	"easyzfs/internal/config"
 	"easyzfs/internal/hub"
@@ -40,6 +41,7 @@ type Server struct {
 	jstore     *scheduler.Store
 	h          *hub.Hub
 	push       *push.Sender
+	backup     *backup.Store
 	started    time.Time
 	version    string
 	build      string
@@ -64,6 +66,7 @@ type Deps struct {
 	Jobs       *scheduler.Store
 	Hub        *hub.Hub
 	Push       *push.Sender
+	Backup     *backup.Store
 	Version    string
 	Build      string
 	ZFSVersion string
@@ -76,6 +79,7 @@ func NewServer(d Deps) *Server {
 		alerter: d.Alerter, settings: d.Settings,
 		pools: d.Pools, disks: d.Disks, sysTimers: d.SysTimers,
 		act: d.Actions, sched: d.Sched, jstore: d.Jobs, h: d.Hub, push: d.Push,
+		backup: d.Backup,
 		started: time.Now(), version: d.Version, build: d.Build, zfsVersion: d.ZFSVersion,
 		loginLimiter: newLoginLimiter(),
 	}
@@ -148,6 +152,12 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("PUT /api/push/preferences", s.putPushPreferences)
 	a.HandleFunc("GET /api/push/quiet-hours", s.getPushQuietHours)
 	a.HandleFunc("PUT /api/push/quiet-hours", s.putPushQuietHours)
+
+	// Copia de seguridad de la BD (solo admin)
+	a.HandleFunc("GET /api/backup/status", s.auth.RequireAdmin(s.backupStatus))
+	a.HandleFunc("POST /api/backup/run", s.auth.RequireAdmin(s.backupRun))
+	a.HandleFunc("GET /api/backup/download", s.auth.RequireAdmin(s.backupDownload))
+	a.HandleFunc("POST /api/backup/import", s.auth.RequireAdmin(s.backupImport))
 	// SSE (con el usuario de la sesión para la regla no-duplicar push/SSE)
 	a.Handle("GET /api/events", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.h.ServeSSE(w, r, actor(r))

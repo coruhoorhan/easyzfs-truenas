@@ -17,6 +17,10 @@ type Settings struct {
 	Webhook           string `json:"webhook"`
 	NotifyScrubErrors bool   `json:"notify_scrub_errors"`
 	NotifySmartChange bool   `json:"notify_smart_change"`
+	// Copia de seguridad automática de la BD (VACUUM INTO en <datadir>/backups)
+	BackupEnabled       bool `json:"backup_enabled"`
+	BackupFreqHours     int  `json:"backup_freq_hours"`     // 1/6/12/24/48/72
+	BackupRetentionDays int  `json:"backup_retention_days"` // 1-30
 }
 
 // Defaults — ajustes de fábrica.
@@ -29,6 +33,9 @@ func Defaults() Settings {
 		Webhook:           "",
 		NotifyScrubErrors: true,
 		NotifySmartChange: true,
+		BackupEnabled:       true,
+		BackupFreqHours:     24,
+		BackupRetentionDays: 3,
 	}
 }
 
@@ -81,6 +88,14 @@ func (s *Store) Save(ctx context.Context, st Settings) error {
 	}
 	if st.DiskTempC < 20 || st.DiskTempC > 90 {
 		st.DiskTempC = 50
+	}
+	switch st.BackupFreqHours {
+	case 1, 6, 12, 24, 48, 72:
+	default:
+		st.BackupFreqHours = 24
+	}
+	if st.BackupRetentionDays < 1 || st.BackupRetentionDays > 30 {
+		st.BackupRetentionDays = 3
 	}
 	raw, err := json.Marshal(st)
 	if err != nil {

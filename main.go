@@ -24,6 +24,7 @@ import (
 	"easyzfs/internal/actions"
 	"easyzfs/internal/alerts"
 	"easyzfs/internal/auth"
+	"easyzfs/internal/backup"
 	"easyzfs/internal/collectors"
 	"easyzfs/internal/config"
 	"easyzfs/internal/db"
@@ -98,6 +99,10 @@ func main() {
 	jobStore := scheduler.NewStore(database)
 	sched := scheduler.New(jobStore, act, h, providers.Disks.Disks)
 
+	// Copia de seguridad de la BD: colector por frecuencia horaria + handlers.
+	backupStore := backup.New(database, cfg.DBPath, stStore)
+	go backupStore.RunLoop(ctx)
+
 	// Versión de OpenZFS del host (una vez, al arranque).
 	zfsVersion := "mock"
 	if !cfg.Mock {
@@ -111,6 +116,7 @@ func main() {
 		Users: userStore, Alerter: alerter, Settings: stStore,
 		Pools: providers.Pools, Disks: providers.Disks, SysTimers: providers.SysTimers,
 		Actions: act, Sched: sched, Jobs: jobStore, Hub: h, Push: pushSender,
+		Backup: backupStore,
 		Version: version, Build: build, ZFSVersion: zfsVersion,
 	})
 
