@@ -16,11 +16,13 @@ import (
 
 // User — vista pública de un usuario (contrato GET /api/users).
 type User struct {
-	Name      string     `json:"user"`
-	Role      string     `json:"role"` // "admin" | "user"
-	Language  string     `json:"language"` // "auto" | "es" | "en"
-	LastLogin *time.Time `json:"last_login"`
-	Sessions  int        `json:"sessions"`
+	Name        string     `json:"user"`
+	Role        string     `json:"role"`    // "admin" | "user"
+	Language    string     `json:"language"` // "auto" | "es" | "en"
+	DisplayName string     `json:"display_name"` // nombre visible (saludos); vacío = username
+	Email       string     `json:"email"`        // opcional
+	LastLogin   *time.Time `json:"last_login"`
+	Sessions    int        `json:"sessions"`
 }
 
 // Errores de dominio (mapeados a códigos HTTP en httpapi).
@@ -30,11 +32,16 @@ var (
 	ErrInvalidName   = errors.New("nombre de usuario inválido")
 	ErrInvalidRole   = errors.New("rol inválido (admin|user)")
 	ErrInvalidLang   = errors.New("idioma inválido (auto|es|en)")
+	ErrInvalidEmail  = errors.New("email inválido")
 	ErrWeakPassword  = errors.New("la contraseña debe tener al menos 8 caracteres")
 	ErrBadCredential = errors.New("credenciales incorrectas")
 )
 
 var nameRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,32}$`)
+
+// emailRe — validación pragmática: algo@algo.dominio (el email es opcional y
+// solo informativo; no se envía correo, no hace falta RFC completa).
+var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]{2,}$`)
 
 // Store — acceso a la tabla users.
 type Store struct {
@@ -128,7 +135,7 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 // List devuelve todos los usuarios con su nº de sesiones activas.
 func (s *Store) List(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.user, u.role, u.language, u.last_login,
+		SELECT u.user, u.role, u.language, u.display_name, u.email, u.last_login,
 		       (SELECT COUNT(*) FROM sessions se WHERE se.user=u.user AND se.expires_at > datetime('now'))
 		FROM users u ORDER BY u.user`)
 	if err != nil {
@@ -139,7 +146,7 @@ func (s *Store) List(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var last sql.NullString
-		if err := rows.Scan(&u.Name, &u.Role, &u.Language, &last, &u.Sessions); err != nil {
+		if err := rows.Scan(&u.Name, &u.Role, &u.Language, &u.DisplayName, &u.Email, &last, &u.Sessions); err != nil {
 			return nil, err
 		}
 		if last.Valid && last.String != "" {
@@ -156,8 +163,8 @@ func (s *Store) Get(ctx context.Context, name string) (*User, error) {
 	var u User
 	var last sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		"SELECT user, role, language, last_login FROM users WHERE user=?", name).
-		Scan(&u.Name, &u.Role, &u.Language, &last)
+		"SELECT user, role, language, display_name, email, last_login FROM users WHERE user=?", name).
+		Scan(&u.Name, &u.Role, &u.Language, &u.DisplayName, &u.Email, &last)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -221,6 +228,30 @@ func (s *Store) RoleOf(ctx context.Context, name string) (string, error) {
 		return "", ErrNotFound
 	}
 	return role, err
+}
+
+// SetProfile actualiza el nombre visible y el email del usuario.
+// displayName: libre, recortado a 64 chars; vacío = mostrar el username.
+// email: opcional; si no está vacío debe parecer un email.
+func (s *Store) SetProfile(ctx context.Context, name, displayName, email string) error {
+	displayName = strings.TrimSpace(displayName)
+	email = strings.TrimSpace(email)
+	if len(displayName) > 64 {
+		displayName = displayName[:64]
+	}
+	if email != "" && (len(email) > 254 || !emailRe.MatchString(email)) {
+		return ErrInvalidEmail
+	}
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE users SET display_name=?, email=? WHERE user=?", displayName, email, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetLanguage fija el idioma del usuario ('auto'|'es'|'en').

@@ -181,17 +181,44 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// me — GET /api/me → {user, role, language} o 401 (401 ya lo da el middleware).
+// me — GET /api/me → {user, role, language, display_name, email}
+// (401 ya lo da el middleware).
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	lang := "auto"
+	displayName, email := "", ""
 	if u, err := s.users.Get(r.Context(), auth.UserFromContext(r.Context())); err == nil {
 		lang = u.Language
+		displayName = u.DisplayName
+		email = u.Email
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"user":     auth.UserFromContext(r.Context()),
-		"role":     auth.RoleFromContext(r.Context()),
-		"language": lang,
+		"user":         auth.UserFromContext(r.Context()),
+		"role":         auth.RoleFromContext(r.Context()),
+		"language":     lang,
+		"display_name": displayName,
+		"email":        email,
 	})
+}
+
+// putMyProfile — PUT /api/me/profile {display_name, email} → 204.
+func (s *Server) putMyProfile(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		DisplayName string `json:"display_name"`
+		Email       string `json:"email"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	user := auth.UserFromContext(r.Context())
+	if err := s.users.SetProfile(r.Context(), user, body.DisplayName, body.Email); err != nil {
+		if errors.Is(err, users.ErrInvalidEmail) {
+			writeErr(w, http.StatusBadRequest, "invalid_email", err.Error())
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // putMyLanguage — PUT /api/me/language {language} → 204.
