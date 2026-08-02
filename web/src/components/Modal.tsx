@@ -2,7 +2,6 @@
 // - Escape cierra, clic en el overlay cierra, foco atrapado dentro del modal.
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useApp } from '../ui/store';
 
 export interface ModalState {
   name: string;
@@ -32,11 +31,11 @@ export function useModal(): ModalCtx {
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-// Contenedor visual del modal con gestión de foco y teclado
-export function ModalBox({ children, onClose, wide }: {
-  children: ReactNode; onClose: () => void; wide?: boolean;
+// Contenedor visual del modal con gestión de foco y teclado.
+// label = título del diálogo (el mismo texto del h3): nombre accesible del role="dialog".
+export function ModalBox({ children, onClose, wide, label }: {
+  children: ReactNode; onClose: () => void; wide?: boolean; label: string;
 }) {
-  const { t } = useApp();
   const ref = useRef<HTMLDivElement>(null);
   const prevFocus = useRef<Element | null>(null);
 
@@ -70,7 +69,7 @@ export function ModalBox({ children, onClose, wide }: {
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" role="dialog" aria-modal="true" ref={ref} tabIndex={-1}
         style={wide ? { maxWidth: 620 } : undefined}
-        aria-label={t('a11y_close_modal')}>
+        aria-label={label}>
         {children}
       </div>
     </div>

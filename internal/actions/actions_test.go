@@ -1,0 +1,81 @@
+// actions_test.go — acciones sobre pools con binarios falsos en PATH
+// (fake zpool registra sus argumentos; fake sudo los pasa tal cual).
+package actions
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"easyzfs/internal/db"
+)
+
+// newTestService crea el servicio con SQLite temporal (audit_log real) y un
+// directorio de binarios falsos al frente del PATH. Devuelve el servicio y la
+// ruta del log donde el fake zpool anota cada invocación.
+func newTestService(t *testing.T) (*Service, string) {
+	t.Helper()
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "zpool-args.log")
+
+	// zpool falso: anota los args y sale 0.
+	zpool := "#!/bin/sh\necho \"$@\" >> " + logFile + "\nexit 0\n"
+	// sudo falso: executil antepone 'sudo -n' cuando no somos root; lo ignora.
+	sudo := "#!/bin/sh\nwhile [ $# -gt 0 ]; do case \"$1\" in -*) shift;; *) break;; esac; done\nexec \"$@\"\n"
+	for name, body := range map[string]string{"zpool": zpool, "sudo": sudo} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	d, err := db.Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := db.Migrate(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	return NewService(d), logFile
+}
+
+func TestTrim(t *testing.T) {
+	svc, logFile := newTestService(t)
+
+	if err := svc.Trim(context.Background(), "tester", "tank"); err != nil {
+		t.Fatalf("Trim: %v", err)
+	}
+	out, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("el fake zpool no registró la llamada: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != "trim tank" {
+		t.Fatalf("args de zpool = %q, esperaba %q", got, "trim tank")
+	}
+
+	// Auditoría: acción pool.trim con actor, sin confirm (no destructiva).
+	var action, actor string
+	var confirmed int
+	err = svc.db.QueryRow(
+		"SELECT action, actor, confirmed FROM audit_log WHERE target='tank'").Scan(&action, &actor, &confirmed)
+	if err != nil {
+		t.Fatalf("audit_log: %v", err)
+	}
+	if action != "pool.trim" || actor != "tester" || confirmed != 0 {
+		t.Fatalf("audit = (%q,%q,%d), esperaba (pool.trim,tester,0)", action, actor, confirmed)
+	}
+}
+
+func TestTrimNombreInvalido(t *testing.T) {
+	svc, _ := newTestService(t)
+	for _, bad := range []string{"", "tan k", "tank;rm -rf /", "../etc", strings.Repeat("a", 65)} {
+		if err := svc.Trim(context.Background(), "tester", bad); !errors.Is(err, ErrInvalidName) {
+			t.Errorf("Trim(%q) = %v, esperaba ErrInvalidName", bad, err)
+		}
+	}
+}

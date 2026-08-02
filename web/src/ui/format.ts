@@ -1,7 +1,20 @@
-// Formato numérico es-ES (coma decimal) y unidades IEC (GiB/TiB).
-const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
-const nf2 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 });
-const nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+// Formato numérico/fechas según el idioma activo (es-ES/en-US vía getCurrentLang)
+// y unidades IEC (GiB/TiB). Los textos relativos usan el diccionario i18n.
+import { getCurrentLang, t as translate } from './i18n';
+
+// Locale Intl derivado del idioma de la UI (no hardcodeado)
+function locale(): string {
+  return getCurrentLang() === 'en' ? 'en-US' : 'es-ES';
+}
+
+// Formatters cacheados por idioma+decimales (se recrean al cambiar de idioma)
+const nfCache = new Map<string, Intl.NumberFormat>();
+function nf(maxFrac: number): Intl.NumberFormat {
+  const key = `${locale()}:${maxFrac}`;
+  let f = nfCache.get(key);
+  if (!f) { f = new Intl.NumberFormat(locale(), { maximumFractionDigits: maxFrac }); nfCache.set(key, f); }
+  return f;
+}
 
 const KiB = 1024, MiB = KiB ** 2, GiB = KiB ** 3, TiB = KiB ** 4;
 
@@ -9,38 +22,42 @@ const KiB = 1024, MiB = KiB ** 2, GiB = KiB ** 3, TiB = KiB ** 4;
 export function fmtBytes(b: number): string {
   if (!b) return '0 B';
   const abs = Math.abs(b);
-  if (abs >= TiB) return `${nf2.format(b / TiB)} TiB`;
-  if (abs >= GiB) return `${abs / GiB >= 100 ? nf0.format(b / GiB) : nf1.format(b / GiB)} GiB`;
-  if (abs >= MiB) return `${nf0.format(b / MiB)} MiB`;
-  if (abs >= KiB) return `${nf0.format(b / KiB)} KiB`;
+  if (abs >= TiB) return `${nf(2).format(b / TiB)} TiB`;
+  if (abs >= GiB) return `${abs / GiB >= 100 ? nf(0).format(b / GiB) : nf(1).format(b / GiB)} GiB`;
+  if (abs >= MiB) return `${nf(0).format(b / MiB)} MiB`;
+  if (abs >= KiB) return `${nf(0).format(b / KiB)} KiB`;
   return `${b} B`;
 }
 
-// "5,2 de 8,1 TiB" (misma unidad para ambos valores)
-export function fmtBytesPair(used: number, total: number): string {
-  // Grandes volúmenes con 1 decimal ("4,9 de 7,2 TiB"), pequeños con 2 ("0,31 de 0,93 TiB")
-  if (total >= 2 * TiB) return `${nf1.format(used / TiB)} de ${nf1.format(total / TiB)} TiB`;
-  if (total >= TiB / 2) return `${nf2.format(used / TiB)} de ${nf2.format(total / TiB)} TiB`;
-  if (total >= GiB) return `${nf0.format(used / GiB)} de ${nf0.format(total / GiB)} GiB`;
-  return `${fmtBytes(used)} de ${fmtBytes(total)}`;
+// Par usado/total con la misma unidad: { used: '4,9', total: '7,2 TiB' }.
+// Quien lo muestra compone con la clave i18n ('de'/'of'): nada de split(' de ').
+export function fmtBytesPair(used: number, total: number): { used: string; total: string } {
+  // Grandes volúmenes con 1 decimal, pequeños con 2 ("0,31" de "0,93 TiB")
+  if (total >= 2 * TiB) return { used: nf(1).format(used / TiB), total: `${nf(1).format(total / TiB)} TiB` };
+  if (total >= TiB / 2) return { used: nf(2).format(used / TiB), total: `${nf(2).format(total / TiB)} TiB` };
+  if (total >= GiB) return { used: nf(0).format(used / GiB), total: `${nf(0).format(total / GiB)} GiB` };
+  return { used: fmtBytes(used), total: fmtBytes(total) };
 }
 
 export function fmtPct(p: number): string {
-  return `${nf0.format(p)}%`;
+  return `${nf(0).format(p)}%`;
 }
 
 export function fmtInt(n: number): string {
-  return nf0.format(n);
+  return nf(0).format(n);
 }
 
 // "1,42x" para ratios de compresión
 export function fmtRatio(r: number): string {
-  return `${nf2.format(r)}x`;
+  return `${nf(2).format(r)}x`;
 }
 
-// Tiempo relativo en español: "hace 6 días", "hoy 06:00", "mañana 06:00"
-export function timeAgo(ts: string, t?: (k: string) => string): string {
-  const tt = t ?? ((k: string) => k);
+type TFunc = (k: string, vars?: Record<string, string | number>) => string;
+
+// Tiempo relativo según idioma: "hace 6 días"/"6 days ago", "hoy 06:00", "mañana 06:00".
+// Las plantillas (ago_tpl/in_tpl) llevan el orden de palabras de cada idioma.
+export function timeAgo(ts: string, t?: TFunc): string {
+  const tt: TFunc = t ?? (translate as TFunc);
   const d = new Date(ts);
   if (isNaN(d.getTime())) return '—';
   const now = new Date();
@@ -49,34 +66,34 @@ export function timeAgo(ts: string, t?: (k: string) => string): string {
     a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   if (diffMs >= 0 && diffMs < 60_000) return tt('now');
-  if (diffMs >= 0 && diffMs < 3600_000) return `${tt('ago_prefix')} ${Math.floor(diffMs / 60_000)} min`;
-  if (sameDay(d, now)) return diffMs >= 0 ? `${tt('today')} ${hm}` : `${tt('today')} ${hm}`;
+  if (diffMs >= 0 && diffMs < 3600_000) return tt('ago_tpl', { x: `${Math.floor(diffMs / 60_000)} min` });
+  if (sameDay(d, now)) return `${tt('today')} ${hm}`;
   const tomorrow = new Date(now.getTime() + 86400_000);
   if (sameDay(d, tomorrow)) return `${tt('tomorrow')} ${hm}`;
   const yesterday = new Date(now.getTime() - 86400_000);
   if (sameDay(d, yesterday)) return `${tt('yesterday')} ${hm}`;
   const days = Math.floor(Math.abs(diffMs) / 86400_000);
-  if (diffMs > 0 && days < 30) return `${tt('ago_prefix')} ${days} ${days === 1 ? tt('day') : tt('days')}`;
-  if (diffMs < 0 && days < 30) return `${tt('in_prefix')} ${days} ${days === 1 ? tt('day') : tt('days')}`;
-  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  if (diffMs > 0 && days < 30) return tt('ago_tpl', { x: `${days} ${days === 1 ? tt('day') : tt('days')}` });
+  if (diffMs < 0 && days < 30) return tt('in_tpl', { x: `${days} ${days === 1 ? tt('day') : tt('days')}` });
+  return d.toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
 }
 
-// Fecha corta: "1 ago 06:00"
+// Fecha corta: "1 ago 06:00" / "Aug 1 06:00" (según idioma)
 export function fmtDateTime(ts: string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return '—';
-  const date = d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  const date = d.toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   return `${date} ${hm}`;
 }
 
-// Segundos → "17 días 4 h" / "12 min"
+// Segundos → "17 días 4 h" / "17 days 4 h" / "12 min"
 export function fmtDuration(sec: number): string {
   if (sec <= 0) return '0 min';
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `${d} ${d === 1 ? 'día' : 'días'}${h > 0 ? ` ${h} h` : ''}`;
+  if (d > 0) return `${d} ${translate(d === 1 ? 'fmt_day' : 'fmt_days')}${h > 0 ? ` ${h} h` : ''}`;
   if (h > 0) return `${h} h ${m} min`;
   return `${m} min`;
 }

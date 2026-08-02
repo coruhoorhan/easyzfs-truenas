@@ -24,7 +24,7 @@ function AlertRow({ a }: { a: Alert }) {
       <div className="ico" style={{ background: `var(--${tone}-soft)`, color: `var(--${tone})` }}>{ico}</div>
       <div className="grow" style={{ flex: 1, minWidth: 0 }}>
         <b>{a.message}</b>
-        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 2 }}>{a.source}</div>
+        <div className="muted" style={{ marginTop: 2 }}>{a.source}</div>
       </div>
       <span style={{ fontSize: 11.5, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{timeAgo(a.ts, t)}</span>
       {view && <span className="chev"><IconChev /></span>}
@@ -56,6 +56,7 @@ export default function Dashboard() {
 
   const o = ov.data;
   const pct = o && o.cap_total_bytes > 0 ? (o.cap_used_bytes / o.cap_total_bytes) * 100 : 0;
+  const cap = o ? fmtBytesPair(o.cap_used_bytes, o.cap_total_bytes) : null;
 
   return (
     <div className="view">
@@ -66,8 +67,8 @@ export default function Dashboard() {
             value={`${o.pools_total} pools`}
             foot={o.pools_online === o.pools_total ? t('kpi_health_ok') : t('kpi_health_warn')} />
           <KpiCard label={t('kpi_cap')}
-            value={fmtBytesPair(o.cap_used_bytes, o.cap_total_bytes).split(' de ')[0]}
-            small={`${t('pool_of')} ${fmtBytesPair(o.cap_used_bytes, o.cap_total_bytes).split(' de ')[1]}`}
+            value={cap!.used}
+            small={`${t('pool_of')} ${cap!.total}`}
             foot={`${fmtPct(pct)} ${t('kpi_cap_used')}`} meter={pct} />
           <KpiCard label={t('kpi_snaps')} value={fmtInt(o.snapshots_total)}
             foot={`${o.jobs_active} ${t('kpi_snaps_foot')}`} />

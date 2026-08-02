@@ -4,13 +4,19 @@
 //	GET    /api/push/vapid-public-key  → {"publicKey":"…"} (503 si no configurado)
 //	POST   /api/push/subscribe         → upsert por endpoint
 //	DELETE /api/push/unsubscribe       → borra solo suscripciones del propio usuario
+//	GET    /api/push/preferences       → los 5 tipos con su enabled (default true)
+//	PUT    /api/push/preferences       → upsert {tipo, enabled} (400 invalid_tipo)
+//	GET    /api/push/quiet-hours       → {enabled, start, end, tz} (null si off)
+//	PUT    /api/push/quiet-hours       → upsert {enabled, start, end} (400 invalid_hours)
 package httpapi
 
 import (
+	"encoding/base64"
 	"net/http"
 	"strings"
 
 	"easyzfs/internal/auth"
+	"easyzfs/internal/push"
 )
 
 // getPushVapidKey — clave pública VAPID para pushManager.subscribe().
@@ -25,14 +31,15 @@ func (s *Server) getPushVapidKey(w http.ResponseWriter, r *http.Request) {
 }
 
 // subscribeReq — body de POST /api/push/subscribe (lo que devuelve
-// PushSubscription.toJSON() en el navegador + idioma del dispositivo).
+// PushSubscription.toJSON() en el navegador + idioma y origin del dispositivo).
 type subscribeReq struct {
 	Endpoint string `json:"endpoint"`
 	Keys     struct {
 		P256dh string `json:"p256dh"`
 		Auth   string `json:"auth"`
 	} `json:"keys"`
-	Lang string `json:"lang"` // 'es' | 'en' (idioma del dispositivo al suscribir)
+	Lang   string `json:"lang"`   // 'es' | 'en' (idioma del dispositivo al suscribir)
+	Origin string `json:"origin"` // window.location.origin (para URLs absolutas)
 }
 
 // postPushSubscribe — upsert por endpoint con el usuario de la sesión.
@@ -51,8 +58,17 @@ func (s *Server) postPushSubscribe(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_endpoint", "endpoint inválido (se requiere URL https://)")
 		return
 	}
-	if req.Keys.P256dh == "" || req.Keys.Auth == "" || len(req.Keys.P256dh) > 256 || len(req.Keys.Auth) > 256 {
-		writeErr(w, http.StatusBadRequest, "invalid_keys", "faltan las claves de la suscripción (p256dh/auth)")
+	// Formato de claves: p256dh = punto P256 sin comprimir (65 bytes) y
+	// auth = secreto de 16 bytes, ambos en base64url.
+	if !validKeys(req.Keys.P256dh, req.Keys.Auth) {
+		writeErr(w, http.StatusBadRequest, "invalid_keys",
+			"claves de suscripción inválidas (p256dh debe ser base64url de 65 bytes y auth de 16 bytes)")
+		return
+	}
+	// Origin: vacío (fallback a URLs relativas) o http(s)://…
+	if len(req.Origin) > 256 ||
+		(req.Origin != "" && !strings.HasPrefix(req.Origin, "https://") && !strings.HasPrefix(req.Origin, "http://")) {
+		writeErr(w, http.StatusBadRequest, "invalid_origin", "origin inválido (se requiere URL http(s)://)")
 		return
 	}
 	lang := req.Lang
@@ -64,11 +80,25 @@ func (s *Server) postPushSubscribe(w http.ResponseWriter, r *http.Request) {
 		ua = ua[:512]
 	}
 	if err := s.push.Subscribe(r.Context(), auth.UserFromContext(r.Context()),
-		req.Endpoint, req.Keys.P256dh, req.Keys.Auth, lang, ua); err != nil {
+		req.Endpoint, req.Keys.P256dh, req.Keys.Auth, lang, req.Origin, ua); err != nil {
 		writeErr(w, http.StatusInternalServerError, "push_subscribe_error", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// validKeys — p256dh base64url → 65 bytes (punto P256 sin comprimir);
+// auth base64url → 16 bytes (secreto de autenticación del push service).
+func validKeys(p256dh, auth string) bool {
+	p, err := base64.RawURLEncoding.DecodeString(p256dh)
+	if err != nil || len(p) != 65 {
+		return false
+	}
+	a, err := base64.RawURLEncoding.DecodeString(auth)
+	if err != nil || len(a) != 16 {
+		return false
+	}
+	return true
 }
 
 // unsubscribeReq — body de DELETE /api/push/unsubscribe.
@@ -89,6 +119,82 @@ func (s *Server) deletePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.push.Unsubscribe(r.Context(), auth.UserFromContext(r.Context()), req.Endpoint); err != nil {
 		writeErr(w, http.StatusInternalServerError, "push_unsubscribe_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// --- Preferencias de notificación (cada usuario gestiona LAS SUYAS) ---
+
+// getPushPreferences — los 5 tipos del catálogo con su enabled (default true
+// si no hay fila guardada).
+func (s *Server) getPushPreferences(w http.ResponseWriter, r *http.Request) {
+	prefs, err := s.push.Preferences(r.Context(), auth.UserFromContext(r.Context()))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "push_preferences_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
+}
+
+// prefReq — body de PUT /api/push/preferences.
+type prefReq struct {
+	Tipo    string `json:"tipo"`
+	Enabled bool   `json:"enabled"`
+}
+
+// putPushPreferences — upsert de un tipo; 400 invalid_tipo si es desconocido.
+func (s *Server) putPushPreferences(w http.ResponseWriter, r *http.Request) {
+	var req prefReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if !push.TipoValido(req.Tipo) {
+		writeErr(w, http.StatusBadRequest, "invalid_tipo",
+			"tipo de alerta desconocido (válidos: "+strings.Join(push.Tipos, ", ")+")")
+		return
+	}
+	if err := s.push.SetPreference(r.Context(), auth.UserFromContext(r.Context()), req.Tipo, req.Enabled); err != nil {
+		writeErr(w, http.StatusInternalServerError, "push_preferences_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// getPushQuietHours — horario silencioso del usuario (start/end null si off).
+func (s *Server) getPushQuietHours(w http.ResponseWriter, r *http.Request) {
+	q, err := s.push.QuietHours(r.Context(), auth.UserFromContext(r.Context()))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "push_quiet_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, q)
+}
+
+// quietReq — body de PUT /api/push/quiet-hours.
+type quietReq struct {
+	Enabled bool `json:"enabled"`
+	Start   int  `json:"start"`
+	End     int  `json:"end"`
+}
+
+// putPushQuietHours — upsert del horario silencioso: horas 0-23 y start≠end
+// (la ventana puede cruzar medianoche). tz fija (Europe/Madrid) de momento.
+func (s *Server) putPushQuietHours(w http.ResponseWriter, r *http.Request) {
+	var req quietReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Enabled {
+		if req.Start < 0 || req.Start > 23 || req.End < 0 || req.End > 23 || req.Start == req.End {
+			writeErr(w, http.StatusBadRequest, "invalid_hours",
+				"horas inválidas: start y end entre 0 y 23, y distintas entre sí")
+			return
+		}
+	}
+	if err := s.push.SetQuietHours(r.Context(), auth.UserFromContext(r.Context()),
+		req.Enabled, req.Start, req.End); err != nil {
+		writeErr(w, http.StatusInternalServerError, "push_quiet_error", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)

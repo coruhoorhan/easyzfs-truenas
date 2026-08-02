@@ -33,6 +33,13 @@ var catalogo = map[string]map[string]textos{
 	},
 }
 
+// estadosES — estados de pool traducidos en el catálogo ES. EN los deja tal
+// cual (DEGRADED/FAULTED son los términos de zpool).
+var estadosES = map[string]string{
+	"DEGRADED": "degradado",
+	"FAULTED":  "fallado",
+}
+
 // catalog devuelve título y cuerpo interpolados para (lang, kind). Idioma o
 // kind desconocido → fallback ('es' / 'generic').
 func catalog(lang, kind string, params map[string]any) (title, body string) {
@@ -43,6 +50,18 @@ func catalog(lang, kind string, params map[string]any) (title, body string) {
 	tx, ok := dict[kind]
 	if !ok {
 		tx = dict["generic"]
+	}
+	// ES traduce los estados de pool (DEGRADED→degradado, FAULTED→fallado);
+	// EN los deja tal cual. (lang≠"en" siempre resuelve al diccionario ES.)
+	if lang != "en" && kind == "pool_status" {
+		if traducido, ok2 := estadosES[fmt.Sprint(params["status"])]; ok2 {
+			p := make(map[string]any, len(params))
+			for k, v := range params {
+				p[k] = v
+			}
+			p["status"] = traducido
+			params = p
+		}
 	}
 	return interp(tx.title, params), interp(tx.body, params)
 }

@@ -86,6 +86,9 @@ func main() {
 	// Sender Web Push: inerte si faltan claves VAPID; en demo nunca envía.
 	pushSender := push.New(cfg, database, h)
 	alerter.SetPush(pushSender)
+	// Ticker de la cola de quiet hours (60 s): entrega diferida al terminar
+	// la ventana de silencio. En demo o sin VAPID queda inerte.
+	go pushSender.RunQueue(ctx)
 
 	// Colectores (reales o mock) + providers para los handlers.
 	providers, cols := collectors.Build(cfg, database, h, alerter)

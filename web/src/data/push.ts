@@ -37,6 +37,24 @@ export function supportsPush(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
+/**
+ * Re-sincronización silenciosa de la suscripción con el servidor (upsert por
+ * endpoint) con el idioma y origin actuales. Se llama tras login/arranque
+ * autenticado (NO en demo): cubre rotaciones de pushsubscriptionchange
+ * perdidas y cambios de idioma. Nunca lanza ni pide permiso.
+ */
+export async function syncPushSubscription(): Promise<void> {
+  if (isDemo() || !supportsPush()) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await getProvider().pushSubscribe(sub.toJSON() as PushSubscriptionJSON, getCurrentLang());
+    }
+  } catch { /* silenciosa: se reintenta en el próximo arranque */ }
+}
+
 // --- Helper base64url → Uint8Array (para applicationServerKey) ---------------
 export function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4);

@@ -123,7 +123,7 @@ export interface SnapshotGroup {
   snaps: Snapshot[];
 }
 
-export type JobType = 'snapshot' | 'scrub' | 'smart_short' | 'smart_long' | 'poweroff';
+export type JobType = 'snapshot' | 'scrub' | 'trim' | 'smart_short' | 'smart_long' | 'poweroff';
 export interface Job {
   id: number;
   tipo: JobType;
@@ -157,6 +157,14 @@ export interface Disk {
   pool: string;
   in_use?: boolean; // particiones montadas o swap activo (no elegible como libre)
   hours: number;
+}
+
+// Respuesta de GET /api/system-timers: lista de tareas del sistema + si
+// systemd está disponible como init (condiciona el botón "Cambiar" y la
+// burbuja comparativa cron vs systemd).
+export interface SystemTimersResp {
+  timers: SystemTimer[];
+  systemd_available: boolean;
 }
 
 // Tarea del sistema (GET /api/system-timers): timers de systemd y cron
@@ -199,6 +207,23 @@ export interface PushSubscriptionJSON {
   endpoint: string;
   expirationTime?: number | null;
   keys: { p256dh: string; auth: string };
+}
+
+// Tipos de alerta configurables (casan con notification_preferences.tipo y
+// con el catálogo i18n del sender).
+export type PushAlertTipo = 'pool_capacity' | 'pool_status' | 'scrub_errors' | 'disk_temp' | 'smart_status';
+
+export interface PushPreference {
+  tipo: PushAlertTipo;
+  enabled: boolean;
+}
+
+// Horario silencioso: start/end null cuando está desactivado.
+export interface PushQuietHours {
+  enabled: boolean;
+  start: number | null;
+  end: number | null;
+  tz: string;
 }
 
 export class ApiError extends Error {

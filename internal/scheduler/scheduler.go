@@ -1,4 +1,4 @@
-// Package scheduler — jobs programados (snapshot/scrub/smart_short/smart_long):
+// Package scheduler — jobs programados (snapshot/scrub/trim/smart_short/smart_long):
 // cálculo de next_run, ejecución y historial en tabla.
 package scheduler
 
@@ -18,7 +18,7 @@ import (
 // Job — contrato GET /api/jobs (next_run se calcula en el handler).
 type Job struct {
 	ID         int64      `json:"id"`
-	Tipo       string     `json:"tipo"` // "snapshot" | "scrub" | "smart_short" | "smart_long"
+	Tipo       string     `json:"tipo"` // "snapshot" | "scrub" | "trim" | "smart_short" | "smart_long"
 	Target     string     `json:"target"`
 	Schedule   string     `json:"schedule"`
 	Retention  string     `json:"retention"`
@@ -40,7 +40,7 @@ type HistoryEntry struct {
 
 // ValidTipos — tipos de job admitidos.
 var ValidTipos = map[string]bool{
-	"snapshot": true, "scrub": true, "smart_short": true, "smart_long": true,
+	"snapshot": true, "scrub": true, "trim": true, "smart_short": true, "smart_long": true,
 }
 
 // ErrNotFound — job inexistente.
@@ -307,6 +307,8 @@ func (s *Scheduler) execute(ctx context.Context, j Job) error {
 		return nil
 	case "scrub":
 		return s.actions.Scrub(ctx, "scheduler", j.Target, "start")
+	case "trim":
+		return s.actions.Trim(ctx, "scheduler", j.Target)
 	case "smart_short", "smart_long":
 		testType := "short"
 		if j.Tipo == "smart_long" {

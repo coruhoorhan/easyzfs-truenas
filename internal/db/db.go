@@ -38,6 +38,42 @@ var migrations = []string{
 	// v5: alertas con metadatos estructurados (JSON {"kind":"...","params":{...}})
 	// para el catálogo i18n del sender push; message sigue en español (compat UI).
 	`ALTER TABLE alerts ADD COLUMN meta TEXT NOT NULL DEFAULT '';`,
+	// v6: origin del navegador al suscribirse (window.location.origin). El
+	// sender compone notification.navigate/url absolutas con él (Declarative
+	// Web Push las exige); vacío = fallback a relativa.
+	`ALTER TABLE push_subscriptions ADD COLUMN origin TEXT NOT NULL DEFAULT '';`,
+	// v7: preferencias de notificación por usuario y tipo de alerta.
+	// Sin fila para (user_id, tipo) = habilitado (default true).
+	`CREATE TABLE IF NOT EXISTS notification_preferences (
+	  user_id    TEXT NOT NULL REFERENCES users(user) ON DELETE CASCADE,
+	  tipo       TEXT NOT NULL,
+	  enabled    INTEGER NOT NULL DEFAULT 1,
+	  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+	  PRIMARY KEY (user_id, tipo)
+	);`,
+	// v8: quiet hours (horario silencioso) por usuario. NULL en quiet_start/
+	// quiet_end = desactivado; la ventana es hora local en tz y puede cruzar
+	// medianoche. Las críticas la atraviesan siempre.
+	`CREATE TABLE IF NOT EXISTS notification_quiet_hours (
+	  user_id     TEXT PRIMARY KEY REFERENCES users(user) ON DELETE CASCADE,
+	  quiet_start INTEGER,
+	  quiet_end   INTEGER,
+	  tz          TEXT NOT NULL DEFAULT 'Europe/Madrid',
+	  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+	);`,
+	// v9: cola de entrega diferida: las alertas no críticas encoladas durante
+	// quiet hours; el ticker del sender las envía al terminar la ventana.
+	`CREATE TABLE IF NOT EXISTS notification_queue (
+	  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	  user_id    TEXT NOT NULL REFERENCES users(user) ON DELETE CASCADE,
+	  tipo       TEXT NOT NULL,
+	  severity   TEXT NOT NULL DEFAULT 'normal',
+	  datos_json TEXT NOT NULL DEFAULT '{}',
+	  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);`,
+	// v10: índice para el vaciado de la cola por usuario.
+	`CREATE INDEX IF NOT EXISTS idx_notification_queue_user ON notification_queue(user_id, tipo);`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

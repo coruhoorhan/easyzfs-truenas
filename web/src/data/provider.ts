@@ -1,8 +1,8 @@
 // Interfaz DataProvider: abstrae el origen de datos (HTTP real o mock demo).
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushSubscriptionJSON, SessionUser, Settings,
-  SnapshotGroup, SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
+  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
+  SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 export interface DataProvider {
@@ -57,7 +57,7 @@ export interface DataProvider {
   deleteJob(id: number, confirm: string): Promise<void>;
   runJob(id: number): Promise<void>;
   getJobHistory(): Promise<JobHistoryItem[]>;
-  getSystemTimers(): Promise<SystemTimer[]>;
+  getSystemTimers(): Promise<SystemTimersResp>;
   setSystemTimerSchedule(t: SystemTimer, schedule: string): Promise<void>;
   migrateSystemTimer(t: SystemTimer, newName: string): Promise<void>;
 
@@ -70,4 +70,10 @@ export interface DataProvider {
   getPushVapidKey(): Promise<{ publicKey: string }>;
   pushSubscribe(sub: PushSubscriptionJSON, lang: 'es' | 'en'): Promise<void>;
   pushUnsubscribe(endpoint: string): Promise<void>;
+
+  // Preferencias de notificación y horario silencioso (del propio usuario)
+  getPushPreferences(): Promise<{ preferences: PushPreference[] }>;
+  putPushPreference(tipo: PushAlertTipo, enabled: boolean): Promise<void>;
+  getPushQuietHours(): Promise<PushQuietHours>;
+  putPushQuietHours(q: { enabled: boolean; start: number; end: number }): Promise<void>;
 }
