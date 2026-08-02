@@ -100,6 +100,11 @@ var migrations = []string{
 	  last_error    TEXT NOT NULL DEFAULT '',
 	  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 	);`,
+	// v13: nombre visible del usuario (saludos en la app; el login sigue
+	// siendo 'user'). Vacío = mostrar el username.
+	`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT '';`,
+	// v14: email opcional del usuario (perfil; no se usa para envíos).
+	`ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT '';`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.
