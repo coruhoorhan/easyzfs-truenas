@@ -14,18 +14,25 @@ import (
 
 // getVersion — GET /api/version → estado del backend y del runtime.
 func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
+	caps := model.Capabilities{Version: s.zfsVersion}
+	if s.caps != nil {
+		if c := s.caps.Capabilities(); c.Version != "" {
+			caps = c
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name":        "EasyZFS",
-		"version":     s.version,
-		"build":       s.build,
-		"go":          runtime.Version(),
-		"os_arch":     runtime.GOOS + "/" + runtime.GOARCH,
-		"uptime_sec":  int64(time.Since(s.started).Seconds()),
-		"rss_bytes":   memRSS(),
-		"db_bytes":    db.SizeBytes(s.cfg.DBPath),
-		"db_path":     s.cfg.DBPath,
-		"zfs_version": s.zfsVersion,
-		"demo":        s.cfg.Demo,
+		"name":         "EasyZFS",
+		"version":      s.version,
+		"build":        s.build,
+		"go":           runtime.Version(),
+		"os_arch":      runtime.GOOS + "/" + runtime.GOARCH,
+		"uptime_sec":   int64(time.Since(s.started).Seconds()),
+		"rss_bytes":    memRSS(),
+		"db_bytes":     db.SizeBytes(s.cfg.DBPath),
+		"db_path":      s.cfg.DBPath,
+		"zfs_version":  caps.Version,
+		"capabilities": caps,
+		"demo":         s.cfg.Demo,
 	})
 }
 

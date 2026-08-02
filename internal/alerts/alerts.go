@@ -138,7 +138,8 @@ func (a *Alerter) EvaluatePools(ctx context.Context, pools []model.Pool) {
 			a.RaiseKind(ctx, "crit", "pool."+p.Name, "pools:"+p.Name, "Pool "+p.Name+" FAULTED",
 				"pool_status", map[string]any{"pool": p.Name, "status": "FAULTED"})
 		}
-		if st.NotifyScrubErrors && p.Scrub.State == "done" && p.Scrub.Errors > 0 {
+		// kind "trim" no aplica: sus "errores" no son errores de datos.
+		if st.NotifyScrubErrors && p.Scrub.State == "done" && p.Scrub.Errors > 0 && p.Scrub.Kind != "trim" {
 			a.RaiseKind(ctx, "warn", "scrub."+p.Name, "pools:"+p.Name,
 				fmt.Sprintf("Scrub de %s terminó con %d errores", p.Name, p.Scrub.Errors),
 				"scrub_errors", map[string]any{"pool": p.Name, "errors": p.Scrub.Errors})

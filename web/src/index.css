@@ -53,9 +53,11 @@ label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin:12p
 /* El contenido aprovecha TODO el ancho de la ventana (regla del usuario
    2-Ago-2026: nada de columna centrada con márgenes vacíos en desktop) */
 .app-shell{display:flex;min-height:100vh}
-/* pantallas muy anchas: pools a 2 columnas */
+/* pantallas anchas: pools a 2 columnas (3 en ultra-ancho). auto-fit +
+   minmax: las pistas vacías colapsan, así que con menos pools de los que
+   caben no queda una columna fantasma */
 @media(min-width:1500px){
-  .grid.pools{grid-template-columns:1fr 1fr !important;align-items:start}
+  .grid.pools{grid-template-columns:repeat(auto-fit,minmax(min(100%,560px),1fr)) !important;align-items:start}
 }
 aside.sidebar{
   display:none; width:218px; flex-shrink:0; padding:22px 14px;
@@ -112,20 +114,49 @@ aside.sidebar.collapsed .sideactions a{justify-content:center;padding:9px 0;flex
   border-radius:12px;font-size:13.5px;font-weight:600;flex-wrap:wrap;
 }
 
-/* cabecera de zona de administración (tinte sutil, sin banner agresivo) */
+/* cabecera de zona de administración (tinte sutil de acento, sin banner
+   agresivo; el rojo queda reservado a lo destructivo) */
 .zonehead{
   font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;
-  color:var(--warn);margin:26px 0 4px;padding-left:2px;
+  color:var(--accent);margin:26px 0 4px;padding-left:2px;
+}
+
+/* Tarjetas de la zona de administración: tratamiento uniforme y distintivo
+   — cabecera con fondo sutil de acento y texto en acento (igual en todas) */
+.admin-card .cardtitle{
+  margin:calc(-1 * var(--cp)) calc(-1 * var(--cp)) 12px;
+  padding:10px var(--cp);
+  background:var(--accent-soft);color:var(--accent);
+  border-bottom:1px solid var(--border);
+  border-radius:calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
 }
 
 /* Ajustes: tarjetas con el título DENTRO (como NetPulse) y, en pantalla
-   ancha, grid de 2 columnas con altos libres (sin celdas vacías) */
+   ancha, grid de 2 columnas (3 en ultra-ancho) con altos libres.
+   Las tarjetas que necesitan ancho (Usuarios, con tabla) ocupan fila
+   completa (.wide). Dentro de cada tarjeta los campos van a ancho de
+   contenido, NO estirados a toda la tarjeta. */
 .settings-grid{display:flex;flex-direction:column;gap:16px}
 .settings-grid > .card{margin:0}
 .cardtitle{font-size:15px;font-weight:700;margin:0 0 10px;letter-spacing:-.01em}
-@media(min-width:1400px){
-  .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;align-items:start}
-  .settings-grid .zonehead{grid-column:1/-1;margin:10px 0 -6px}
+.settings-grid .card > input,
+.settings-grid .card > select,
+.settings-grid .card > .sel,
+.settings-grid .card > .seg{max-width:340px}
+.settings-grid .card > input[type="number"]{max-width:150px}
+/* En pantalla ancha: masonry con columnas CSS (column-fill balancea las
+   tarjetas por altura — sin celdas vacías como pasaba con el grid).
+   zonehead y .wide (Usuarios, con tabla) cruzan todas las columnas.
+   column-span: soporte amplio (Safari 9+, Firefox 71+, Chrome 50+). */
+@media(min-width:1200px){
+  .settings-grid{display:block;columns:2;column-gap:20px}
+  .settings-grid > .card{break-inside:avoid;margin:0 0 16px}
+  .settings-grid .zonehead{column-span:all;margin:10px 0 4px}
+  .settings-grid .wide{column-span:all}
+  .settings-grid > p{margin:0 0 12px}
+}
+@media(min-width:1900px){
+  .settings-grid{columns:3}
 }
 main.main{flex:1;padding:20px 18px calc(86px + env(safe-area-inset-bottom));min-width:0}
 
@@ -172,10 +203,11 @@ header.top .sub{font-size:13px;color:var(--text2);margin-top:2px}
 
 /* ---------- cards / KPIs ---------- */
 .grid{display:grid;gap:14px}
-.grid.kpis{grid-template-columns:repeat(2,1fr)}
-@media(min-width:860px){.grid.kpis{grid-template-columns:repeat(4,1fr)}}
+/* KPIs: fila fluida — se reparten el ancho sin estirarse más allá de lo
+   razonable (auto-fit + minmax) y se reordenan solos al estrechar */
+.grid.kpis{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
-.card.pad{padding:16px}
+.card.pad{--cp:16px;padding:var(--cp)}
 .kpi{padding:15px 16px}
 .kpi .lbl{font-size:12px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
 .kpi .val{font-size:24px;font-weight:700;margin-top:5px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -263,6 +295,9 @@ header.top .sub{font-size:13px;color:var(--text2);margin-top:2px}
 /* tabla */
 .tblwrap{overflow-x:auto}
 table.data{width:100%;border-collapse:collapse;font-size:13.5px}
+/* columna "elástica": absorbe el espacio sobrante en pantallas anchas en
+   vez de repartir huecos entre TODAS las columnas */
+table.data th.slack{width:100%}
 table.data th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
 table.data td{padding:11px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
 table.data tr:last-child td{border-bottom:none}
@@ -270,7 +305,11 @@ tr.clickable{cursor:pointer} tr.clickable:hover td{background:var(--surface2)}
 table.data th.num,table.data td.num{text-align:right;font-variant-numeric:tabular-nums}
 table.data td.num{font-family:var(--font-mono);font-size:12.5px}
 
-/* snapshot tree */
+/* snapshot tree: cada dataset es una tarjeta; en pantalla ancha las
+   tarjetas se disponen en grid (filas cortas → varias por horizontal) */
+.grid.snaps{grid-template-columns:1fr;align-items:start}
+@media(min-width:1500px){.grid.snaps{grid-template-columns:1fr 1fr}}
+@media(min-width:2300px){.grid.snaps{grid-template-columns:1fr 1fr 1fr}}
 .snapgroup{border-bottom:1px solid var(--border)}
 .snapgroup:last-child{border-bottom:none}
 .snapg-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
@@ -285,6 +324,11 @@ table.data td.num{font-family:var(--font-mono);font-size:12.5px}
 .snap:hover .actions,.snap:focus-within .actions{opacity:1}
 @media(hover:none){.snap .actions{opacity:1}}
 
+/* Escala de z-index de la app (de abajo arriba):
+ *   40 — bottomnav (navegación inferior móvil)
+ *   50 — popovers/dropdowns (sel-pop, alertpanel) y tooltips (infobubble-pop)
+ *   60 — overlay + modal (SIEMPRE por encima de cualquier popover/tooltip)
+ * Regla: nada que viva dentro de una tarjeta/vista puede superar 60. */
 /* modal */
 .overlay{
   position:fixed;inset:0;background:rgba(10,12,10,.5);z-index:60;
@@ -345,7 +389,7 @@ table.data td.num{font-family:var(--font-mono);font-size:12.5px}
 }
 .infobubble-pop{
   position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) translateY(4px);
-  width:290px;padding:12px 14px;border-radius:10px;z-index:60;
+  width:290px;padding:12px 14px;border-radius:10px;z-index:50;
   background:var(--surface2);color:var(--text);border:1px solid var(--border);
   box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:12px;font-weight:400;line-height:1.5;
   opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;
@@ -435,6 +479,24 @@ a.abouttile:hover,button.abouttile:hover{background:var(--surface2)}
 .swatch>span{display:block;width:100%;height:100%;border-radius:50%}
 .swatch.sel{outline:2px solid var(--accent);outline-offset:2px}
 
+/* Panel: en pantalla ancha las secciones apiladas (alertas + actividad)
+   pasan a 2 columnas para no dejar media pantalla vacía */
+@media(min-width:1500px){
+  .dash-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;align-items:start}
+}
+
+/* Tareas: en pantalla muy ancha la lista principal (tareas programadas)
+   ocupa la columna izquierda y el resto se apila a la derecha */
+@media(min-width:1800px){
+  .tasks-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:0 22px;align-items:start}
+  .tasks-grid .tk-next{grid-column:2;grid-row:1}
+  .tasks-grid .tk-jobs{grid-column:1;grid-row:1/6;margin-top:0}
+  .tasks-grid .tk-repl{grid-column:2}
+  .tasks-grid .tk-sys{grid-column:2}
+  .tasks-grid .tk-ops{grid-column:2}
+  .tasks-grid .tk-hist{grid-column:2}
+}
+
 /* densidad compacta: html{font-size:13.5px} (theme.ts) + ajustes puntuales
    de paddings, gaps, márgenes y alturas. Sin zoom (frágil cross-browser). */
 [data-density="compact"] main.main{padding:16px 14px calc(74px + env(safe-area-inset-bottom))}
@@ -446,7 +508,7 @@ a.abouttile:hover,button.abouttile:hover{background:var(--surface2)}
 [data-density="compact"] .bottomnav{padding:3px 2px calc(3px + env(safe-area-inset-bottom))}
 [data-density="compact"] .bottomnav button{padding:3px 8px}
 [data-density="compact"] .grid{gap:10px}
-[data-density="compact"] .card.pad{padding:12px}
+[data-density="compact"] .card.pad{--cp:12px}
 [data-density="compact"] .kpi{padding:11px 13px}
 [data-density="compact"] .rowitem{padding:10px 13px;gap:10px}
 [data-density="compact"] .alert{padding:10px 13px}

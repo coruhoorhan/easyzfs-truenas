@@ -4,7 +4,7 @@ import type { Disk, Pool } from '../data/types';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtBytesPair, fmtPct, fmtRatio, timeAgo } from '../ui/format';
 import { statusLabel } from '../ui/labels';
-import { Badge, Meter } from './ui';
+import { Badge, InfoBubble, Meter, Switch } from './ui';
 import { useModal } from './Modal';
 import { useEffect, useState } from 'react';
 
@@ -20,7 +20,7 @@ const fmtEta = (sec: number): string => {
 };
 
 export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => void }) {
-  const { t, isAdmin } = useApp();
+  const { t, isAdmin, caps } = useApp();
   const { openModal } = useModal();
   const [err, setErr] = useState('');
   const [disks, setDisks] = useState<Disk[]>([]);
@@ -28,6 +28,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
   const cap = fmtBytesPair(pool.used_bytes, pool.total_bytes);
   const running = pool.scrub.state === 'running';
   const resilvering = running && pool.scrub.kind === 'resilver';
+  const expanding = running && pool.scrub.kind === 'expand';
   const ok = pool.status === 'ONLINE';
 
   useEffect(() => {
@@ -52,9 +53,20 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
     } catch (e) { setErr(errorMessage(e, t)); }
   };
 
+  const toggleAutotrim = async () => {
+    setErr('');
+    try {
+      await getProvider().setAutotrim(pool.name, !pool.autotrim);
+      onChanged();
+    } catch (e) { setErr(errorMessage(e, t)); }
+  };
+
   const faulted = pool.vdevs.find((v) => v.status !== 'ONLINE' && !v.replacing);
   const free = disks.filter((d) => (d.pool === '—' || d.pool === '') && !d.in_use);
   const isMirror = pool.topo.startsWith('mirror');
+  // RAID-Z expansion: solo con capability, vdev raidz detectado y discos libres.
+  const canExpand = isAdmin && !!caps?.raidz_expansion &&
+    (pool.raidz_vdevs ?? []).length > 0 && free.length > 0 && !expanding;
 
   return (
     <div className="card">
@@ -62,6 +74,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
         <div className="grow">
           <div className="t1" style={{ fontSize: 16, fontWeight: 700, display: 'flex', gap: 9, alignItems: 'center' }}>
             {pool.name} <Badge tone={ok ? 'ok' : 'warn'}>{statusLabel(pool.status, t)}</Badge>
+            {pool.checkpoint && <Badge tone="info">{t('ck_badge')}</Badge>}
           </div>
           <div className="t2">{pool.topo}</div>
           <Meter pct={pct} />
@@ -85,14 +98,26 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
           <b>{running ? t('pool_in_progress') : timeAgo(pool.scrub.ts, t)}</b>
           {' '}· <b>{pool.scrub.errors} {t('pool_errors')}</b>
         </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          <Switch checked={pool.autotrim} onChange={() => { void toggleAutotrim(); }}
+            disabled={!isAdmin} ariaLabel={t('pool_autotrim')} />
+          <b>{t('pool_autotrim')}</b>
+          <InfoBubble title={t('pool_autotrim')}>{t('pool_autotrim_hint')}</InfoBubble>
+        </span>
       </div>
 
       {running && (<>
         <div style={{ padding: '0 16px 4px', fontSize: 12.5, color: 'var(--info)', fontWeight: 600 }}>
-          {resilvering ? t('pool_resilvering') : t('pool_scrub_running')} · {Math.round(pool.scrub.pct)}%
+          {expanding ? t('pool_expand_running') : resilvering ? t('pool_resilvering') : pool.scrub.kind === 'trim' ? t('pool_trim_running') : t('pool_scrub_running')}
+          {' '}· {Math.round(pool.scrub.pct)}%
           {pool.scrub.eta_sec > 0 && <> · {fmtEta(pool.scrub.eta_sec)}</>}
+          {(pool.scrub.bytes_done ?? 0) > 0 && (pool.scrub.bytes_total ?? 0) > 0 && (
+            <> · {t('pool_scan_bytes', { done: fmtBytes(pool.scrub.bytes_done ?? 0), total: fmtBytes(pool.scrub.bytes_total ?? 0) })}</>
+          )}
         </div>
-        <div className="scrubbar"><i style={{ width: `${pool.scrub.pct}%` }} /></div>
+        <div className="scrubbar" role="progressbar" aria-valuenow={Math.round(pool.scrub.pct)} aria-valuemin={0} aria-valuemax={100}>
+          <i style={{ width: `${pool.scrub.pct}%` }} />
+        </div>
       </>)}
 
       {isAdmin && !running && faulted && free.length > 0 && (
@@ -169,15 +194,23 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
       {err && <p className="form-err" style={{ padding: '0 16px' }} role="alert">{err}</p>}
 
       <div style={{ display: 'flex', gap: 7, padding: '0 16px 15px', flexWrap: 'wrap' }}>
-        {!resilvering && (
+        {!resilvering && !expanding && (
           <button className="btn sm" title={running ? t('pool_scrub_pause_hint') : t('pool_scrub_hint')}
             onClick={() => scrub(running ? 'pause' : 'start')}>
             {running ? t('pool_scrub_pause') : t('pool_scrub_now')}
           </button>
         )}
-        {running && !resilvering && <button className="btn sm" onClick={() => scrub('stop')}>{t('pool_scrub_stop')}</button>}
+        {running && !resilvering && !expanding && <button className="btn sm" onClick={() => scrub('stop')}>{t('pool_scrub_stop')}</button>}
+        <button className="btn sm" title={t('pool_history_hint')}
+          onClick={() => openModal('history', { pool: pool.name })}>{t('pool_history')}</button>
+        <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('ck_title')}
+          onClick={() => openModal('checkpoint', { pool: pool.name, active: pool.checkpoint })}>{t('pool_checkpoint')}</button>
         <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('pool_add_vdev_hint')}
           onClick={() => openModal('addvdev', { pool: pool.name })}>{t('pool_add_vdev')}</button>
+        {canExpand && (
+          <button className="btn sm" title={t('xpd_hint')}
+            onClick={() => openModal('expand', { pool })}>{t('xpd_btn')}</button>
+        )}
         <button className="btn sm danger" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('pool_export_hint')}
           onClick={() => openModal('export', { pool: pool.name })}>
           {t('pool_export')}

@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
-import { fmtBytes, parseSize } from '../ui/format';
+import { fmtBytes, fmtDateTime, fmtDuration, parseSize } from '../ui/format';
 import { statusLabel } from '../ui/labels';
 import { ModalBox, useModal } from './Modal';
-import { Seg } from './ui';
+import { Seg, InfoBubble } from './ui';
 import { SYS_SCHED_DEFAULT, buildSysSchedule, parseSysSchedule } from '../ui/syssched';
 import type { SysSchedState } from '../ui/syssched';
-import type { Dataset, Disk, Job, Pool, SystemTimer, Topo } from '../data/types';
+import type { Dataset, Disk, Job, Pool, ReplicationJob, SystemTimer, Topo } from '../data/types';
 
 // ---------- utilidades comunes ----------
 function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
@@ -50,12 +50,21 @@ export function ModalHost() {
     case 'newds': return <NewDatasetModal vol={!!p.vol} onClose={closeModal} />;
     case 'editds': return <EditDatasetModal ds={p.ds as Dataset} onClose={closeModal} />;
     case 'delds': return <DeleteDatasetModal name={p.name as string} onClose={closeModal} />;
+    case 'rewrite': return <RewriteModal ds={p.ds as Dataset} onClose={closeModal} />;
+    case 'unlockds': return <UnlockDatasetModal ds={p.ds as Dataset} onClose={closeModal} />;
+    case 'lockds': return <LockDatasetModal ds={p.ds as Dataset} onClose={closeModal} />;
+    case 'changekey': return <ChangeKeyModal ds={p.ds as Dataset} onClose={closeModal} />;
+    case 'expand': return <ExpandModal pool={p.pool as Pool} onClose={closeModal} />;
     case 'newtask': return <NewTaskModal onClose={closeModal} />;
     case 'sched': return <EditScheduleModal job={p.job as Job} onClose={closeModal} />;
+    case 'newrepl': return <NewReplModal onClose={closeModal} />;
+    case 'editrepl': return <EditReplModal job={p.job as ReplicationJob} onClose={closeModal} />;
     case 'export': return <ExportPoolModal pool={p.pool as string} onClose={closeModal} />;
     case 'addvdev': return <PoolDiskModal pool={p.pool as string} mode="vdev" onClose={closeModal} />;
     case 'replace': return <PoolDiskModal pool={p.pool as string} mode="replace" presetOld={p.oldDev as string | undefined} presetNew={p.newDev as string | undefined} onClose={closeModal} />;
     case 'detach': return <DetachModal pool={p.pool as string} dev={p.dev as string} path={p.path as string | undefined} onClose={closeModal} />;
+    case 'history': return <HistoryModal pool={p.pool as string} onClose={closeModal} />;
+    case 'checkpoint': return <CheckpointModal pool={p.pool as string} active={!!p.active} onClose={closeModal} />;
     case 'syssched': return <SysSchedModal task={p.task as SystemTimer} onClose={closeModal} />;
     case 'sysmigrate': return <SysMigrateModal task={p.task as SystemTimer} onClose={closeModal} />;
     case 'newuser': return <NewUserModal onClose={closeModal} />;
@@ -109,6 +118,89 @@ function SnapshotModal({ preset, onClose }: { preset?: string; onClose: () => vo
         <div className="m-actions">
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
           <SubmitBtn label={t('nsn_create')} busy={busy} disabled={!target || !name.trim()} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- historial del pool ----------
+function HistoryModal({ pool, onClose }: { pool: string; onClose: () => void }) {
+  const { t } = useApp();
+  const entries = useLoad(() => getProvider().getPoolHistory(pool), [pool]);
+
+  // Duración: <60 s con decimal; si no, fmtDuration ("4 h 12 min")
+  const fmtDur = (sec?: number) => {
+    if (!sec) return '—';
+    if (sec < 60) return `${(Math.round(sec * 100) / 100).toLocaleString()} s`;
+    return fmtDuration(sec);
+  };
+
+  return (
+    <ModalBox onClose={onClose} wide label={t('hist_title')}>
+      <h3>{t('hist_title')} · {pool}</h3>
+      <p className="desc">{t('hist_desc', { pool })}</p>
+      {!entries && <div className="empty" role="status">{t('loading')}</div>}
+      {entries && entries.length === 0 && <div className="empty">{t('hist_empty')}</div>}
+      {entries && entries.length > 0 && (
+        <div className="tblwrap" style={{ maxHeight: 'min(55vh, 420px)', overflowY: 'auto' }}>
+          <table className="data">
+            <thead>
+              <tr><th>{t('hist_date')}</th><th className="slack">{t('hist_cmd')}</th><th className="num">{t('hist_dur')}</th></tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={i}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmtDateTime(e.ts)}</td>
+                  <td style={{ whiteSpace: 'normal', fontFamily: 'var(--font-mono)', fontSize: 12.5 }}>{e.command}</td>
+                  <td className="num">{fmtDur(e.duration_sec)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="m-actions">
+        <button type="button" className="btn" onClick={onClose}>{t('close')}</button>
+      </div>
+    </ModalBox>
+  );
+}
+
+// ---------- checkpoint del pool ----------
+function CheckpointModal({ pool, active, onClose }: { pool: string; active: boolean; onClose: () => void }) {
+  const { t, refresh } = useApp();
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().checkpointPool(pool, active ? 'discard' : 'create', confirm);
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose} label={t('ck_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('ck_title')} · {pool}</h3>
+        <p className="desc">{t('ck_desc')}</p>
+        <ul className="desc" style={{ paddingLeft: 18, marginTop: 0 }}>
+          <li>{t('ck_note1')}</li>
+          <li>{t('ck_note2')}</li>
+        </ul>
+        <p className="desc">{active ? t('ck_state_on') : t('ck_state_off')}</p>
+        <label htmlFor="ck-confirm">{t('ck_confirm_lbl')}</label>
+        <input id="ck-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)}
+          placeholder={pool} autoComplete="off" required />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={active ? t('ck_discard') : t('ck_create')} busy={busy}
+            disabled={confirm !== pool} danger={active} />
         </div>
       </form>
     </ModalBox>
@@ -226,11 +318,15 @@ function NewDatasetModal({ vol, onClose }: { vol: boolean; onClose: () => void }
   const [comp, setComp] = useState<'lz4' | 'zstd' | 'off'>('lz4');
   const [quota, setQuota] = useState('');
   const [volsize, setVolsize] = useState('');
+  const [enc, setEnc] = useState(false);
+  const [pass1, setPass1] = useState('');
+  const [pass2, setPass2] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => { if (!pool && pools?.length) setPool(pools[0].name); }, [pools, pool]);
 
+  const passOk = !enc || (pass1.length >= 8 && pass1 === pass2);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr('');
@@ -238,6 +334,7 @@ function NewDatasetModal({ vol, onClose }: { vol: boolean; onClose: () => void }
       await getProvider().createDataset({
         pool, name: name.trim(), type: vol ? 'volume' : 'fs', compression: comp,
         quota_bytes: parseSize(quota), volsize_bytes: vol ? parseSize(volsize) : undefined,
+        encryption: enc || undefined, passphrase: enc ? pass1 : undefined,
       });
       refresh(); onClose();
     } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
@@ -267,10 +364,25 @@ function NewDatasetModal({ vol, onClose }: { vol: boolean; onClose: () => void }
           <label htmlFor="nd-quota">{t('nds_quota')}</label>
           <input id="nd-quota" placeholder={t('nds_quota_ph')} value={quota} onChange={(e) => setQuota(e.target.value)} />
         </>)}
+        <label className="checklabel" style={{ marginTop: 14 }}>
+          <input type="checkbox" checked={enc} onChange={(e) => setEnc(e.target.checked)} />
+          {t('nds_enc')}
+        </label>
+        {enc && (<>
+          <p className="desc" style={{ marginTop: 6 }}>{t('nds_enc_hint')}</p>
+          <label htmlFor="nd-pass1">{t('nds_pass')}</label>
+          <input id="nd-pass1" type="password" value={pass1} onChange={(e) => setPass1(e.target.value)}
+            autoComplete="new-password" required minLength={8} />
+          <label htmlFor="nd-pass2">{t('nds_pass2')}</label>
+          <input id="nd-pass2" type="password" value={pass2} onChange={(e) => setPass2(e.target.value)}
+            autoComplete="new-password" required minLength={8} />
+          {pass1.length > 0 && pass1.length < 8 && <p className="form-err">{t('nds_pass_short')}</p>}
+          {pass1.length >= 8 && pass2 !== '' && pass1 !== pass2 && <p className="form-err">{t('nds_pass_mismatch')}</p>}
+        </>)}
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
-          <SubmitBtn label={t('create')} busy={busy} disabled={!name.trim() || !pool || (vol && !volsize.trim())} />
+          <SubmitBtn label={t('create')} busy={busy} disabled={!name.trim() || !pool || (vol && !volsize.trim()) || !passOk} />
         </div>
       </form>
     </ModalBox>
@@ -352,6 +464,225 @@ function DeleteDatasetModal({ name, onClose }: { name: string; onClose: () => vo
         <div className="m-actions">
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
           <SubmitBtn label={t('delete')} busy={busy} danger disabled={!isAdmin || confirm.trim() !== name} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- reescribir datos del dataset (zfs rewrite; operación larga) ----------
+function RewriteModal({ ds, onClose }: { ds: Dataset; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().rewriteDataset(ds.name, confirm.trim());
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose} label={t('rw_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('rw_title')} · <span className="mono">{ds.name}</span></h3>
+        <p className="desc">{t('rw_desc', { ds: ds.name })}</p>
+        <ul className="desc" style={{ paddingLeft: 18, marginTop: 0 }}>
+          <li>{t('rw_note1')}</li>
+          <li>{t('rw_note2')}</li>
+          <li>{t('rw_note3')}</li>
+        </ul>
+        <label htmlFor="rw-confirm">{t('rw_confirm_lbl')}</label>
+        <input id="rw-confirm" placeholder={ds.name} value={confirm}
+          onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('rw_btn')} busy={busy} danger disabled={!isAdmin || confirm.trim() !== ds.name} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- desbloquear dataset cifrado (zfs load-key) ----------
+function UnlockDatasetModal({ ds, onClose }: { ds: Dataset; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().unlockDataset(ds.name, key);
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose} label={t('unl_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('unl_title')} · <span className="mono">{ds.name}</span></h3>
+        <p className="desc">{t('unl_desc')}</p>
+        <label htmlFor="unl-key">{t('unl_key')}</label>
+        <input id="unl-key" type="password" value={key} onChange={(e) => setKey(e.target.value)}
+          autoComplete="off" required autoFocus />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('ds_unlock')} busy={busy} disabled={!isAdmin || !key} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- bloquear dataset cifrado (zfs unload-key) ----------
+function LockDatasetModal({ ds, onClose }: { ds: Dataset; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().lockDataset(ds.name);
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose} label={t('lck_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('lck_title')} · <span className="mono">{ds.name}</span></h3>
+        <p className="desc">{t('lck_desc')}</p>
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('ds_lock')} busy={busy} disabled={!isAdmin} danger />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- cambiar la passphrase de un dataset cifrado (zfs change-key) ----------
+function ChangeKeyModal({ ds, onClose }: { ds: Dataset; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [cur, setCur] = useState('');
+  const [n1, setN1] = useState('');
+  const [n2, setN2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const ok = !!cur && n1.length >= 8 && n1 === n2;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().changeDatasetKey(ds.name, cur, n1);
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose} label={t('ckk_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('ckk_title')} · <span className="mono">{ds.name}</span></h3>
+        <p className="desc">{t('ckk_desc')}</p>
+        <label htmlFor="ckk-cur">{t('ckk_current')}</label>
+        <input id="ckk-cur" type="password" value={cur} onChange={(e) => setCur(e.target.value)}
+          autoComplete="off" required />
+        <label htmlFor="ckk-n1">{t('ckk_new')}</label>
+        <input id="ckk-n1" type="password" value={n1} onChange={(e) => setN1(e.target.value)}
+          autoComplete="new-password" required minLength={8} />
+        <label htmlFor="ckk-n2">{t('nds_pass2')}</label>
+        <input id="ckk-n2" type="password" value={n2} onChange={(e) => setN2(e.target.value)}
+          autoComplete="new-password" required minLength={8} />
+        {n1.length > 0 && n1.length < 8 && <p className="form-err">{t('nds_pass_short')}</p>}
+        {n1.length >= 8 && n2 !== '' && n1 !== n2 && <p className="form-err">{t('nds_pass_mismatch')}</p>}
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('ckk_btn')} busy={busy} disabled={!isAdmin || !ok} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- expandir un vdev raidz (RAID-Z expansion, OpenZFS ≥ 2.3) ----------
+function ExpandModal({ pool, onClose }: { pool: Pool; onClose: () => void }) {
+  const { t, refresh, isAdmin, caps } = useApp();
+  const disks = useLoad(() => getProvider().getDisks());
+  const vdevs = pool.raidz_vdevs ?? [];
+  const [vdev, setVdev] = useState(vdevs[0] ?? '');
+  const [disk, setDisk] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const free = useMemo(() => (disks ?? []).filter((d) => (d.pool === '—' || d.pool === '') && !d.in_use), [disks]);
+  useEffect(() => { if (!disk && free.length) setDisk(free[0].dev); }, [free, disk]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().expandPool(pool.name, vdev, disk, confirm.trim());
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose} label={t('xpd_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('xpd_title')} · <span className="mono">{pool.name}</span></h3>
+        <p className="desc">
+          {t('xpd_desc', { vdev, disk: disk || '…' })}
+          {' '}<InfoBubble title={t('xpd_title')}>
+            <ul style={{ margin: 0, paddingLeft: 16 }}>
+              <li>{t('xpd_note1')}</li>
+              <li>{t('xpd_note2')}{caps?.rewrite ? ` ${t('xpd_note2b')}` : ''}</li>
+              <li>{t('xpd_note3')}</li>
+              <li>{t('xpd_note4')}</li>
+            </ul>
+          </InfoBubble>
+        </p>
+        <ul className="desc" style={{ paddingLeft: 18, marginTop: 0, color: 'var(--warn)' }}>
+          <li>{t('xpd_note1')}</li>
+          <li>{t('xpd_note2')}{caps?.rewrite ? ` ${t('xpd_note2b')}` : ''}</li>
+          <li>{t('xpd_note3')}</li>
+          <li>{t('xpd_note4')}</li>
+        </ul>
+        <label htmlFor="xpd-vdev">{t('xpd_vdev')}</label>
+        <select id="xpd-vdev" value={vdev} onChange={(e) => setVdev(e.target.value)}>
+          {vdevs.map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <label htmlFor="xpd-disk">{t('xpd_disk')}</label>
+        {free.length === 0 && <p className="desc" style={{ marginTop: 8 }}>{t('np_no_disks')}</p>}
+        {free.length > 0 && (
+          <select id="xpd-disk" value={disk} onChange={(e) => setDisk(e.target.value)}>
+            {free.map((d) => (
+              <option key={d.dev} value={d.dev}>{d.dev} · {d.model} · {fmtBytes(d.size_bytes)}</option>
+            ))}
+          </select>
+        )}
+        <label htmlFor="xpd-confirm">{t('ex_confirm_lbl_pool')}</label>
+        <input id="xpd-confirm" placeholder={pool.name} value={confirm}
+          onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('xpd_btn')} busy={busy} danger
+            disabled={!isAdmin || !vdev || !disk || confirm.trim() !== pool.name} />
         </div>
       </form>
     </ModalBox>
@@ -959,6 +1290,186 @@ function EditScheduleModal({ job, onClose }: { job: Job; onClose: () => void }) 
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
           {isAdmin && <button type="button" className="btn danger" style={{ marginRight: 'auto' }} onClick={remove} disabled={busy}>{t('et_delete')}</button>}
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('save')} busy={busy} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+// ---------- replicación ZFS (send/recv local y SSH) ----------
+function NewReplModal({ onClose }: { onClose: () => void }) {
+  const { t, refresh } = useApp();
+  const datasets = useLoad(() => getProvider().getDatasets());
+  const [source, setSource] = useState('');
+  const [destType, setDestType] = useState<'local' | 'ssh'>('local');
+  const [dest, setDest] = useState('');
+  const [host, setHost] = useState('');
+  const [user, setUser] = useState('');
+  const [port, setPort] = useState('22');
+  const [raw, setRaw] = useState(false);
+  const [force, setForce] = useState(false);
+  const [sched, setSched] = useState<SchedState>({ freq: 'daily', minute: '15', time: '03:00', weekday: 'sun', monthday: 1 });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [testState, setTestState] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
+  const [testMsg, setTestMsg] = useState('');
+  // Clave pública del daemon: solo se pide cuando el destino es SSH
+  const sshkey = useLoad(
+    () => (destType === 'ssh' ? getProvider().getReplicationSSHKey() : Promise.resolve(null)),
+    [destType]);
+
+  useEffect(() => { if (!source && datasets?.length) setSource(datasets[0].name); }, [datasets, source]);
+  useEffect(() => { setTestState('idle'); setTestMsg(''); }, [host, user, port]);
+
+  const runTest = async () => {
+    setTestState('busy'); setTestMsg('');
+    try {
+      const r = await getProvider().testReplication(host.trim(), user.trim(), parseInt(port, 10) || 22);
+      if (r.ok) { setTestState('ok'); setTestMsg(r.remote_version ?? ''); }
+      else { setTestState('fail'); setTestMsg(r.error ?? ''); }
+    } catch (ex) { setTestState('fail'); setTestMsg(errorMessage(ex, t)); }
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().createReplicationJob({
+        source, dest_type: destType, dest_dataset: dest.trim(),
+        host: destType === 'ssh' ? host.trim() : undefined,
+        user: destType === 'ssh' ? user.trim() : undefined,
+        port: destType === 'ssh' ? (parseInt(port, 10) || 22) : undefined,
+        raw, force_full: force, schedule: buildSchedule(sched),
+      });
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  const sshOk = destType !== 'ssh' || (host.trim() && user.trim() && +port >= 1 && +port <= 65535);
+  return (
+    <ModalBox onClose={onClose} wide label={t('repl_create_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('repl_create_title')}</h3>
+        <p className="desc">{t('repl_create_desc')}</p>
+        <label htmlFor="rp-source">{t('repl_source')}</label>
+        <select id="rp-source" value={source} onChange={(e) => setSource(e.target.value)}>
+          {(datasets ?? []).map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+        </select>
+        <label>{t('repl_dest_type')}</label>
+        <Seg<'local' | 'ssh'> value={destType} onChange={setDestType} ariaLabel={t('repl_dest_type')}
+          options={[{ v: 'local', label: t('repl_local') }, { v: 'ssh', label: t('repl_ssh') }]} />
+        <label htmlFor="rp-dest">{t('repl_dest_dataset')}</label>
+        <input id="rp-dest" placeholder={t('repl_dest_dataset_ph')} value={dest}
+          onChange={(e) => setDest(e.target.value)} required />
+        {destType === 'ssh' && (<>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 0.7fr', gap: '0 10px' }}>
+            <div>
+              <label htmlFor="rp-host">{t('repl_host')}</label>
+              <input id="rp-host" placeholder={t('repl_host_ph')} value={host} onChange={(e) => setHost(e.target.value)} required />
+            </div>
+            <div>
+              <label htmlFor="rp-user">{t('repl_user')}</label>
+              <input id="rp-user" placeholder={t('repl_user_ph')} value={user} onChange={(e) => setUser(e.target.value)} required />
+            </div>
+            <div>
+              <label htmlFor="rp-port">{t('repl_port')}</label>
+              <input id="rp-port" type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} required />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+            <button type="button" className="btn sm" onClick={runTest}
+              disabled={testState === 'busy' || !host.trim() || !user.trim()}>
+              {testState === 'busy' ? t('repl_testing') : t('repl_test')}
+            </button>
+            {testState === 'ok' && <span style={{ fontSize: 12.5, color: 'var(--ok)' }}>✓ {t('repl_test_ok')} <b className="mono">{testMsg}</b></span>}
+            {testState === 'fail' && <span className="form-err" style={{ margin: 0, fontSize: 12.5 }}>{testMsg}</span>}
+          </div>
+          {sshkey && (
+            <div className="card" style={{ marginTop: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 650, marginBottom: 4 }}>{t('repl_sshkey_title')}</div>
+              <code className="mono" style={{ display: 'block', fontSize: 11.5, wordBreak: 'break-all', color: 'var(--text2)' }}>
+                {sshkey.public_key}
+              </code>
+              <p className="desc" style={{ marginTop: 6, fontSize: 12 }}>{t('repl_sshkey_hint')}</p>
+              <p className="desc mono" style={{ marginTop: 2, fontSize: 11.5 }}>{sshkey.instructions}</p>
+            </div>
+          )}
+        </>)}
+        <label className="checklabel" style={{ marginTop: 12 }}>
+          <input type="checkbox" checked={raw} onChange={(e) => setRaw(e.target.checked)} /> {t('repl_raw')}
+        </label>
+        <p className="desc" style={{ marginTop: 2, fontSize: 12 }}>{t('repl_raw_hint')}</p>
+        <label className="checklabel" style={{ marginTop: 8 }}>
+          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> {t('repl_force')}
+        </label>
+        <p className="desc" style={{ marginTop: 2, fontSize: 12 }}>{t('repl_force_hint')}</p>
+        <ScheduleFields s={sched} set={setSched} showRetention={false}
+          retention="" setRetention={() => { }} t={t as never} />
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
+          <SubmitBtn label={t('repl_create')} busy={busy} disabled={!source || !dest.trim() || !sshOk} />
+        </div>
+      </form>
+    </ModalBox>
+  );
+}
+
+function EditReplModal({ job, onClose }: { job: ReplicationJob; onClose: () => void }) {
+  const { t, refresh, isAdmin } = useApp();
+  const [sched, setSched] = useState<SchedState>(() => parseSchedule(job.schedule));
+  const [raw, setRaw] = useState(job.raw);
+  const [force, setForce] = useState(job.force_full);
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try {
+      await getProvider().updateReplicationJob(job.id, {
+        schedule: buildSchedule(sched), raw, force_full: force,
+      });
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+  const remove = async () => {
+    setBusy(true); setErr('');
+    try {
+      await getProvider().deleteReplicationJob(job.id, confirm.trim());
+      refresh(); onClose();
+    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+  };
+
+  return (
+    <ModalBox onClose={onClose} label={t('repl_edit_title')}>
+      <form onSubmit={submit}>
+        <h3>{t('repl_edit_title')}</h3>
+        <p className="desc mono" style={{ fontSize: 12.5 }}>
+          {job.source} → {job.dest_type === 'ssh' ? `${job.user}@${job.host}:${job.dest_dataset}` : job.dest_dataset}
+        </p>
+        <ScheduleFields s={sched} set={setSched} showRetention={false}
+          retention="" setRetention={() => { }} t={t as never} />
+        <label className="checklabel" style={{ marginTop: 12 }}>
+          <input type="checkbox" checked={raw} onChange={(e) => setRaw(e.target.checked)} /> {t('repl_raw')}
+        </label>
+        <label className="checklabel" style={{ marginTop: 8 }}>
+          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> {t('repl_force')}
+        </label>
+        <p className="desc" style={{ marginTop: 2, fontSize: 12 }}>{t('repl_force_hint')}</p>
+        {isAdmin && (<>
+          <p className="desc" style={{ marginTop: 14 }}>{t('repl_del_desc')}</p>
+          <label htmlFor="rpe-confirm">{t('repl_del_confirm_lbl')}</label>
+          <input id="rpe-confirm" placeholder={job.source} value={confirm}
+            onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+        </>)}
+        {err && <p className="form-err" role="alert">{err}</p>}
+        <div className="m-actions">
+          {isAdmin && <button type="button" className="btn danger" style={{ marginRight: 'auto' }}
+            onClick={remove} disabled={busy || confirm.trim() !== job.source}>{t('repl_delete')}</button>}
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
           <SubmitBtn label={t('save')} busy={busy} />
         </div>

@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { subscribeEvents } from '../data/events';
 import { useData } from '../ui/useData';
 import { useApp, alertTargetView } from '../ui/store';
-import { fmtBytesPair, fmtInt, fmtPct, timeAgo } from '../ui/format';
+import { fmtBytes, fmtBytesPair, fmtInt, fmtPct, timeAgo } from '../ui/format';
 import { KpiCard, Spinner } from '../components/ui';
 import { PoolCard } from '../components/PoolCard';
 import { IconChev } from '../components/icons';
@@ -36,6 +36,7 @@ export default function Dashboard() {
   const { t, navigate } = useApp();
   const ov = useData((p) => p.getOverview());
   const pools = useData((p) => p.getPools());
+  const perf = useData((p) => p.getPerformance());
 
   // Suscripción a eventos en tiempo real: refresca KPIs y progreso de scrub
   useEffect(() => subscribeEvents((ev) => {
@@ -89,6 +90,38 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Rendimiento: solo si hay fuente de stats ARC en el sistema */}
+        {perf.data?.arc && (
+          <div className="sect">
+            <h2>{t('perf_title')}</h2>
+            <div className="card" style={{ padding: '14px 16px' }}>
+              <div className="poolmeta" style={{ padding: 0, marginBottom: 10 }}>
+                <span>{t('perf_arc')}{' '}· {t('perf_arc_size')} <b>{fmtBytes(perf.data.arc.size_bytes)}</b></span>
+                <span>{t('perf_arc_hit')} <b>{fmtPct(perf.data.arc.hit_pct)}</b></span>
+              </div>
+              <div className="tblwrap">
+                <table className="data">
+                  <thead>
+                    <tr><th className="slack">{t('perf_pool')}</th><th className="num">{t('perf_read')}</th><th className="num">{t('perf_write')}</th></tr>
+                  </thead>
+                  <tbody>
+                    {perf.data.pools.map((pp) => (
+                      <tr key={pp.name}>
+                        <td>{pp.name}</td>
+                        <td className="num">{fmtBytes(pp.read_bps)}/s</td>
+                        <td className="num">{fmtBytes(pp.write_bps)}/s</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Alertas + Actividad: apiladas en pantalla normal; en ancha van a
+            2 columnas (dash-cols) para no dejar media pantalla vacía */}
+        <div className="dash-cols">
         <div className="sect">
           <h2>{t('dash_alerts')}</h2>
           <div className="card">
@@ -110,6 +143,7 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+        </div>
         </div>
       </>)}
     </div>

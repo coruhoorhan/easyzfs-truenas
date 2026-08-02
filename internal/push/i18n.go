@@ -21,7 +21,16 @@ var catalogo = map[string]map[string]textos{
 		"scrub_errors":  {"Scrub con errores", "El scrub de {pool} terminó con {errors} errores."},
 		"disk_temp":     {"Disco caliente", "El disco {dev} está a {temp} °C (umbral {threshold} °C)."},
 		"smart_status":  {"Aviso SMART", "{dev}: {detail}."},
-		"generic":       {"EasyZFS", "Tienes una alerta nueva."},
+		// Eventos ZFS en tiempo real (colector events, source "zed.<class>")
+		"zfs_io_error":       {"Errores de E/S", "{vdev}: errores de E/S en el pool {pool}."},
+		"zfs_checksum_error": {"Errores de checksum", "{vdev}: errores de checksum en el pool {pool}."},
+		"zfs_data_error":     {"Errores de datos", "{vdev}: errores de datos en el pool {pool}."},
+		"zfs_deadman":        {"E/S colgada", "{vdev}: operación de E/S colgada (deadman) en el pool {pool}."},
+		"zfs_io_delay":       {"E/S lenta", "{vdev}: E/S lenta (delay) en el pool {pool}."},
+		"vdev_state":         {"Estado de vdev", "{vdev} pasó a {state} en el pool {pool}."},
+		"resilver_start":     {"Resilver iniciado", "El pool {pool} ha empezado a reconstruirse."},
+		"resilver_finish":    {"Resilver terminado", "El pool {pool} ha terminado de reconstruirse."},
+		"generic":            {"EasyZFS", "Tienes una alerta nueva."},
 	},
 	"en": {
 		"pool_capacity": {"Pool capacity", "Pool {pool} is at {pct}% capacity (threshold {threshold}%)."},
@@ -29,7 +38,16 @@ var catalogo = map[string]map[string]textos{
 		"scrub_errors":  {"Scrub errors", "Scrub of {pool} finished with {errors} errors."},
 		"disk_temp":     {"Hot disk", "Disk {dev} is at {temp} °C (threshold {threshold} °C)."},
 		"smart_status":  {"SMART warning", "{dev}: {detail}."},
-		"generic":       {"EasyZFS", "You have a new alert."},
+		// Real-time ZFS events (events collector, source "zed.<class>")
+		"zfs_io_error":       {"I/O errors", "{vdev}: I/O errors on pool {pool}."},
+		"zfs_checksum_error": {"Checksum errors", "{vdev}: checksum errors on pool {pool}."},
+		"zfs_data_error":     {"Data errors", "{vdev}: data errors on pool {pool}."},
+		"zfs_deadman":        {"Hung I/O", "{vdev}: hung I/O operation (deadman) on pool {pool}."},
+		"zfs_io_delay":       {"Slow I/O", "{vdev}: slow I/O (delay) on pool {pool}."},
+		"vdev_state":         {"Vdev state", "{vdev} changed to {state} on pool {pool}."},
+		"resilver_start":     {"Resilver started", "Pool {pool} has started rebuilding."},
+		"resilver_finish":    {"Resilver finished", "Pool {pool} has finished rebuilding."},
+		"generic":            {"EasyZFS", "You have a new alert."},
 	},
 }
 

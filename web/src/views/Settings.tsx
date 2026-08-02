@@ -222,7 +222,7 @@ function BackupCard({ settings, onSave }: {
   };
 
   return (
-    <div className="card pad">
+    <div className="card pad admin-card">
       <h3 className="cardtitle">{t('bk_title')}</h3>
 
       {/* Estado */}
@@ -636,9 +636,9 @@ export default function Settings() {
       {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
       {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}</h2>}
 
-      {/* ---- Usuarios (solo admin) ---- */}
+      {/* ---- Usuarios (solo admin; fila completa: contiene tabla) ---- */}
       {isAdmin && (
-        <div className="card pad">
+        <div className="card pad admin-card wide">
           <h3 className="cardtitle">{t('s_users')}
             <span className="actions" style={{ float: 'right' }}>
               <button className="btn sm primary" onClick={() => openModal('newuser')}>+ {t('s_newuser')}</button>
@@ -682,7 +682,7 @@ export default function Settings() {
 
       {/* ---- Umbrales (solo admin) ---- */}
       {isAdmin && (
-        <div className="card pad">
+        <div className="card pad admin-card">
           <h3 className="cardtitle">{t('s_thresh')}</h3>
           <p className="muted">{t('s_thresh_d')}</p>
           <label htmlFor="th-warn">{t('s_cap_warn')}</label>
@@ -703,7 +703,7 @@ export default function Settings() {
 
       {/* ---- Notificaciones webhook (solo admin) ---- */}
       {isAdmin && (
-        <div className="card pad">
+        <div className="card pad admin-card">
           <h3 className="cardtitle">{t('s_notif')}</h3>
           <label htmlFor="nf-hook">{t('s_webhook')}</label>
           <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}

@@ -38,6 +38,7 @@ type ZpoolCollector struct {
 	pools    []model.Pool
 	datasets []model.Dataset
 	snaps    []model.Snapshot
+	history  map[string][]model.HistoryEntry
 
 	fails      int
 	stale      bool
@@ -55,6 +56,7 @@ func NewZpoolCollector(d *sql.DB, h *hub.Hub, al *alerts.Alerter) *ZpoolCollecto
 		prevStatus: map[string]string{},
 		prevPct:    map[string]int{},
 		lastSeries: map[string]time.Time{},
+		history:    map[string][]model.HistoryEntry{},
 	}
 }
 
@@ -146,8 +148,16 @@ func (c *ZpoolCollector) collectOnce(ctx context.Context) error {
 	}
 	for i := range pools {
 		c.fillStatus(ctx, &pools[i]) // tolerante: degrada, no falla la pasada
+		c.fillTrim(ctx, &pools[i])   // progreso de TRIM (zpool status -t)
 		c.fillCompressRatio(ctx, &pools[i])
+		c.fillPoolProps(ctx, &pools[i])
 		c.resolveVdevPaths(ctx, &pools[i])
+	}
+	history := map[string][]model.HistoryEntry{}
+	for i := range pools {
+		if h := c.fetchHistory(ctx, pools[i].Name); h != nil {
+			history[pools[i].Name] = h
+		}
 	}
 	datasets, err := c.listDatasets(ctx)
 	if err != nil {
@@ -162,6 +172,22 @@ func (c *ZpoolCollector) collectOnce(ctx context.Context) error {
 	c.pools = pools
 	c.datasets = datasets
 	c.snaps = snaps
+	for name, h := range history {
+		c.history[name] = h
+	}
+	// Olvida historiales de pools que ya no existen
+	for name := range c.history {
+		found := false
+		for i := range pools {
+			if pools[i].Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			delete(c.history, name)
+		}
+	}
 	c.mu.Unlock()
 
 	c.publishChanges(pools)
@@ -199,6 +225,51 @@ func (c *ZpoolCollector) listPools(ctx context.Context) ([]model.Pool, error) {
 		pools = append(pools, p)
 	}
 	return pools, nil
+}
+
+// fillPoolProps — propiedades del pool autotrim y checkpoint
+// ('zpool get -Hp -o property,value autotrim,checkpoint <pool>').
+// checkpoint vale "-" cuando no hay checkpoint activo.
+func (c *ZpoolCollector) fillPoolProps(ctx context.Context, p *model.Pool) {
+	out, err := executil.Run(ctx, 5*time.Second, "zpool", "get", "-Hp",
+		"-o", "property,value", "autotrim,checkpoint", p.Name)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Split(line, "\t")
+		if len(f) < 2 {
+			continue
+		}
+		switch f[0] {
+		case "autotrim":
+			p.Autotrim = f[1] == "on"
+		case "checkpoint":
+			p.Checkpoint = f[1] != "-" && f[1] != ""
+		}
+	}
+}
+
+// fetchHistory — 'zpool history -i <pool>' parseado (nil si falla; se conserva
+// la caché anterior en ese caso).
+func (c *ZpoolCollector) fetchHistory(ctx context.Context, pool string) []model.HistoryEntry {
+	out, err := executil.Run(ctx, 10*time.Second, "zpool", "history", "-i", pool)
+	if err != nil {
+		return nil
+	}
+	return parseHistory(string(out))
+}
+
+// History — caché del historial del pool (más reciente primero).
+func (c *ZpoolCollector) History(name string) []model.HistoryEntry {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	src := c.history[name]
+	out := make([]model.HistoryEntry, 0, len(src))
+	for i := len(src) - 1; i >= 0; i-- {
+		out = append(out, src[i])
+	}
+	return out
 }
 
 // fillCompressRatio — compressratio del dataset raíz del pool como ratio del pool.
@@ -286,6 +357,7 @@ func (c *ZpoolCollector) parseStatusJSON(out []byte, p *model.Pool) bool {
 		p.Status = pj.State
 	}
 	roles := map[string]bool{}
+	p.RaidzVdevs = nil
 	for _, root := range pj.Vdevs {
 		c.walkVdev(root, "stripe", p, roles, false)
 	}
@@ -294,6 +366,9 @@ func (c *ZpoolCollector) parseStatusJSON(out []byte, p *model.Pool) bool {
 		kind := "scrub"
 		if ss.Function == "RESILVER" {
 			kind = "resilver"
+		}
+		if strings.Contains(strings.ToUpper(ss.Function), "EXPAND") {
+			kind = "expand" // RAID-Z expansion (lote D)
 		}
 		switch ss.State {
 		case "DSS_SCANNING", "SCANNING":
@@ -314,8 +389,15 @@ func (c *ZpoolCollector) parseStatusJSON(out []byte, p *model.Pool) bool {
 					eta = int64(float64(elapsed) * (100 - pct) / pct)
 				}
 			}
-			p.Scrub = model.ScrubInfo{State: "running", Kind: kind, Pct: pct,
+			info := model.ScrubInfo{State: "running", Kind: kind, Pct: pct,
 				EtaSec: eta, Ts: time.Now().UTC(), Errors: int64(ss.Errors)}
+			if n, ok := parseHumanSize(ss.Examined); ok {
+				info.BytesDone = n
+			}
+			if n, ok := parseHumanSize(ss.ToExamine); ok {
+				info.BytesTotal = n
+			}
+			p.Scrub = info
 		case "DSS_FINISHED", "FINISHED":
 			p.Scrub = model.ScrubInfo{State: "done", Kind: kind, Pct: 100,
 				Ts: parseZfsTime(ss.EndTime), Errors: int64(ss.Errors)}
@@ -369,6 +451,10 @@ func (c *ZpoolCollector) walkVdev(v jsonVdev, role string, p *model.Pool, roles 
 	if t != "" {
 		role = t
 		roles[t] = true
+		// Contenedor raidz ('raidz2-0'): objetivo de RAID-Z expansion.
+		if strings.HasPrefix(t, "raidz") && reRaidzName.MatchString(v.Name) {
+			p.RaidzVdevs = append(p.RaidzVdevs, v.Name)
+		}
 	}
 	if strings.HasPrefix(v.Name, "replacing-") {
 		replacing = true
@@ -438,11 +524,19 @@ func parseZfsTime(s string) time.Time {
 
 // --- Fallback texto (OpenZFS <2.2, sin --json). Mejor esfuerzo documentado. ---
 
+// reRaidzName — nombre de vdev contenedor raidz ('raidz2-0').
+var reRaidzName = regexp.MustCompile(`^raidz[123]-\d+$`)
+
 var (
 	vdevLineRe  = regexp.MustCompile(`^(\s+)(\S+)\s+(ONLINE|DEGRADED|FAULTED|UNAVAIL|OFFLINE|REMOVED)\s+\d+`)
+	copiedRe    = regexp.MustCompile(`([\d.]+[KMGTPE]B?|\d+B)\s+copied`)
 	scrubDoneRe = regexp.MustCompile(`scrub .* with (\d+) errors on (.+)$`)
 	scrubPctRe  = regexp.MustCompile(`(\d+(?:\.\d+)?)%\s+done`)
 	scrubEtaRe  = regexp.MustCompile(`(\d+):(\d{2}):(\d{2}) to go`)
+	scannedRe   = regexp.MustCompile(`([\d.]+[KMGTPE]B?|\d+B)\s+scanned`)
+	issuedRe    = regexp.MustCompile(`([\d.]+[KMGTPE]B?|\d+B)\s+issued`)
+	trimDoneRe  = regexp.MustCompile(`trimmed .* with (\d+) errors on (.+)$`)
+	trimAmtRe   = regexp.MustCompile(`([\d.]+[KMGTPE]B?|\d+B)\s+trimmed`)
 )
 
 // parseStatusText — parseo defensivo del formato clásico de 'zpool status'.
@@ -471,6 +565,9 @@ func (c *ZpoolCollector) parseStatusText(out string, p *model.Pool) {
 				if r := vdevRole(name, ""); r != "" {
 					curRole = r
 					roles[r] = true
+					if strings.HasPrefix(r, "raidz") && reRaidzName.MatchString(name) {
+						p.RaidzVdevs = append(p.RaidzVdevs, name)
+					}
 					continue
 				}
 				if name == p.Name {
@@ -497,14 +594,106 @@ func (c *ZpoolCollector) parseStatusText(out string, p *model.Pool) {
 				se, _ := strconv.Atoi(m[3])
 				p.Scrub.EtaSec = int64(h*3600 + mi*60 + se)
 			}
+			if m := scannedRe.FindStringSubmatch(line); m != nil {
+				if n, ok := parseHumanSize(m[1]); ok {
+					p.Scrub.BytesDone = n
+				}
+			}
+			if m := issuedRe.FindStringSubmatch(line); m != nil {
+				if n, ok := parseHumanSize(m[1]); ok {
+					p.Scrub.BytesTotal = n
+				}
+			}
+			// expansión: "1.23T copied at 100M/s, 45.67% done, 0:30:15 to go"
+			if m := copiedRe.FindStringSubmatch(line); m != nil {
+				if n, ok := parseHumanSize(m[1]); ok {
+					p.Scrub.BytesDone = n
+				}
+			}
 		}
 	}
 	p.Topo = topoFromRoles(roles)
 }
 
+// fillTrim — progreso de TRIM ('zpool status -t <pool>'; la salida normal no
+// lo muestra). Solo rellena Scrub si el pool no tiene scrub/resilver en curso
+// (el scan de datos manda sobre el trim en la representación unificada).
+func (c *ZpoolCollector) fillTrim(ctx context.Context, p *model.Pool) {
+	out, err := executil.Run(ctx, 15*time.Second, "zpool", "status", "-t", p.Name)
+	if err != nil {
+		return
+	}
+	c.parseTrimStatus(string(out), p)
+}
+
+// parseTrimStatus — líneas 'scan:' de 'zpool status -t':
+//
+//	scan: trim in progress since Wed Aug 13 02:00:00 2025
+//	        1.23T trimmed at 100M/s, 45.2% done, 0:30:15 to go
+//	scan: trimmed 2.34T in 0 days 00:30:15 with 0 errors on Wed ...
+func (c *ZpoolCollector) parseTrimStatus(out string, p *model.Pool) {
+	trimRunning := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "scan:") {
+			trimRunning = false
+			switch {
+			case strings.Contains(line, "trim in progress"):
+				if p.Scrub.State == "running" {
+					continue // hay scrub/resilver en curso: manda
+				}
+				p.Scrub = model.ScrubInfo{State: "running", Kind: "trim", Ts: time.Now().UTC()}
+				trimRunning = true
+			case strings.Contains(line, "trimmed"):
+				if p.Scrub.State == "running" {
+					continue
+				}
+				st := model.ScrubInfo{State: "done", Kind: "trim", Pct: 100, Ts: time.Now().UTC()}
+				if m := trimDoneRe.FindStringSubmatch(line); m != nil {
+					st.Errors, _ = strconv.ParseInt(m[1], 10, 64)
+					st.Ts = parseZfsTime(m[2])
+				}
+				p.Scrub = st
+			}
+			continue
+		}
+		if !trimRunning {
+			continue
+		}
+		if m := trimAmtRe.FindStringSubmatch(line); m != nil {
+			if n, ok := parseHumanSize(m[1]); ok {
+				p.Scrub.BytesDone = n
+			}
+		}
+		if m := scrubPctRe.FindStringSubmatch(line); m != nil {
+			p.Scrub.Pct, _ = strconv.ParseFloat(m[1], 64)
+		}
+		if m := scrubEtaRe.FindStringSubmatch(line); m != nil {
+			h, _ := strconv.Atoi(m[1])
+			mi, _ := strconv.Atoi(m[2])
+			se, _ := strconv.Atoi(m[3])
+			p.Scrub.EtaSec = int64(h*3600 + mi*60 + se)
+		}
+	}
+}
+
 // parseScanLine interpreta la línea 'scan:' del estado.
 func (c *ZpoolCollector) parseScanLine(line string, p *model.Pool) {
 	switch {
+	case strings.Contains(line, "expansion in progress"):
+		// RAID-Z expansion (OpenZFS ≥ 2.3): la relocalización de bloques
+		// avanza como un scan con % y ETA (misma representación unificada).
+		p.Scrub = model.ScrubInfo{State: "running", Kind: "expand", Ts: time.Now().UTC()}
+		if m := scrubPctRe.FindStringSubmatch(line); m != nil {
+			p.Scrub.Pct, _ = strconv.ParseFloat(m[1], 64)
+		}
+		if m := scrubEtaRe.FindStringSubmatch(line); m != nil {
+			h, _ := strconv.Atoi(m[1])
+			mi, _ := strconv.Atoi(m[2])
+			se, _ := strconv.Atoi(m[3])
+			p.Scrub.EtaSec = int64(h*3600 + mi*60 + se)
+		}
+	case strings.Contains(line, "expansion completed") || strings.Contains(line, "expanded "):
+		p.Scrub = model.ScrubInfo{State: "done", Kind: "expand", Pct: 100, Ts: time.Now().UTC()}
 	case strings.Contains(line, "scrub in progress") || strings.Contains(line, "resilver in progress"):
 		kind := "scrub"
 		if strings.Contains(line, "resilver") {
@@ -577,10 +766,12 @@ func resolveDevPath(dev string) string {
 // --- datasets y snapshots ---
 
 // listDatasets — 'zfs list -Hp -t filesystem,volume' con columnas por nombre.
+// encryption es el valor EFECTIVO (heredado resuelto por zfs list); keystatus
+// es available/unavailable/"-" (lote D: cifrado nativo por dataset).
 func (c *ZpoolCollector) listDatasets(ctx context.Context) ([]model.Dataset, error) {
 	out, err := executil.Run(ctx, 10*time.Second, "zfs", "list", "-Hp",
 		"-t", "filesystem,volume",
-		"-o", "name,type,compression,used,avail,quota,mountpoint")
+		"-o", "name,type,compression,used,avail,quota,mountpoint,encryption,keystatus")
 	if err != nil {
 		return nil, err
 	}
@@ -590,8 +781,8 @@ func (c *ZpoolCollector) listDatasets(ctx context.Context) ([]model.Dataset, err
 			continue
 		}
 		f := strings.Split(line, "\t")
-		if len(f) < 7 {
-			log.Printf("zfs list: línea con %d campos (esperaba 7): %q", len(f), line)
+		if len(f) < 9 {
+			log.Printf("zfs list: línea con %d campos (esperaba 9): %q", len(f), line)
 			continue
 		}
 		typ := "fs"
@@ -606,6 +797,8 @@ func (c *ZpoolCollector) listDatasets(ctx context.Context) ([]model.Dataset, err
 			AvailBytes:  parseUint(f[4]),
 			QuotaBytes:  parseUint(f[5]), // '-' → 0 (sin cuota)
 			Mountpoint:  f[6],
+			Encryption:  f[7],
+			KeyStatus:   f[8],
 		})
 	}
 	return datasets, nil
@@ -713,15 +906,4 @@ func parsePct(s string) float64 {
 	s = strings.TrimSuffix(s, "%")
 	n, _ := strconv.ParseFloat(s, 64)
 	return n
-}
-
-// DetectZFSVersion — versión de OpenZFS del host para /api/version.
-func DetectZFSVersion(ctx context.Context) string {
-	out, err := executil.Run(ctx, 5*time.Second, "zpool", "--version")
-	if err != nil {
-		return "desconocida"
-	}
-	// formato: 'zfs-2.2.6-1\nzfs-kmod-2.2.6-1'
-	first, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-	return strings.TrimPrefix(first, "zfs-")
 }

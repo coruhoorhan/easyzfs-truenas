@@ -47,6 +47,17 @@ func (m *Mock) Run(ctx context.Context) {
 	// target navegable ("disks:sdd"), como haría el colector real.
 	m.al.EvaluateDisks(ctx, m.Disks())
 	m.al.EvaluatePools(ctx, m.Pools())
+	// Evento ZFS de ejemplo (colector events): a los pocos segundos llega una
+	// alerta "zed.*" como si zpool events hubiera emitido un ereport.
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-time.After(12 * time.Second):
+			m.al.RaiseKind(ctx, "crit", "zed.ereport.fs.zfs.checksum", "disks:sdd",
+				"Errores de checksum en sdd (evento ZFS, pool tank)",
+				"zfs_checksum_error", map[string]any{"pool": "tank", "vdev": "sdd"})
+		}
+	}()
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	for {
@@ -64,10 +75,25 @@ func (m *Mock) tick(now time.Time) {
 	m.mu.Lock()
 	for i := range m.pools {
 		p := &m.pools[i]
-		if p.Name != "ssd" {
+		if p.Name != "ssd" && p.Scrub.Kind != "expand" {
 			continue
 		}
-		if p.Scrub.State == "running" {
+		if p.Scrub.Kind == "expand" && p.Scrub.State == "running" {
+			// Expansión simulada: ~4 % por tick (~2 min en total).
+			p.Scrub.Pct += 4
+			if p.Scrub.Pct >= 100 {
+				p.Scrub = model.ScrubInfo{State: "done", Kind: "expand", Pct: 100, Ts: now.UTC(), Errors: 0}
+			} else {
+				p.Scrub.EtaSec = int64((100 - p.Scrub.Pct) * 5 / 4)
+				p.Scrub.BytesDone = uint64(p.Scrub.Pct / 100 * float64(p.UsedBytes))
+				p.Scrub.BytesTotal = p.UsedBytes
+			}
+			m.h.Publish("scrub.progress", map[string]any{
+				"pool": p.Name, "pct": p.Scrub.Pct, "eta_sec": p.Scrub.EtaSec, "kind": "expand",
+			})
+			continue
+		}
+		if p.Name == "ssd" && p.Scrub.State == "running" {
 			p.Scrub.Pct += 1.5
 			if p.Scrub.Pct >= 100 {
 				p.Scrub = model.ScrubInfo{State: "done", Pct: 100, Ts: now.UTC(), Errors: 0}
@@ -146,6 +172,141 @@ func (m *Mock) Disks() []model.Disk {
 	return out
 }
 
+// History implementa PoolProvider: actividad ZFS reciente de mentira.
+func (m *Mock) History(name string) []model.HistoryEntry {
+	now := time.Now().UTC()
+	switch name {
+	case "tank":
+		return []model.HistoryEntry{
+			{Ts: now.Add(-2 * time.Hour), Command: "zfs snapshot -r tank@easyzfs-auto-20260801-0600", DurationSec: 1.42},
+			{Ts: now.Add(-26 * time.Hour), Command: "zpool scrub tank", DurationSec: 14250.8},
+			{Ts: now.Add(-3 * 24 * time.Hour), Command: "zfs set compression=zstd tank/backups", DurationSec: 0.04},
+			{Ts: now.Add(-9 * 24 * time.Hour), Command: "zpool checkpoint tank", DurationSec: 0.61},
+			{Ts: now.Add(-30 * 24 * time.Hour), Command: "zpool create tank raidz sdb sdc sdd", DurationSec: 2.10},
+		}
+	case "ssd":
+		return []model.HistoryEntry{
+			{Ts: now.Add(-40 * time.Minute), Command: "zpool replace ssd 13501483247074580929 nvme1n1", DurationSec: 0.88},
+			{Ts: now.Add(-2 * time.Hour), Command: "zfs snapshot -r ssd@easyzfs-auto-20260801-0600", DurationSec: 0.91},
+			{Ts: now.Add(-20 * 24 * time.Hour), Command: "zpool set autotrim=on ssd", DurationSec: 0.03},
+			{Ts: now.Add(-60 * 24 * time.Hour), Command: "zpool create ssd mirror nvme0n1 nvme1n1", DurationSec: 1.74},
+		}
+	}
+	return []model.HistoryEntry{}
+}
+
+// Performance implementa PerfProvider: ARC y throughput inventados.
+func (m *Mock) Performance() model.Performance {
+	return model.Performance{
+		Arc: &model.ArcStats{SizeBytes: 3900 * (1 << 20), HitPct: 92.4},
+		Pools: []model.PoolPerf{
+			{Name: "tank", ReadBps: 41.2 * (1 << 20), WriteBps: 12.8 * (1 << 20)},
+			{Name: "ssd", ReadBps: 220 * (1 << 20), WriteBps: 96.5 * (1 << 20)},
+		},
+	}
+}
+
+// SetAutotrim — mutación simulada (la llama el handler en MOCK=1 tras validar).
+func (m *Mock) SetAutotrim(pool string, enabled bool) {
+	m.mu.Lock()
+	for i := range m.pools {
+		if m.pools[i].Name == pool {
+			m.pools[i].Autotrim = enabled
+		}
+	}
+	m.mu.Unlock()
+	m.h.Publish("overview", map[string]any{"reason": "pool.autotrim"})
+}
+
+// SetCheckpoint — mutación simulada de checkpoint (MOCK=1).
+func (m *Mock) SetCheckpoint(pool string, active bool) {
+	m.mu.Lock()
+	for i := range m.pools {
+		if m.pools[i].Name == pool {
+			m.pools[i].Checkpoint = active
+		}
+	}
+	m.mu.Unlock()
+	m.h.Publish("overview", map[string]any{"reason": "pool.checkpoint"})
+}
+
+// SetKeyStatus — unlock/lock simulados (MOCK=1): la clave nunca se pide ni
+// guarda; solo cambia el estado visible. Al desbloquear, el dataset "se monta".
+func (m *Mock) SetKeyStatus(name, status string) {
+	m.mu.Lock()
+	for i := range m.datasets {
+		if m.datasets[i].Name == name {
+			m.datasets[i].KeyStatus = status
+			if status == "available" && m.datasets[i].Type == "fs" && m.datasets[i].Mountpoint == "-" {
+				m.datasets[i].Mountpoint = "/" + name
+			}
+			if status == "unavailable" {
+				m.datasets[i].Mountpoint = "-"
+			}
+		}
+	}
+	m.mu.Unlock()
+	m.h.Publish("overview", map[string]any{"reason": "dataset.key"})
+}
+
+// AddDataset — alta simulada de dataset (MOCK=1).
+func (m *Mock) AddDataset(name, typ, compression string, encrypted bool) {
+	m.mu.Lock()
+	mount := "-" // volume
+	if typ == "fs" {
+		mount = "/" + name
+	}
+	enc, ks := "off", "-"
+	if encrypted {
+		enc, ks = "aes-256-gcm", "available"
+	}
+	m.datasets = append(m.datasets, model.Dataset{
+		Name: name, Type: typ, Compression: compression,
+		UsedBytes: 1 << 20, AvailBytes: 5 * (1 << 40), Mountpoint: mount,
+		Encryption: enc, KeyStatus: ks,
+	})
+	m.mu.Unlock()
+	m.h.Publish("overview", map[string]any{"reason": "dataset.create"})
+}
+
+// Expand — RAID-Z expansion simulada (MOCK=1): incorpora el disco al pool y
+// arranca un scan 'expand' que avanza en cada tick (~2%/tick, ~2,5 min).
+func (m *Mock) Expand(pool, vdev, disk string) {
+	m.mu.Lock()
+	for i := range m.pools {
+		if m.pools[i].Name != pool {
+			continue
+		}
+		role := "raidz1"
+		if strings.HasPrefix(vdev, "raidz2") {
+			role = "raidz2"
+		} else if strings.HasPrefix(vdev, "raidz3") {
+			role = "raidz3"
+		}
+		m.pools[i].Vdevs = append(m.pools[i].Vdevs,
+			model.Vdev{Dev: disk, Role: role, Status: "ONLINE", TempC: 32})
+		m.pools[i].Scrub = model.ScrubInfo{
+			State: "running", Kind: "expand", Pct: 0, EtaSec: 150,
+			Ts: time.Now().UTC(),
+		}
+	}
+	for i := range m.disks {
+		if m.disks[i].Dev == disk {
+			m.disks[i].Pool = pool
+		}
+	}
+	m.mu.Unlock()
+	m.h.Publish("overview", map[string]any{"reason": "pool.expand"})
+}
+
+// Capabilities implementa CapProvider: en demo se anuncia un OpenZFS moderno.
+func (m *Mock) Capabilities() model.Capabilities {
+	return model.Capabilities{
+		Rewrite: true, RaidzExpansion: true, ScrubAll: true,
+		ScrubRange: true, ZarcNames: true, JSONOutput: true, Version: "2.4.1",
+	}
+}
+
 // SysTimers implementa SysTimerProvider: ejemplos de timers systemd y cron
 // que un NAS típico ya tendría (la vista Tareas los muestra junto a los jobs).
 func (m *Mock) SysTimers() []model.SysTimer {
@@ -195,18 +356,23 @@ func (m *Mock) build() {
 		{
 			Name:       "tank",
 			Status:     "DEGRADED",
-			Topo:       "raidz1",
+			Topo:       "raidz2",
 			UsedBytes:  6*uint64(tib) + 420*uint64(gib),
-			TotalBytes: 12 * uint64(tib), // 3×4 TB raidz1 ≈ 8 TB útiles; total bruto 12 TB
+			TotalBytes: 16 * uint64(tib), // 4×4 TB raidz2 ≈ 8 TB útiles; total bruto 16 TB
 			FragPct:    12,
 			CompRatio:  1.18,
 			Scrub:      model.ScrubInfo{State: "done", Pct: 100, Ts: time.Now().Add(-9 * 24 * time.Hour).UTC(), Errors: 0},
+			Autotrim:   false, // HDD: no aplica
+			Checkpoint: true,  // checkpoint activo de ejemplo (badge en la UI)
+			// Vdev raidz2-0: objetivo del botón Expandir (RAID-Z expansion).
+			RaidzVdevs: []string{"raidz2-0"},
 			Vdevs: []model.Vdev{
-				{Dev: "sdb", Role: "raidz1", Status: "ONLINE", TempC: 34},
-				{Dev: "sdc", Role: "raidz1", Status: "ONLINE", TempC: 35},
+				{Dev: "sdb", Role: "raidz2", Status: "ONLINE", TempC: 34},
+				{Dev: "sdc", Role: "raidz2", Status: "ONLINE", TempC: 35},
+				{Dev: "sdd", Role: "raidz2", Status: "ONLINE", TempC: 36},
 				// Caso real (pool heredado): vdev nombrado por PARTUUID y
 				// FAULTED; sin Path porque el disco ya no responde.
-				{Dev: "11111111-2222-3333-4444-555555555555", Role: "raidz1", Status: "FAULTED"},
+				{Dev: "11111111-2222-3333-4444-555555555555", Role: "raidz2", Status: "FAULTED"},
 			},
 		},
 		{
@@ -218,6 +384,7 @@ func (m *Mock) build() {
 			FragPct:    4,
 			CompRatio:  1.09,
 			Scrub:      model.ScrubInfo{State: "running", Kind: "resilver", Pct: 23, EtaSec: 1500, Ts: m.scrubStart.UTC(), Errors: 0},
+			Autotrim:   true, // SSD NVMe: TRIM continuo activado
 			Vdevs: []model.Vdev{
 				{Dev: "nvme0n1", Role: "mirror", Status: "ONLINE", TempC: 41},
 				// Pareja replacing- real: viejo saliente (CANT_OPEN) + nuevo ya ONLINE
@@ -227,12 +394,16 @@ func (m *Mock) build() {
 		},
 	}
 	m.datasets = []model.Dataset{
-		{Name: "tank", Type: "fs", Compression: "lz4", UsedBytes: 6*uint64(tib) + 420*uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 0, Mountpoint: "/tank"},
-		{Name: "tank/docs", Type: "fs", Compression: "lz4", UsedBytes: 220 * uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 512 * uint64(gib), Mountpoint: "/tank/docs"},
-		{Name: "tank/fotos", Type: "fs", Compression: "lz4", UsedBytes: 3*uint64(tib) + 100*uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 0, Mountpoint: "/tank/fotos"},
-		{Name: "tank/backups", Type: "fs", Compression: "zstd", UsedBytes: 3*uint64(tib) + 40*uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 4 * uint64(tib), Mountpoint: "/tank/backups"},
-		{Name: "ssd", Type: "fs", Compression: "lz4", UsedBytes: 420 * uint64(gib), AvailBytes: 1500 * uint64(gib), QuotaBytes: 0, Mountpoint: "/ssd"},
-		{Name: "ssd/vm", Type: "volume", Compression: "zstd", UsedBytes: 320 * uint64(gib), AvailBytes: 1500 * uint64(gib), QuotaBytes: 400 * uint64(gib), Mountpoint: "-"},
+		{Name: "tank", Type: "fs", Compression: "lz4", UsedBytes: 6*uint64(tib) + 420*uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 0, Mountpoint: "/tank", Encryption: "off", KeyStatus: "-"},
+		{Name: "tank/docs", Type: "fs", Compression: "lz4", UsedBytes: 220 * uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 512 * uint64(gib), Mountpoint: "/tank/docs", Encryption: "off", KeyStatus: "-"},
+		{Name: "tank/fotos", Type: "fs", Compression: "lz4", UsedBytes: 3*uint64(tib) + 100*uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 0, Mountpoint: "/tank/fotos", Encryption: "off", KeyStatus: "-"},
+		{Name: "tank/backups", Type: "fs", Compression: "zstd", UsedBytes: 3*uint64(tib) + 40*uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 4 * uint64(tib), Mountpoint: "/tank/backups", Encryption: "off", KeyStatus: "-"},
+		// Cifrado nativo desbloqueado (clave cargada, montado).
+		{Name: "tank/secretos", Type: "fs", Compression: "zstd", UsedBytes: 42 * uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 0, Mountpoint: "/tank/secretos", Encryption: "aes-256-gcm", KeyStatus: "available"},
+		// Cifrado nativo bloqueado (sin clave: no montado; se desbloquea con unlock).
+		{Name: "tank/boveda", Type: "fs", Compression: "zstd", UsedBytes: 512 * uint64(gib), AvailBytes: 5 * uint64(tib), QuotaBytes: 0, Mountpoint: "-", Encryption: "aes-256-gcm", KeyStatus: "unavailable"},
+		{Name: "ssd", Type: "fs", Compression: "lz4", UsedBytes: 420 * uint64(gib), AvailBytes: 1500 * uint64(gib), QuotaBytes: 0, Mountpoint: "/ssd", Encryption: "off", KeyStatus: "-"},
+		{Name: "ssd/vm", Type: "volume", Compression: "zstd", UsedBytes: 320 * uint64(gib), AvailBytes: 1500 * uint64(gib), QuotaBytes: 400 * uint64(gib), Mountpoint: "-", Encryption: "off", KeyStatus: "-"},
 	}
 	now := time.Now().UTC()
 	mkSnap := func(ds, name string, age time.Duration, used uint64, kind string) model.Snapshot {
@@ -248,6 +419,9 @@ func (m *Mock) build() {
 	}
 	m.disks = []model.Disk{
 		{Dev: "sda", Model: "CT500MX500SSD1", Serial: "2034E5A1B2C3", SizeBytes: 500 * uint64(gib), TempC: f64ptr(33), Smart: "ok", SmartDetail: "PASSED", Pool: "", Hours: 18200},
+		// Disco libre del mismo tamaño que los miembros de tank: candidato a
+		// RAID-Z expansion (lote D) o a sustituir el vdev FAULTED.
+		{Dev: "sde", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA04", SizeBytes: 4 * uint64(tib), TempC: f64ptr(31), Smart: "ok", SmartDetail: "PASSED", Pool: "", Hours: 1200},
 		{Dev: "sdb", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA01", SizeBytes: 4 * uint64(tib), TempC: f64ptr(34), Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41230},
 		{Dev: "sdc", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA02", SizeBytes: 4 * uint64(tib), TempC: f64ptr(35), Smart: "ok", SmartDetail: "PASSED", Pool: "tank", Hours: 41231},
 		{Dev: "sdd", Model: "WDC WD40EFRX-68N", Serial: "WD-WCC7K1AAAA03", SizeBytes: 4 * uint64(tib), TempC: f64ptr(36), Smart: "warn", SmartDetail: "PASSED (realloc=2 pending=0)", ReallocSectors: 2, Pool: "tank", Hours: 42010},

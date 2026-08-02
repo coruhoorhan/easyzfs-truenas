@@ -3,9 +3,10 @@ import type { DataProvider } from './provider';
 import { ApiError } from './types';
 import { notifyAuthExpired } from './events';
 import type {
-  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
-  SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
+  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
+  Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON,
+  ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
+  SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UpdateReplicationReq, UserInfo, VersionInfo,
 } from './types';
 
 const BASE = '/api';
@@ -96,6 +97,12 @@ export class HttpProvider implements DataProvider {
     post<void>(`/pools/${enc(pool)}/replace`, { old_dev: oldDev, new_dev: newDev, confirm });
   vdevAction = (pool: string, dev: string, action: 'offline' | 'online' | 'detach', confirm?: string) =>
     post<void>(`/pools/${enc(pool)}/vdev/action`, { dev, action, confirm });
+  setAutotrim = (pool: string, enabled: boolean) =>
+    post<void>(`/pools/${enc(pool)}/autotrim`, { enabled });
+  checkpointPool = (pool: string, action: 'create' | 'discard', confirm: string) =>
+    post<void>(`/pools/${enc(pool)}/checkpoint`, { action, confirm });
+  getPoolHistory = (pool: string) => get<PoolHistoryEntry[]>(`/pools/${enc(pool)}/history`);
+  getPerformance = () => get<Performance>('/performance');
 
   getDatasets = () => get<Dataset[]>('/datasets');
   createDataset = (r: CreateDatasetReq) => post<void>('/datasets', r);
@@ -103,6 +110,19 @@ export class HttpProvider implements DataProvider {
     patch<void>(`/datasets/${enc(name)}`, p);
   deleteDataset = (name: string, confirm: string, recursive: boolean) =>
     del<void>(`/datasets/${enc(name)}`, { confirm, recursive });
+  rewriteDataset = (name: string, confirm: string) =>
+    post<{ op_id: string }>(`/datasets/${enc(name)}/rewrite`, { confirm });
+  unlockDataset = (name: string, key: string) =>
+    post<void>(`/datasets/${enc(name)}/unlock`, { key });
+  lockDataset = (name: string) =>
+    post<void>(`/datasets/${enc(name)}/lock`, {});
+  changeDatasetKey = (name: string, currentKey: string, newKey: string) =>
+    post<void>(`/datasets/${enc(name)}/change-key`, { current_key: currentKey, new_key: newKey });
+  expandPool = (pool: string, vdev: string, disk: string, confirm: string) =>
+    post<void>(`/pools/${enc(pool)}/expand`, { vdev, disk, confirm });
+
+  getLongOps = () => get<LongOp[]>('/longops');
+  cancelLongOp = (id: string) => post<void>(`/longops/${enc(id)}/cancel`);
 
   getSnapshots = (dataset?: string) =>
     get<SnapshotGroup[]>('/snapshots' + (dataset ? `?dataset=${enc(dataset)}` : ''));
@@ -116,6 +136,15 @@ export class HttpProvider implements DataProvider {
   deleteJob = (id: number, confirm: string) => del<void>(`/jobs/${id}`, { confirm });
   runJob = (id: number) => post<void>(`/jobs/${id}/run`);
   getJobHistory = () => get<JobHistoryItem[]>('/jobs/history');
+
+  getReplicationJobs = () => get<ReplicationJob[]>('/replication');
+  createReplicationJob = (r: CreateReplicationReq) => post<void>('/replication', r);
+  updateReplicationJob = (id: number, r: UpdateReplicationReq) => patch<void>(`/replication/${id}`, r);
+  deleteReplicationJob = (id: number, confirm: string) => del<void>(`/replication/${id}`, { confirm });
+  runReplicationJob = (id: number) => post<void>(`/replication/${id}/run`);
+  getReplicationSSHKey = () => get<ReplicationSSHKey>('/replication/sshkey');
+  testReplication = (host: string, user: string, port: number) =>
+    post<ReplicationTestResult>('/replication/test', { host, user, port });
   getSystemTimers = () => get<SystemTimersResp>('/system-timers');
   setSystemTimerSchedule = (t: SystemTimer, schedule: string) =>
     post<void>('/system-timers/schedule', { source: t.source, name: t.name, origin: t.origin ?? '', line: t.line ?? 0, schedule });

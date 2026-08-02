@@ -4,6 +4,7 @@
 package executil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -36,6 +37,10 @@ func detectSudo() bool {
 
 // SudoEnabled expone la decisión (para logs/tests).
 func SudoEnabled() bool { return useSudo }
+
+// SetSudoForTest fuerza la decisión de sudo (tests que lanzan procesos reales
+// sin privilegios, p.ej. el runner longops con sleep/printf).
+func SetSudoForTest(v bool) { useSudo = v }
 
 // RunDirect ejecuta name sin anteponer sudo NUNCA (para comandos que no
 // necesitan root aunque el proceso corra sin privilegios, p. ej.
@@ -81,6 +86,56 @@ func Run(ctx context.Context, timeout time.Duration, name string, args ...string
 		return nil, fmt.Errorf("%s: %w", orig, err)
 	}
 	return out, nil
+}
+
+// RunStdin ejecuta name con args pasando stdin al proceso (p. ej. la
+// passphrase de 'zfs load-key'/'zfs create -o keyformat=passphrase': NUNCA
+// por argv, que es visible en ps / audit logs). El buffer NO se copia; el
+// llamador debe limpiarlo tras la llamada (Zero). Misma política sudo/timeout
+// que Run.
+func RunStdin(ctx context.Context, timeout time.Duration, stdin []byte, name string, args ...string) ([]byte, error) {
+	orig := name
+	if useSudo {
+		args = append([]string{"-n", name}, args...)
+		name = "sudo"
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(cctx, name, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	out, err := cmd.Output()
+	if cctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("%s: %w tras %s", orig, ErrTimeout, timeout)
+	}
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
+			return nil, fmt.Errorf("%s: %s", orig, trimErr(ee.Stderr))
+		}
+		return nil, fmt.Errorf("%s: %w", orig, err)
+	}
+	return out, nil
+}
+
+// Zero sobrescribe un buffer sensible (passphrase) antes de soltarlo.
+// runtime no expone utilidad de borrado; bucle manual que el compilador no
+// elimina (escribe memoria viva referenciada tras la llamada).
+func Zero(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
+// NewCommand construye un *exec.Cmd sobre ctx aplicando la misma política de
+// sudo que Run (sin timeout propio: lo gestiona el ctx del llamador). Pensado
+// para procesos largos o persistentes (zpool events -f, zfs rewrite…) que no
+// caben en el patrón Run+timeout.
+func NewCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
+	if useSudo {
+		args = append([]string{"-n", name}, args...)
+		name = "sudo"
+	}
+	return exec.CommandContext(ctx, name, args...)
 }
 
 // trimErr recorta stderr para mensajes de error legibles (máx. 200 chars).

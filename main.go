@@ -30,7 +30,9 @@ import (
 	"easyzfs/internal/db"
 	"easyzfs/internal/httpapi"
 	"easyzfs/internal/hub"
+	"easyzfs/internal/longops"
 	"easyzfs/internal/push"
+	"easyzfs/internal/replication"
 	"easyzfs/internal/scheduler"
 	"easyzfs/internal/settings"
 	"easyzfs/internal/users"
@@ -99,6 +101,11 @@ func main() {
 	jobStore := scheduler.NewStore(database)
 	sched := scheduler.New(jobStore, act, h, providers.Disks.Disks)
 
+	// Replicación ZFS send/recv (lote C): store propio + ejecución vía longops.
+	longOps := longops.New(h)
+	replRunner := replication.NewRunner(replication.NewStore(database), longOps, h, jobStore, cfg.DataDir(), cfg.Mock)
+	go replRunner.Run(ctx)
+
 	// Copia de seguridad de la BD: colector por frecuencia horaria + handlers.
 	backupStore := backup.New(database, cfg.DBPath, stStore)
 	go backupStore.RunLoop(ctx)
@@ -115,8 +122,9 @@ func main() {
 		Cfg: cfg, DB: database, Auth: auth.NewManager(database, cfg.SessionSecret, cfg.CookieSecure),
 		Users: userStore, Alerter: alerter, Settings: stStore,
 		Pools: providers.Pools, Disks: providers.Disks, SysTimers: providers.SysTimers,
+		Perf: providers.Perf, Caps: providers.Caps,
 		Actions: act, Sched: sched, Jobs: jobStore, Hub: h, Push: pushSender,
-		Backup: backupStore,
+		Backup: backupStore, LongOps: longOps, Repl: replRunner,
 		Version: version, Build: build, ZFSVersion: zfsVersion,
 	})
 

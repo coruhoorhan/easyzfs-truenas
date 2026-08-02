@@ -30,6 +30,18 @@ export interface VersionInfo {
   db_path: string;
   zfs_version: string;
   demo: boolean;
+  capabilities?: Capabilities; // ausente en respuestas viejas del server
+}
+
+// Capacidades derivadas de la versión de OpenZFS (feature-gating, lote A).
+export interface Capabilities {
+  rewrite: boolean;          // zfs rewrite (Linux ≥ 2.3.4)
+  raidz_expansion: boolean;  // ≥ 2.3
+  scrub_all: boolean;        // zpool scrub -a (≥ 2.4)
+  scrub_range: boolean;      // zpool scrub -S/-E (≥ 2.4)
+  zarc_names: boolean;       // zarcsummary/zarcstat (≥ 2.4)
+  json_output: boolean;      // --json en zpool/zfs (≥ 2.3)
+  version: string;
 }
 
 export interface Settings {
@@ -95,11 +107,14 @@ export type PoolStatus = 'ONLINE' | 'DEGRADED' | 'FAULTED';
 export type Topo = 'stripe' | 'mirror' | 'raidz1' | 'raidz2' | 'raidz3';
 export interface ScrubInfo {
   state: 'none' | 'running' | 'done';
-  kind?: 'scrub' | 'resilver' | '';
+  kind?: 'scrub' | 'resilver' | 'trim' | 'expand' | '';
   pct: number;
   eta_sec: number;
   ts: string;
   errors: number;
+  // Progreso en bytes (mejor esfuerzo del colector; ausente/0 si no se sabe)
+  bytes_done?: number;
+  bytes_total?: number;
 }
 export interface Vdev {
   dev: string;
@@ -119,6 +134,32 @@ export interface Pool {
   comp_ratio: number;
   scrub: ScrubInfo;
   vdevs: Vdev[];
+  autotrim: boolean;    // TRIM continuo activado (SSD)
+  checkpoint: boolean;  // checkpoint activo en el pool
+  // Vdevs raidz del pool ("raidz2-0"…), objetivo de RAID-Z expansion (lote D)
+  raidz_vdevs?: string[];
+}
+
+// Entrada de 'zpool history -i' (GET /api/pools/{name}/history).
+export interface PoolHistoryEntry {
+  ts: string;
+  command: string;
+  duration_sec?: number;
+}
+
+// GET /api/performance
+export interface ArcStats {
+  size_bytes: number;
+  hit_pct: number;
+}
+export interface PoolPerf {
+  name: string;
+  read_bps: number;
+  write_bps: number;
+}
+export interface Performance {
+  arc: ArcStats | null; // null = sin fuente de stats ARC → ocultar la tarjeta
+  pools: PoolPerf[];
 }
 
 export type DatasetType = 'fs' | 'volume';
@@ -130,6 +171,8 @@ export interface Dataset {
   avail_bytes: number;
   quota_bytes: number;
   mountpoint: string;
+  encryption: string;  // valor efectivo: "off" | "aes-256-gcm" | …
+  keystatus: string;   // "available" | "unavailable" | "-"
 }
 
 export interface Snapshot {
@@ -144,7 +187,54 @@ export interface SnapshotGroup {
   snaps: Snapshot[];
 }
 
-export type JobType = 'snapshot' | 'scrub' | 'trim' | 'smart_short' | 'smart_long' | 'poweroff';
+export type JobType = 'snapshot' | 'scrub' | 'trim' | 'smart_short' | 'smart_long' | 'poweroff' | 'replication';
+
+// Job de replicación ZFS send/recv (GET /api/replication).
+export interface ReplicationJob {
+  id: number;
+  source: string;
+  dest_type: 'local' | 'ssh';
+  dest_dataset: string;
+  host: string;
+  user: string;
+  port: number;
+  raw: boolean;        // zfs send -w (obligatorio en datasets cifrados)
+  force_full: boolean; // reinicia con envío completo destruyendo el destino al divergir
+  schedule: string;
+  enabled: boolean;
+  last_bookmark: string;
+  last_run: string | null;
+  last_ok: boolean | null;
+  last_error: string;
+  next_run?: string;
+}
+
+export interface CreateReplicationReq {
+  source: string;
+  dest_type: 'local' | 'ssh';
+  dest_dataset: string;
+  host?: string;
+  user?: string;
+  port?: number;
+  raw?: boolean;
+  force_full?: boolean;
+  schedule: string;
+}
+export interface UpdateReplicationReq {
+  enabled?: boolean;
+  schedule?: string;
+  force_full?: boolean;
+  raw?: boolean;
+}
+export interface ReplicationSSHKey {
+  public_key: string;
+  instructions: string;
+}
+export interface ReplicationTestResult {
+  ok: boolean;
+  remote_version?: string;
+  error?: string;
+}
 export interface Job {
   id: number;
   tipo: JobType;
@@ -201,12 +291,30 @@ export interface SystemTimer {
   editable?: boolean;
 }
 
+// Operación larga (GET /api/longops y evento SSE longop.update): procesos
+// desacoplados monitorizados por el runner del backend (zfs rewrite; en el
+// futuro la replicación). El registro es en memoria (TTL 1 h en terminadas).
+export type LongOpStatus = 'running' | 'done' | 'error' | 'canceled';
+export interface LongOp {
+  id: string;
+  type: string; // "rewrite", futuro "replication"
+  target: string;
+  pid: number;
+  started: string;
+  ended?: string;
+  status: LongOpStatus;
+  error?: string;
+  lines: string[];
+}
+
 // --- Peticiones ---
 export interface CreatePoolReq { name: string; topo: Topo; disks: string[]; confirm: string }
 export interface CreateDatasetReq {
   pool: string; name: string; type: DatasetType;
   compression: 'lz4' | 'zstd' | 'off';
   quota_bytes: number; volsize_bytes?: number;
+  encryption?: boolean;   // cifrado nativo AES-256-GCM (lote D)
+  passphrase?: string;    // solo si encryption; viaja en el body, jamás en URL
 }
 export interface CreateSnapshotReq { dataset: string; name: string; recursive: boolean }
 export interface CreateJobReq { tipo: JobType; target: string; schedule: string; retention?: string }
@@ -216,10 +324,12 @@ export interface CreateUserReq { user: string; password: string; role: Role }
 // --- Eventos SSE ---
 export type AppEvent =
   | { type: 'pool.status'; name: string; status: PoolStatus }
-  | { type: 'scrub.progress'; pool: string; pct: number; eta_sec: number; kind?: 'scrub' | 'resilver' | '' }
+  | { type: 'scrub.progress'; pool: string; pct: number; eta_sec: number; kind?: 'scrub' | 'resilver' | 'trim' | 'expand' | '' }
   | { type: 'disk.temp'; dev: string; temp_c: number }
   | { type: 'alert.new'; alert: Alert }
   | { type: 'job.finished'; id: number; ok: boolean; detail: string }
+  | { type: 'replication.finished'; id: number; ok: boolean; detail: string }
+  | { type: 'longop.update'; op: LongOp }
   | { type: 'overview' };
 
 // --- Notificaciones push (Web Push) ---
