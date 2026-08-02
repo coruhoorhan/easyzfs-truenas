@@ -10,6 +10,7 @@ import { useModal } from '../components/Modal';
 import { usePush } from '../data/push';
 import {
   ACCENTS, getAccent, setAccent, getDensity, setDensity,
+  getReduceMotion, setReduceMotion,
 } from '../ui/theme';
 import type { AccentId, Density, ThemeMode } from '../ui/theme';
 import type { I18nKey } from '../ui/i18n';
@@ -61,6 +62,106 @@ const TIPO_LABEL: Record<PushAlertTipo, I18nKey> = {
 const HORAS = Array.from({ length: 24 }, (_, h) => ({
   v: String(h), label: `${String(h).padStart(2, '0')}:00`,
 }));
+
+// Repo público de la app (para "Comprobar actualizaciones").
+const REPO = 'gnacho/easyzfs';
+const REPO_URL = `https://github.com/${REPO}`;
+
+// Comparación semver numérica ('v' opcional): 1.10.0 > 1.9.0.
+function compareSemver(a: string, b: string): number {
+  const pa = a.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = b.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+type UpdateState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'uptodate' }
+  | { kind: 'available'; version: string; url: string }
+  | { kind: 'error' };
+
+// "Comprobar actualizaciones": GET anónima SOLO al pulsar el botón contra la
+// última release del repo en GitHub (fallback a tags si no hay release).
+// Nada de phone-home automático; no sale ningún dato de la instalación.
+function useAppUpdate(currentVersion: string | undefined) {
+  const { t } = useApp();
+  const [state, setState] = useState<UpdateState>({ kind: 'idle' });
+
+  const check = async () => {
+    if (!currentVersion) return;
+    setState({ kind: 'checking' });
+    try {
+      let res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
+      let tag = '';
+      let url = `${REPO_URL}/releases`;
+      if (res.ok) {
+        const j = await res.json();
+        tag = j.tag_name ?? '';
+        url = j.html_url ?? url;
+      } else if (res.status === 404) {
+        // Sin release publicada: fallback al último tag
+        res = await fetch(`https://api.github.com/repos/${REPO}/tags?per_page=1`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const tags = await res.json();
+        tag = tags?.[0]?.name ?? '';
+        url = `${REPO_URL}/releases/tag/${tag}`;
+      } else {
+        throw new Error(`HTTP ${res.status}`); // 403 = rate-limit 60/h por IP
+      }
+      if (tag && compareSemver(tag, currentVersion) > 0) {
+        setState({ kind: 'available', version: tag.replace(/^v/, ''), url });
+      } else {
+        setState({ kind: 'uptodate' });
+      }
+    } catch {
+      setState({ kind: 'error' });
+    }
+  };
+
+  return { state, check, t };
+}
+
+// Fila "Comprobar actualizaciones" de la tarjeta Acerca de.
+function UpdateCheck({ version }: { version: string | undefined }) {
+  const { state, check, t } = useAppUpdate(version);
+  return (
+    <div style={{ marginTop: 14 }}>
+      {state.kind === 'idle' && (
+        <button className="btn" onClick={() => { void check(); }} disabled={!version}>
+          {t('ab_checkupd')}
+        </button>
+      )}
+      {state.kind === 'checking' && (
+        <span className="muted">{t('ab_checking')}</span>
+      )}
+      {state.kind === 'uptodate' && (
+        <span style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600 }} role="status">
+          {t('ab_uptodate', { v: version ?? '' })}
+        </span>
+      )}
+      {state.kind === 'available' && (
+        <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }} role="status">
+          {t('ab_newver', { v: state.version })}
+          {' · '}
+          <a href={state.url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+            {t('ab_viewrel')}
+          </a>
+        </span>
+      )}
+      {state.kind === 'error' && (
+        <span className="form-err" role="alert" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {t('ab_upderr')}
+          <button className="btn sm" onClick={() => { void check(); }}>{t('ab_retry')}</button>
+        </span>
+      )}
+    </div>
+  );
+}
 
 // Subsección de configuración de alertas (visible con push activado): switches
 // por tipo + horario silencioso. Las críticas siempre llegan (texto visible).
@@ -213,6 +314,7 @@ export default function Settings() {
   const [err, setErr] = useState('');
   const [accent, setAccentState] = useState<AccentId>(getAccent());
   const [density, setDensityState] = useState<Density>(getDensity());
+  const [reduceMotion, setReduceMotionState] = useState(getReduceMotion());
   const [installEvt, setInstallEvt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(isStandalone());
 
@@ -302,10 +404,21 @@ export default function Settings() {
             { v: 'cozy', label: t('s_density_cozy') },
             { v: 'compact', label: t('s_density_compact') },
           ]} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 14 }}>
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600 }}>{t('s_rm')}</span>
+            <span className="muted">{t('s_rm_d')}</span>
+          </span>
+          <Switch checked={reduceMotion} ariaLabel={t('s_rm')}
+            onChange={(v) => { setReduceMotion(v); setReduceMotionState(v); }} />
+        </div>
         <label>{t('s_lang')}</label>
         <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
           options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
       </div>
+
+      {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
+      {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}</h2>}
 
       {/* ---- Usuarios (solo admin) ---- */}
       {isAdmin && (
@@ -329,6 +442,13 @@ export default function Settings() {
                     {u.sessions === 1 ? t('s_session_one') : t('s_sessions')}
                   </div>
                 </div>
+                <Select value={u.language ?? 'auto'} ariaLabel={t('s_lang')}
+                  options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]}
+                  onChange={(v) => {
+                    const lang = v as 'auto' | 'es' | 'en';
+                    setUsers((cur) => cur?.map((x) => (x.user === u.user ? { ...x, language: lang } : x)) ?? cur);
+                    getProvider().setUserLanguage(u.user, lang).catch(() => {});
+                  }} />
                 <button className="btn sm" onClick={() => openModal('passwd', { user: u.user })}>{t('s_passwd')}</button>
                 {u.user !== user?.user && (
                   <button className="btn sm danger" onClick={() => openModal('deluser', { user: u.user })}>{t('s_delete_user')}</button>
@@ -444,12 +564,11 @@ export default function Settings() {
               <b>{t('ab_code')}</b>
               <span>{t('ab_code_d')}</span>
             </a>
-            <button type="button" className="abouttile"
-              onClick={() => setMsg(`0.1.0 — ${t('ab_chlog_first')}`)}>
+            <a className="abouttile" href={`${REPO_URL}/releases`} target="_blank" rel="noreferrer">
               <span className="t-ico"><IconList size={16} /></span>
               <b>{t('ab_chlog')}</b>
               <span>{t('ab_chlog_d')}</span>
-            </button>
+            </a>
             <div className="abouttile">
               <span className="t-ico"><IconHome size={16} /></span>
               <b>{t('ab_home')}</b>
@@ -462,25 +581,31 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Instalación PWA */}
-          <div className="installstrip">
-            <span className="t-ico" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-              <IconDownload size={16} />
-            </span>
-            <div className="grow">
-              <b>{t('ab_install')}</b>
-              <div className="d">
-                {installed ? t('ab_installed_d')
-                  : isIOS() ? t('ab_install_ios')
-                  : t('ab_install_d')}
+          {/* Instalación PWA: SOLO visible si el navegador lo soporta
+              (evento capturado, iOS con instrucciones o ya instalada);
+              sin soporte no se renderiza nada (regla webapp-shell) */}
+          {(installed || installEvt || isIOS()) && (
+            <div className="installstrip">
+              <span className="t-ico" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <IconDownload size={16} />
+              </span>
+              <div className="grow">
+                <b>{t('ab_install')}</b>
+                <div className="d">
+                  {installed ? t('ab_installed_d')
+                    : isIOS() ? t('ab_install_ios')
+                    : t('ab_install_d')}
+                </div>
               </div>
+              {installed
+                ? <Badge tone="ok" dot={false}>{t('ab_installed')}</Badge>
+                : installEvt
+                  ? <button className="btn sm primary" onClick={() => { void installEvt.prompt(); }}>{t('ab_install_btn')}</button>
+                  : null}
             </div>
-            {installed
-              ? <Badge tone="ok" dot={false}>{t('ab_installed')}</Badge>
-              : installEvt
-                ? <button className="btn sm primary" onClick={() => { void installEvt.prompt(); }}>{t('ab_install_btn')}</button>
-                : null}
-          </div>
+          )}
+
+          <UpdateCheck version={version?.version} />
 
           <div className="aboutfoot mono">
             {version?.name ?? 'EasyZFS'} v{version?.version ?? '0.1.0'} · {version?.zfs_version ?? 'OpenZFS'} · AGPL-3.0

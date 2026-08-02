@@ -7,11 +7,13 @@ export type Lang = 'auto' | 'es' | 'en';
 export interface SessionUser {
   user: string;
   role: Role;
+  language?: Lang; // ausente en respuestas viejas del server
 }
 
 export interface UserInfo {
   user: string;
   role: Role;
+  language?: Lang;
   last_login: string;
   sessions: number;
 }

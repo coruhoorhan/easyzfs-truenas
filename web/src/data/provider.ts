@@ -1,7 +1,7 @@
 // Interfaz DataProvider: abstrae el origen de datos (HTTP real o mock demo).
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
+  Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
@@ -21,12 +21,14 @@ export interface DataProvider {
   logout(): Promise<void>;
   me(): Promise<SessionUser>;
   setMyPassword(current: string, next: string): Promise<void>;
+  setMyLanguage(language: Lang): Promise<void>;
 
   // Usuarios (admin)
   getUsers(): Promise<UserInfo[]>;
   createUser(r: CreateUserReq): Promise<void>;
   deleteUser(name: string, confirm: string): Promise<void>;
   setUserPassword(name: string, next: string, closeSessions: boolean): Promise<void>;
+  setUserLanguage(name: string, language: Lang): Promise<void>;
 
   // Pools
   getPools(): Promise<Pool[]>;

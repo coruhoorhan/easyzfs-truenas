@@ -74,6 +74,9 @@ var migrations = []string{
 	);`,
 	// v10: índice para el vaciado de la cola por usuario.
 	`CREATE INDEX IF NOT EXISTS idx_notification_queue_user ON notification_queue(user_id, tipo);`,
+	// v11: idioma por usuario (skill webapp-shell: users.language = fuente de
+	// verdad; localStorage del navegador solo es caché). 'auto' = navegador.
+	`ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'auto';`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

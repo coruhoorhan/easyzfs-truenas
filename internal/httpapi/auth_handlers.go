@@ -181,12 +181,38 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// me — GET /api/me → {user, role} o 401 (401 ya lo da el middleware).
+// me — GET /api/me → {user, role, language} o 401 (401 ya lo da el middleware).
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	lang := "auto"
+	if u, err := s.users.Get(r.Context(), auth.UserFromContext(r.Context())); err == nil {
+		lang = u.Language
+	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"user": auth.UserFromContext(r.Context()),
-		"role": auth.RoleFromContext(r.Context()),
+		"user":     auth.UserFromContext(r.Context()),
+		"role":     auth.RoleFromContext(r.Context()),
+		"language": lang,
 	})
+}
+
+// putMyLanguage — PUT /api/me/language {language} → 204.
+// El idioma del usuario vive en BD (fuente de verdad); el front lo espeja.
+func (s *Server) putMyLanguage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Language string `json:"language"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	user := auth.UserFromContext(r.Context())
+	if err := s.users.SetLanguage(r.Context(), user, body.Language); err != nil {
+		if errors.Is(err, users.ErrInvalidLang) {
+			writeErr(w, http.StatusBadRequest, "invalid_language", err.Error())
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // changeMyPassword — POST /api/me/password {current, new} → 204.

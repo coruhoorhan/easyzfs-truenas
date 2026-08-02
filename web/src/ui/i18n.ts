@@ -4,7 +4,7 @@ export type LangMode = 'auto' | 'es' | 'en';
 const es = {
   // Navegación
   dash: 'Panel', pools: 'Pools', data: 'Datasets', snaps: 'Snapshots',
-  brand_home: 'Ir al Panel',
+  brand_home: 'Ir al Panel', brand_sub: 'Gestión ZFS',
   tasks: 'Tareas', disks: 'Discos', settings: 'Ajustes',
   sub_dash: 'Resumen del sistema', sub_pools: 'Estado y topología de pools',
   sub_data: 'Datasets y volúmenes', sub_snaps: 'Instantáneas por dataset',
@@ -14,6 +14,11 @@ const es = {
   // Demo
   demobar: 'Modo demo — los cambios no se aplican al sistema',
   demobar_exit: 'Salir del demo',
+  upd_banner: 'Hay una nueva versión de EasyZFS desplegada en este servidor.',
+  upd_btn: 'Actualizar',
+  eb_title: 'Algo no ha ido bien',
+  eb_desc: 'La aplicación ha encontrado un error inesperado. Recargar suele solucionarlo (y si hubo una actualización, traerá la versión nueva).',
+  eb_reload: 'Recargar',
 
   // Común
   save: 'Guardar', update: 'Actualizar', logout: 'Cerrar sesión', cancel: 'Cancelar',
@@ -266,16 +271,22 @@ const es = {
   s_about_d: 'Gestión ZFS ligera para servidores caseros. Un solo binario Go + SQLite.',
   ab_ver: 'Versión', ab_rt: 'Runtime', ab_up: 'Tiempo activo', ab_mem: 'Memoria (RSS)',
   ab_db: 'Base de datos', ab_lic: 'Licencia',
-  ab_chlog: 'Registro de cambios', ab_upd: 'Buscar actualizaciones',
-  ab_uptodate: 'EasyZFS está al día.',
+  ab_chlog: 'Registro de cambios',
   ab_system: 'Sistema',
   ab_code: 'Código', ab_code_d: 'Repositorio del proyecto',
-  ab_chlog_d: 'Novedades de cada versión', ab_chlog_first: 'primera versión pública',
+  ab_chlog_d: 'Novedades de cada versión',
   ab_home: 'Hecho en casa', ab_home_d: 'Proyecto personal para servidores caseros',
   ab_priv: 'Privacidad', ab_priv_d: 'Sin telemetría: todo se queda en tu servidor',
   ab_install: 'Instalar app', ab_install_btn: 'Instalar', ab_installed: 'Instalada',
   ab_install_d: 'Añade EasyZFS a tu pantalla de inicio',
   ab_installed_d: 'EasyZFS ya está instalada en este dispositivo',
+  ab_checkupd: 'Comprobar actualizaciones', ab_checking: 'Comprobando…',
+  ab_uptodate: 'Estás al día — v{v} es la última versión',
+  ab_newver: 'Nueva versión disponible: v{v}', ab_viewrel: 'Ver novedades',
+  ab_upderr: 'No se pudo comprobar la actualización. Inténtalo de nuevo.', ab_retry: 'Reintentar',
+  s_rm: 'Reducir animaciones', s_rm_d: 'Desactiva transiciones y animaciones de la interfaz',
+  s_admin_zone: 'Administración', s_account: 'Cuenta actual',
+  a11y_collapse: 'Plegar menú', a11y_expand: 'Desplegar menú',
   ab_install_ios: 'En iOS: Compartir → «Añadir a pantalla de inicio»',
 
   // Modal usuarios
@@ -304,7 +315,7 @@ export type I18nKey = keyof typeof es;
 
 const en: Record<I18nKey, string> = {
   dash: 'Dashboard', pools: 'Pools', data: 'Datasets', snaps: 'Snapshots',
-  brand_home: 'Go to Dashboard',
+  brand_home: 'Go to Dashboard', brand_sub: 'ZFS management',
   tasks: 'Tasks', disks: 'Disks', settings: 'Settings',
   sub_dash: 'System overview', sub_pools: 'Pool status and topology',
   sub_data: 'Datasets and volumes', sub_snaps: 'Snapshots per dataset',
@@ -313,6 +324,11 @@ const en: Record<I18nKey, string> = {
 
   demobar: 'Demo mode — changes are not applied to the system',
   demobar_exit: 'Exit demo',
+  upd_banner: 'A new version of EasyZFS is deployed on this server.',
+  upd_btn: 'Reload',
+  eb_title: 'Something went wrong',
+  eb_desc: 'The application hit an unexpected error. Reloading usually fixes it (and will fetch the new version if one was deployed).',
+  eb_reload: 'Reload',
 
   save: 'Save', update: 'Update', logout: 'Log out', cancel: 'Cancel',
   create: 'Create', delete: 'Delete', edit: 'Edit', close: 'Close',
@@ -551,16 +567,22 @@ const en: Record<I18nKey, string> = {
   s_about_d: 'Lightweight ZFS management for home servers. A single Go binary + SQLite.',
   ab_ver: 'Version', ab_rt: 'Runtime', ab_up: 'Uptime', ab_mem: 'Memory (RSS)',
   ab_db: 'Database', ab_lic: 'License',
-  ab_chlog: 'Changelog', ab_upd: 'Check for updates',
-  ab_uptodate: 'EasyZFS is up to date.',
+  ab_chlog: 'Changelog',
   ab_system: 'System',
   ab_code: 'Source code', ab_code_d: 'Project repository',
-  ab_chlog_d: 'What’s new in each release', ab_chlog_first: 'first public release',
+  ab_chlog_d: 'What’s new in each release',
   ab_home: 'Homemade', ab_home_d: 'Personal project for home servers',
   ab_priv: 'Privacy', ab_priv_d: 'No telemetry: everything stays on your server',
   ab_install: 'Install app', ab_install_btn: 'Install', ab_installed: 'Installed',
   ab_install_d: 'Add EasyZFS to your home screen',
   ab_installed_d: 'EasyZFS is already installed on this device',
+  ab_checkupd: 'Check for updates', ab_checking: 'Checking…',
+  ab_uptodate: "You're up to date — v{v} is the latest version",
+  ab_newver: 'New version available: v{v}', ab_viewrel: "What's new",
+  ab_upderr: "Couldn't check for updates. Try again.", ab_retry: 'Retry',
+  s_rm: 'Reduce motion', s_rm_d: 'Disables interface transitions and animations',
+  s_admin_zone: 'Administration', s_account: 'Current account',
+  a11y_collapse: 'Collapse menu', a11y_expand: 'Expand menu',
   ab_install_ios: 'On iOS: Share → “Add to Home Screen”',
 
   mu_title: 'New user', mu_d: 'The user will log in to the app with their own password.',
@@ -583,7 +605,9 @@ const en: Record<I18nKey, string> = {
 };
 
 const DICTS: Record<'es' | 'en', Record<I18nKey, string>> = { es, en };
-const LANG_KEY = 'zfc-lang';
+// Clave canónica webapp-shell; 'zfc-lang' (legacy zfsctl) se migra una vez.
+const LANG_KEY = 'easyzfs-lang';
+const LANG_KEY_LEGACY = 'zfc-lang';
 
 let currentLang: 'es' | 'en' = 'es';
 const subs = new Set<() => void>();
@@ -596,7 +620,15 @@ export function resolveLang(mode: LangMode): 'es' | 'en' {
 }
 
 export function getLangMode(): LangMode {
-  return (localStorage.getItem(LANG_KEY) as LangMode) || 'auto';
+  const v = localStorage.getItem(LANG_KEY);
+  if (v) return v as LangMode;
+  const old = localStorage.getItem(LANG_KEY_LEGACY);
+  if (old) {
+    localStorage.setItem(LANG_KEY, old);
+    localStorage.removeItem(LANG_KEY_LEGACY);
+    return old as LangMode;
+  }
+  return 'auto';
 }
 
 export function setLangMode(mode: LangMode): void {

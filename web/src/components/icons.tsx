@@ -23,6 +23,9 @@ export const IconBell = (p: P) => base(p, <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 
 export const IconMoon = (p: P) => base(p, <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />);
 export const IconSun = (p: P) => base(p, <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>);
 export const IconChev = (p: P) => base({ size: 15, strokeWidth: 2.4, ...p }, <path d="m9 6 6 6-6 6" />);
+export const IconFoldLeft = (p: P) => base(p, <><path d="m11 17-5-5 5-5" /><path d="m18 17-5-5 5-5" /></>);
+export const IconFoldRight = (p: P) => base(p, <><path d="m6 17 5-5-5-5" /><path d="m13 17 5-5-5-5" /></>);
+export const IconUser = (p: P) => base(p, <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" /></>);
 export const IconCode = (p: P) => base(p, <><path d="m16 18 6-6-6-6" /><path d="m8 6-6 6 6 6" /></>);
 export const IconShield = (p: P) => base(p, <path d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10z" />);
 export const IconDownload = (p: P) => base(p, <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></>);

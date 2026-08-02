@@ -1,16 +1,45 @@
-// Apariencia: tema claro/oscuro/sistema, color de acento y densidad.
+// Apariencia: tema claro/oscuro/sistema, color de acento, densidad y
+// reducción de animaciones.
 // - Tema: 'light' | 'dark' | 'auto' (= sigue prefers-color-scheme del SO).
 // - Acento: 4 colores con valores distintos para claro/oscuro; se aplican
 //   como variables CSS (--accent, --accent-soft) en <html>.
 // - Densidad: 'cozy' | 'compact' (compacta = html font-size 13.5px + zoom).
-// Todo persiste en localStorage (claves zfc-theme / zfc-accent / zfc-density).
+// - Reduce-motion: clase .reduce-motion en <html> (además de la media query
+//   prefers-reduced-motion del SO, ya cubierta en index.css).
+// Persistencia canónica webapp-shell (<slug>-*): easyzfs-theme-mode,
+// easyzfs-accent, easyzfs-density, easyzfs-reduce-motion. Las claves legacy
+// zfc-* (era zfsctl) se migran una vez y se borran.
 export type ThemeMode = 'auto' | 'light' | 'dark';
 export type AccentId = 'cyan' | 'steel' | 'emerald' | 'amber';
 export type Density = 'cozy' | 'compact';
 
-const THEME_KEY = 'zfc-theme';
-const ACCENT_KEY = 'zfc-accent';
-const DENSITY_KEY = 'zfc-density';
+const THEME_KEY = 'easyzfs-theme-mode';
+const ACCENT_KEY = 'easyzfs-accent';
+const DENSITY_KEY = 'easyzfs-density';
+const RM_KEY = 'easyzfs-reduce-motion';
+// Legacy (pre-rebrand zfsctl): leer una vez y migrar.
+const LEGACY: Record<string, string> = {
+  [THEME_KEY]: 'zfc-theme',
+  [ACCENT_KEY]: 'zfc-accent',
+  [DENSITY_KEY]: 'zfc-density',
+};
+
+// getKey lee la clave canónica; si no existe pero hay legacy, la migra.
+function getKey(key: string): string | null {
+  const v = localStorage.getItem(key);
+  if (v !== null) return v;
+  const legacy = LEGACY[key];
+  if (legacy) {
+    const old = localStorage.getItem(legacy);
+    if (old !== null) {
+      localStorage.setItem(key, old);
+      localStorage.removeItem(legacy);
+      return old;
+    }
+  }
+  return null;
+}
+
 const subs = new Set<() => void>();
 
 // [color, soft] por tema. emerald = verde original de la app.
@@ -23,7 +52,7 @@ export const ACCENTS: Record<AccentId, { light: [string, string]; dark: [string,
 
 // ---- Tema ----
 export function getThemeMode(): ThemeMode {
-  const v = localStorage.getItem(THEME_KEY);
+  const v = getKey(THEME_KEY);
   return v === 'light' || v === 'dark' ? v : 'auto';
 }
 
@@ -77,7 +106,7 @@ export function startThemeWatcher(): void {
 
 // ---- Acento ----
 export function getAccent(): AccentId {
-  const v = localStorage.getItem(ACCENT_KEY) as AccentId | null;
+  const v = getKey(ACCENT_KEY) as AccentId | null;
   return v && ACCENTS[v] ? v : 'emerald';
 }
 
@@ -97,7 +126,7 @@ export function setAccent(id: AccentId): void {
 
 // ---- Densidad ----
 export function getDensity(): Density {
-  return localStorage.getItem(DENSITY_KEY) === 'compact' ? 'compact' : 'cozy';
+  return getKey(DENSITY_KEY) === 'compact' ? 'compact' : 'cozy';
 }
 
 export function applyDensity(): void {
@@ -114,4 +143,19 @@ export function applyDensity(): void {
 export function setDensity(d: Density): void {
   localStorage.setItem(DENSITY_KEY, d);
   applyDensity();
+}
+
+// ---- Reducir animaciones ----
+export function getReduceMotion(): boolean {
+  return getKey(RM_KEY) === '1';
+}
+
+export function applyReduceMotion(): void {
+  document.documentElement.classList.toggle('reduce-motion', getReduceMotion());
+}
+
+export function setReduceMotion(on: boolean): void {
+  if (on) localStorage.setItem(RM_KEY, '1');
+  else localStorage.removeItem(RM_KEY);
+  applyReduceMotion();
 }

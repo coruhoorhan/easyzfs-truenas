@@ -90,6 +90,30 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// setUserLanguage — PUT /api/users/{name}/language {language} → 204 (admin).
+// Cualquier admin puede asignar el idioma de cualquier usuario.
+func (s *Server) setUserLanguage(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Language string `json:"language"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := s.users.SetLanguage(r.Context(), name, body.Language); err != nil {
+		switch {
+		case errors.Is(err, users.ErrInvalidLang):
+			writeErr(w, http.StatusBadRequest, "invalid_language", err.Error())
+		case errors.Is(err, users.ErrNotFound):
+			writeErr(w, http.StatusNotFound, "not_found", err.Error())
+		default:
+			writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // setUserPassword — POST /api/users/{name}/password {new, close_sessions?} → 204 (admin).
 // close_sessions por defecto es true (si el campo no viene, se cierran las sesiones).
 func (s *Server) setUserPassword(w http.ResponseWriter, r *http.Request) {

@@ -4,7 +4,7 @@ import { ApiError } from './types';
 import { notifyAuthExpired } from './events';
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
+  Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
@@ -54,12 +54,15 @@ export class HttpProvider implements DataProvider {
   logout = () => post<void>('/logout');
   me = () => get<SessionUser>('/me');
   setMyPassword = (current: string, next: string) => post<void>('/me/password', { current, new: next });
+  setMyLanguage = (language: Lang) => put<void>('/me/language', { language });
 
   getUsers = () => get<UserInfo[]>('/users');
   createUser = (r: CreateUserReq) => post<void>('/users', r);
   deleteUser = (name: string, confirm: string) => del<void>(`/users/${enc(name)}`, { confirm });
   setUserPassword = (name: string, next: string, closeSessions: boolean) =>
     post<void>(`/users/${enc(name)}/password`, { new: next, close_sessions: closeSessions });
+  setUserLanguage = (name: string, language: Lang) =>
+    put<void>(`/users/${enc(name)}/language`, { language });
 
   getPools = () => get<Pool[]>('/pools');
   createPool = (r: CreatePoolReq) => post<void>('/pools', r);
