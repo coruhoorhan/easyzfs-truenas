@@ -13,7 +13,7 @@ import { describeSchedule } from '../components/Modals';
 import { useState } from 'react';
 
 const TIPO_CLS: Record<JobType, 'info' | 'ok' | 'warn'> = {
-  snapshot: 'info', scrub: 'ok', trim: 'ok', smart_short: 'warn', smart_long: 'warn', poweroff: 'warn',
+  snapshot: 'info', scrub: 'ok', trim: 'ok', smart_short: 'warn', smart_long: 'warn', poweroff: 'warn', replication: 'info',
 };
 
 export default function Tasks() {
@@ -22,19 +22,36 @@ export default function Tasks() {
   const jobs = useData((p) => p.getJobs());
   const hist = useData((p) => p.getJobHistory());
   const sys = useData((p) => p.getSystemTimers());
+  const ops = useData((p) => p.getLongOps());
+  const repl = useData((p) => p.getReplicationJobs());
   const [err, setErr] = useState('');
 
-  // Cuando termina una tarea (evento) recargamos lista e historial
+  // Cuando termina una tarea (evento) recargamos lista e historial; las
+  // operaciones largas se refrescan con cada cambio de estado (longop.update)
   useEffect(() => subscribeEvents((ev) => {
     if (ev.type === 'job.finished' || ev.type === 'scrub.progress') {
       if (ev.type === 'job.finished') { jobs.reload(); hist.reload(); }
     }
+    if (ev.type === 'longop.update') { ops.reload(); repl.reload(); }
+    if (ev.type === 'replication.finished') { repl.reload(); hist.reload(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
   const tipoLbl = (j: JobType) =>
     j === 'smart_short' ? t('tk_type_smart_short') : j === 'smart_long' ? t('tk_type_smart_long')
+    : j === 'replication' ? t('tk_type_replication')
     : j === 'snapshot' ? t('tk_type_snapshot') : j === 'trim' ? t('tk_type_trim') : t('tk_type_scrub');
+
+  const runRepl = async (id: number) => {
+    setErr('');
+    try { await getProvider().runReplicationJob(id); repl.reload(); ops.reload(); }
+    catch (e) { setErr(errorMessage(e, t)); }
+  };
+  const toggleRepl = async (id: number, on: boolean) => {
+    setErr('');
+    try { await getProvider().updateReplicationJob(id, { enabled: on }); repl.reload(); }
+    catch (e) { setErr(errorMessage(e, t)); }
+  };
 
   const run = async (id: number) => {
     setErr('');
@@ -44,6 +61,11 @@ export default function Tasks() {
   const toggleEnabled = async (j: Job, on: boolean) => {
     setErr('');
     try { await getProvider().updateJob(j.id, { enabled: on }); jobs.reload(); }
+    catch (e) { setErr(errorMessage(e, t)); }
+  };
+  const cancelOp = async (id: string) => {
+    setErr('');
+    try { await getProvider().cancelLongOp(id); ops.reload(); }
     catch (e) { setErr(errorMessage(e, t)); }
   };
 
@@ -60,7 +82,10 @@ export default function Tasks() {
       {jobs.loading && !jobs.data && <Spinner label={t('loading')} />}
       {err && <p className="form-err" role="alert">{err}</p>}
 
-      <div className="sect" style={{ marginTop: 0 }}>
+      {/* En pantalla muy ancha (≥1800px): tareas programadas en la columna
+          principal y el resto de secciones apiladas a la derecha */}
+      <div className="tasks-grid">
+      <div className="sect tk-next" style={{ marginTop: 0 }}>
         <h2>{t('tk_next')}</h2>
         <div className="card">
           {upcoming.length === 0 && <div className="empty">{t('empty')}</div>}
@@ -78,7 +103,7 @@ export default function Tasks() {
         </div>
       </div>
 
-      <div className="sect">
+      <div className="sect tk-jobs">
         <h2>{t('tk_jobs')}
           <span className="actions">
             <button className="btn sm primary" onClick={() => openModal('newtask')}>{t('tk_new')}</button>
@@ -111,8 +136,56 @@ export default function Tasks() {
         </div>
       </div>
 
+      {/* Replicación ZFS send/recv (local y SSH) */}
+      <div className="sect tk-repl">
+        <h2>{t('repl_title')}
+          <span className="actions">
+            {isAdmin && <button className="btn sm primary" onClick={() => openModal('newrepl')}>{t('repl_new')}</button>}
+          </span>
+        </h2>
+        <div className="card">
+          {repl.loading && !repl.data && <Spinner label={t('loading')} />}
+          {(repl.data ?? []).map((j) => {
+            const target = j.dest_type === 'ssh'
+              ? `${j.source} → ${j.user}@${j.host}:${j.dest_dataset}`
+              : `${j.source} → ${j.dest_dataset}`;
+            const running = (ops.data ?? []).find((o) => o.type === 'replication' && o.target === target && o.status === 'running');
+            return (
+              <div className="rowitem" key={j.id}>
+                <Badge tone={j.dest_type === 'ssh' ? 'info' : 'ok'} dot={false} style={{ padding: '2px 8px' }}>
+                  {j.dest_type === 'ssh' ? t('repl_ssh') : t('repl_local')}
+                </Badge>
+                <div className="grow">
+                  <div className="t1" style={{ fontSize: 13.5 }}>
+                    <span className="mono">{j.source}</span> → <span className="mono">{j.dest_type === 'ssh' ? `${j.user}@${j.host}:${j.dest_dataset}` : j.dest_dataset}</span>
+                    {j.raw && <Badge tone="warn" dot={false} style={{ padding: '1px 6px', marginLeft: 6 }}>{t('repl_raw_tag')}</Badge>}
+                  </div>
+                  <div className="t2">
+                    {describeSchedule(j.schedule, t as never)}
+                    {j.last_run ? ` · ${t('tk_last')}: ${timeAgo(j.last_run, t)}` : ''}
+                    {j.last_ok === true ? ' · OK' : ''}
+                    {j.last_ok === false ? ` · ${j.last_error}` : ''}
+                    {j.enabled && j.next_run ? ` · ${t('tk_nextrun')}: ${timeAgo(j.next_run, t)}` : ''}
+                  </div>
+                  {running && running.lines.length > 0 && (
+                    <div className="t2" style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                      {running.lines[running.lines.length - 1]}
+                    </div>
+                  )}
+                </div>
+                {isAdmin && <button className="btn sm" onClick={() => openModal('editrepl', { job: j })}>{t('edit')}</button>}
+                {isAdmin && <button className="btn sm" onClick={() => runRepl(j.id)} disabled={!!running}>{t('run_now')}</button>}
+                {isAdmin && <Switch checked={j.enabled} onChange={(on) => toggleRepl(j.id, on)}
+                  ariaLabel={j.enabled ? t('active') : t('paused')} />}
+              </div>
+            );
+          })}
+          {repl.data && repl.data.length === 0 && <div className="empty">{t('repl_empty')}</div>}
+        </div>
+      </div>
+
       {/* Tareas del sistema: timers de systemd y cron */}
-      <div className="sect">
+      <div className="sect tk-sys">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {t('tk_system')}
           {/* Sin systemd no tiene sentido la comparativa cron vs systemd */}
@@ -164,7 +237,38 @@ export default function Tasks() {
         </p>
       </div>
 
-      <div className="sect">
+      {/* Operaciones largas (runner del backend: zfs rewrite; futura replicación) */}
+      <div className="sect tk-ops">
+        <h2>{t('ops_title')}</h2>
+        <div className="card">
+          {ops.loading && !ops.data && <Spinner label={t('loading')} />}
+          {(ops.data ?? []).map((o) => (
+            <div className="rowitem" key={o.id}>
+              <Badge tone={o.status === 'running' ? 'info' : o.status === 'done' ? 'ok' : o.status === 'error' ? 'err' : 'warn'}
+                dot={false} style={{ padding: '2px 8px' }}>
+                {t(`ops_st_${o.status}` as never)}
+              </Badge>
+              <div className="grow">
+                <div className="t1" style={{ fontSize: 13.5 }}>
+                  {o.type === 'rewrite' ? t('ops_type_rewrite') : o.type === 'replication' ? t('ops_type_replication') : o.type} · <span className="mono">{o.target}</span>
+                </div>
+                <div className="t2">
+                  {timeAgo(o.started, t)}
+                  {o.error ? ` · ${o.error}` : ''}
+                  {o.status === 'running' && o.lines.length > 0 ? ` · ${o.lines[o.lines.length - 1]}` : ''}
+                </div>
+              </div>
+              {isAdmin && o.status === 'running' && (
+                <button className="btn sm danger" onClick={() => cancelOp(o.id)}>{t('ops_cancel')}</button>
+              )}
+            </div>
+          ))}
+          {ops.data && ops.data.length === 0 && <div className="empty">{t('ops_empty')}</div>}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('ops_hint')}</p>
+      </div>
+
+      <div className="sect tk-hist">
         <h2>{t('tk_history')}</h2>
         <div className="card">
           {(hist.data ?? []).map((h, i) => (
@@ -181,6 +285,7 @@ export default function Tasks() {
           ))}
           {hist.data && hist.data.length === 0 && <div className="empty">{t('empty')}</div>}
         </div>
+      </div>
       </div>
     </div>
   );

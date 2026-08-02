@@ -1,8 +1,9 @@
 // Interfaz DataProvider: abstrae el origen de datos (HTTP real o mock demo).
 import type {
-  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
-  SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
+  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
+  Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON,
+  ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
+  SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UpdateReplicationReq, UserInfo, VersionInfo,
 } from './types';
 
 export interface DataProvider {
@@ -44,12 +45,29 @@ export interface DataProvider {
   addVdev(pool: string, topo: string, disks: string[], confirm: string): Promise<void>;
   replaceDisk(pool: string, oldDev: string, newDev: string, confirm: string): Promise<void>;
   vdevAction(pool: string, dev: string, action: 'offline' | 'online' | 'detach', confirm?: string): Promise<void>;
+  setAutotrim(pool: string, enabled: boolean): Promise<void>;
+  checkpointPool(pool: string, action: 'create' | 'discard', confirm: string): Promise<void>;
+  getPoolHistory(pool: string): Promise<PoolHistoryEntry[]>;
+  getPerformance(): Promise<Performance>;
 
   // Datasets
   getDatasets(): Promise<Dataset[]>;
   createDataset(r: CreateDatasetReq): Promise<void>;
   updateDataset(name: string, patch: { quota_bytes?: number; compression?: string }): Promise<void>;
   deleteDataset(name: string, confirm: string, recursive: boolean): Promise<void>;
+  // zfs rewrite como operación larga (admin; gate capabilities.rewrite)
+  rewriteDataset(name: string, confirm: string): Promise<{ op_id: string }>;
+  // Cifrado nativo por dataset (lote D; admin). La clave viaja en el body
+  // JSON y vive solo en memoria de la petición.
+  unlockDataset(name: string, key: string): Promise<void>;
+  lockDataset(name: string): Promise<void>;
+  changeDatasetKey(name: string, currentKey: string, newKey: string): Promise<void>;
+  // RAID-Z expansion (lote D; admin; gate capabilities.raidz_expansion)
+  expandPool(pool: string, vdev: string, disk: string, confirm: string): Promise<void>;
+
+  // Operaciones largas (runner del backend; registro en memoria)
+  getLongOps(): Promise<LongOp[]>;
+  cancelLongOp(id: string): Promise<void>;
 
   // Snapshots
   getSnapshots(dataset?: string): Promise<SnapshotGroup[]>;
@@ -64,6 +82,15 @@ export interface DataProvider {
   deleteJob(id: number, confirm: string): Promise<void>;
   runJob(id: number): Promise<void>;
   getJobHistory(): Promise<JobHistoryItem[]>;
+  // Replicación ZFS send/recv (local y SSH; mutaciones admin)
+  getReplicationJobs(): Promise<ReplicationJob[]>;
+  createReplicationJob(r: CreateReplicationReq): Promise<void>;
+  updateReplicationJob(id: number, r: UpdateReplicationReq): Promise<void>;
+  deleteReplicationJob(id: number, confirm: string): Promise<void>;
+  runReplicationJob(id: number): Promise<void>;
+  getReplicationSSHKey(): Promise<ReplicationSSHKey>;
+  testReplication(host: string, user: string, port: number): Promise<ReplicationTestResult>;
+
   getSystemTimers(): Promise<SystemTimersResp>;
   setSystemTimerSchedule(t: SystemTimer, schedule: string): Promise<void>;
   migrateSystemTimer(t: SystemTimer, newName: string): Promise<void>;

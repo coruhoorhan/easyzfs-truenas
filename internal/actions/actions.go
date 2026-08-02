@@ -186,6 +186,50 @@ func (s *Service) Trim(ctx context.Context, actor, pool string) error {
 	return nil
 }
 
+// SetAutotrim — 'zpool set autotrim=on|off <pool>': activa/desactiva el TRIM
+// continuo del pool (solo aplicable a SSD; en HDD no tiene efecto).
+func (s *Service) SetAutotrim(ctx context.Context, actor, pool string, enabled bool) error {
+	if !rePool.MatchString(pool) {
+		return ErrInvalidName
+	}
+	val := "off"
+	if enabled {
+		val = "on"
+	}
+	s.audit(ctx, actor, "pool.autotrim", pool, map[string]any{"enabled": enabled}, false)
+	if _, err := executil.Run(ctx, 15*time.Second, "zpool", "set", "autotrim="+val, pool); err != nil {
+		return fmt.Errorf("autotrim: %w", err)
+	}
+	return nil
+}
+
+// CheckpointCreate — 'zpool checkpoint <pool>': punto de restauración del pool
+// completo (reversible con 'zpool import --rewind-to-checkpoint'). Mientras
+// exista bloquea remove/attach/detach y retiene espacio liberado.
+func (s *Service) CheckpointCreate(ctx context.Context, actor, pool string) error {
+	if !rePool.MatchString(pool) {
+		return ErrInvalidName
+	}
+	s.audit(ctx, actor, "pool.checkpoint.create", pool, nil, true)
+	if _, err := executil.Run(ctx, 30*time.Second, "zpool", "checkpoint", pool); err != nil {
+		return fmt.Errorf("checkpoint: %w", err)
+	}
+	return nil
+}
+
+// CheckpointDiscard — 'zpool checkpoint -d <pool>': descarta el checkpoint
+// (ya no se podrá rebobinar; libera el espacio retenido).
+func (s *Service) CheckpointDiscard(ctx context.Context, actor, pool string) error {
+	if !rePool.MatchString(pool) {
+		return ErrInvalidName
+	}
+	s.audit(ctx, actor, "pool.checkpoint.discard", pool, nil, true)
+	if _, err := executil.Run(ctx, 30*time.Second, "zpool", "checkpoint", "-d", pool); err != nil {
+		return fmt.Errorf("descartar checkpoint: %w", err)
+	}
+	return nil
+}
+
 // VdevAdd — 'zpool add <pool> [topo] <disks...>'.
 // confirmed debe ser true solo si el handler validó {"confirm":pool}.
 func (s *Service) VdevAdd(ctx context.Context, actor, pool, topo string, disks []string, confirmed bool) error {
@@ -353,6 +397,32 @@ func (s *Service) Replace(ctx context.Context, actor, pool, oldDev, newDev strin
 	return nil
 }
 
+// reRaidzVdev — whitelist del objetivo de RAID-Z expansion ('raidz2-0').
+var reRaidzVdev = regexp.MustCompile(`^raidz[123]-\d+$`)
+
+// PoolExpand — 'zpool attach <pool> <vdev-raidz> <disco>' (RAID-Z expansion,
+// OpenZFS ≥ 2.3). Añade UN disco a un vdev raidz existente; la relocalización
+// de bloques se observa como scan 'expand' en el colector zpool.
+// La pertenencia del vdev al pool y la disponibilidad del disco las valida el
+// handler contra la caché de colectores (aquí solo whitelists + audit).
+func (s *Service) PoolExpand(ctx context.Context, actor, pool, vdev, disk string, confirmed bool) error {
+	if !rePool.MatchString(pool) {
+		return ErrInvalidName
+	}
+	if !reRaidzVdev.MatchString(vdev) {
+		return fmt.Errorf("%w: el vdev objetivo debe ser raidz[123]-N", ErrInvalidInput)
+	}
+	if !reDev.MatchString(disk) {
+		return ErrInvalidDev
+	}
+	s.audit(ctx, actor, "pool.expand", pool,
+		map[string]any{"vdev": vdev, "disk": disk}, confirmed)
+	if _, err := executil.Run(ctx, 60*time.Second, "zpool", "attach", pool, vdev, disk); err != nil {
+		return fmt.Errorf("expandir raidz: %w", err)
+	}
+	return nil
+}
+
 // vdevArgs traduce topología + lista de discos a argumentos de zpool.
 // stripe: discos sueltos; mirror/raidzN: palabra clave + discos.
 func vdevArgs(topo string, disks []string) ([]string, error) {
@@ -375,9 +445,12 @@ func vdevArgs(topo string, disks []string) ([]string, error) {
 
 // --- Datasets ---
 
-// DatasetCreate — 'zfs create [-p] [-o compression=..] [-o quota=..] [-V size] <pool/name>'.
+// DatasetCreate — 'zfs create [-p] [-o compression=..] [-o quota=..] [-V size]
+// [-o encryption=aes-256-gcm -o keyformat=passphrase -o keylocation=prompt] <pool/name>'.
+// Con encrypted=true la passphrase va SOLO por stdin (nunca argv/logs/audit) y
+// el buffer se limpia antes de volver.
 func (s *Service) DatasetCreate(ctx context.Context, actor, pool, name, typ, compression string,
-	quota, volsize uint64) error {
+	quota, volsize uint64, encrypted bool, passphrase string) error {
 	if !rePool.MatchString(pool) || !reDataset.MatchString(name) {
 		return ErrInvalidName
 	}
@@ -400,12 +473,83 @@ func (s *Service) DatasetCreate(ctx context.Context, actor, pool, name, typ, com
 	} else if typ != "fs" {
 		return fmt.Errorf("type inválido (fs|volume)")
 	}
+	var keyBuf []byte
+	if encrypted {
+		if len(passphrase) < 8 {
+			return fmt.Errorf("%w: la passphrase debe tener al menos 8 caracteres", ErrInvalidInput)
+		}
+		args = append(args, "-o", "encryption=aes-256-gcm",
+			"-o", "keyformat=passphrase", "-o", "keylocation=prompt")
+		// zfs pide la passphrase DOS veces por prompt (verificación).
+		keyBuf = []byte(passphrase + "\n" + passphrase + "\n")
+		defer executil.Zero(keyBuf)
+	}
 	args = append(args, full)
 	s.audit(ctx, actor, "dataset.create", full, map[string]any{
-		"type": typ, "compression": compression, "quota_bytes": quota, "volsize_bytes": volsize,
+		"type": typ, "compression": compression, "quota_bytes": quota,
+		"volsize_bytes": volsize, "encrypted": encrypted, // NUNCA la passphrase
 	}, false)
-	if _, err := executil.Run(ctx, 30*time.Second, "zfs", args...); err != nil {
+	var err error
+	if encrypted {
+		_, err = executil.RunStdin(ctx, 30*time.Second, keyBuf, "zfs", args...)
+	} else {
+		_, err = executil.Run(ctx, 30*time.Second, "zfs", args...)
+	}
+	if err != nil {
 		return fmt.Errorf("crear dataset: %w", err)
+	}
+	return nil
+}
+
+// DatasetLoadKey — 'zfs load-key <name>' con la passphrase por stdin
+// (sin -n: carga la clave y monta). Desbloquea datasets cifrados.
+func (s *Service) DatasetLoadKey(ctx context.Context, actor, name, passphrase string) error {
+	if !reDataset.MatchString(name) {
+		return ErrInvalidName
+	}
+	if passphrase == "" {
+		return fmt.Errorf("%w: passphrase requerida", ErrInvalidInput)
+	}
+	s.audit(ctx, actor, "dataset.unlock", name, nil, false) // SIN la clave
+	keyBuf := []byte(passphrase + "\n")
+	defer executil.Zero(keyBuf)
+	if _, err := executil.RunStdin(ctx, 30*time.Second, keyBuf, "zfs", "load-key", name); err != nil {
+		return fmt.Errorf("desbloquear dataset: %w", err)
+	}
+	return nil
+}
+
+// DatasetUnloadKey — 'zfs unload-key <name>': desmonta y retira la clave.
+// Si el dataset está ocupado zfs falla y se devuelve el error legible
+// (NO se fuerza con -f: sería un desmontaje destructivo de ficheros abiertos).
+func (s *Service) DatasetUnloadKey(ctx context.Context, actor, name string) error {
+	if !reDataset.MatchString(name) {
+		return ErrInvalidName
+	}
+	s.audit(ctx, actor, "dataset.lock", name, nil, false)
+	if _, err := executil.Run(ctx, 30*time.Second, "zfs", "unload-key", name); err != nil {
+		return fmt.Errorf("bloquear dataset: %w", err)
+	}
+	return nil
+}
+
+// DatasetChangeKey — 'zfs change-key -o keyformat=passphrase <name>' con la
+// NUEVA passphrase por stdin (zfs la pide dos veces; con keyformat=passphrase
+// y la clave cargada no pide la actual, por eso currentKey no se usa — el
+// handler la exige como confirmación de posesión, documentado en el contrato).
+func (s *Service) DatasetChangeKey(ctx context.Context, actor, name, newPassphrase string) error {
+	if !reDataset.MatchString(name) {
+		return ErrInvalidName
+	}
+	if len(newPassphrase) < 8 {
+		return fmt.Errorf("%w: la passphrase nueva debe tener al menos 8 caracteres", ErrInvalidInput)
+	}
+	s.audit(ctx, actor, "dataset.change_key", name, nil, false) // SIN claves
+	keyBuf := []byte(newPassphrase + "\n" + newPassphrase + "\n")
+	defer executil.Zero(keyBuf)
+	if _, err := executil.RunStdin(ctx, 30*time.Second, keyBuf, "zfs",
+		"change-key", "-o", "keyformat=passphrase", name); err != nil {
+		return fmt.Errorf("cambiar clave: %w", err)
 	}
 	return nil
 }

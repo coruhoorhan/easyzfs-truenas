@@ -72,7 +72,7 @@ export default function Disks() {
         <table className="data">
           <thead>
             <tr>
-              <th>{t('dk_disk')}</th><th>{t('dk_model')}</th><th className="num">{t('dk_size')}</th>
+              <th>{t('dk_disk')}</th><th className="slack">{t('dk_model')}</th><th className="num">{t('dk_size')}</th>
               <th className="num">{t('dk_temp')}</th><th>{t('dk_smart')}</th><th>{t('dk_pool')}</th><th />
             </tr>
           </thead>

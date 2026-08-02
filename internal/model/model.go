@@ -5,14 +5,19 @@ package model
 
 import "time"
 
-// ScrubInfo — estado del scrub/resilver de un pool (contrato: pools[].scrub).
+// ScrubInfo — estado del scan en curso/último de un pool (contrato: pools[].scrub).
+// Unifica scrub, resilver y trim (todos son "scans" con progreso en OpenZFS).
 type ScrubInfo struct {
 	State  string    `json:"state"` // "none" | "running" | "done"
-	Kind   string    `json:"kind"`  // "scrub" | "resilver" (vacío si none)
+	Kind   string    `json:"kind"`  // "scrub" | "resilver" | "trim" | "expand" (vacío si none)
 	Pct    float64   `json:"pct"`
 	EtaSec int64     `json:"eta_sec"`
 	Ts     time.Time `json:"ts"`
 	Errors int64     `json:"errors"`
+	// Progreso en bytes (mejor esfuerzo: scan_stats examined/to_examine en
+	// JSON; "scanned/issued"/"trimmed" en el fallback texto; 0 si no se sabe).
+	BytesDone  uint64 `json:"bytes_done,omitempty"`
+	BytesTotal uint64 `json:"bytes_total,omitempty"`
 }
 
 // Vdev — dispositivo de un pool (contrato: pools[].vdevs[]).
@@ -36,6 +41,51 @@ type Pool struct {
 	CompRatio  float64   `json:"comp_ratio"`
 	Scrub      ScrubInfo `json:"scrub"`
 	Vdevs      []Vdev    `json:"vdevs"`
+	Autotrim   bool      `json:"autotrim"`   // propiedad autotrim del pool (TRIM continuo en SSD)
+	Checkpoint bool      `json:"checkpoint"` // el pool tiene un checkpoint activo (zpool checkpoint)
+	// RaidzVdevs — nombres de los vdevs raidz del pool ("raidz2-0"…), objetivo
+	// válido de 'zpool attach <pool> <vdev> <disco>' (RAID-Z expansion, lote D).
+	RaidzVdevs []string `json:"raidz_vdevs,omitempty"`
+}
+
+// Capabilities — capacidades derivadas de la versión de OpenZFS del host
+// (contrato: GET /api/version → capabilities).
+type Capabilities struct {
+	Rewrite        bool   `json:"rewrite"`         // zfs rewrite (Linux ≥ 2.3.4)
+	RaidzExpansion bool   `json:"raidz_expansion"` // expansión raidz en caliente (≥ 2.3)
+	ScrubAll       bool   `json:"scrub_all"`       // zpool scrub -a (≥ 2.4)
+	ScrubRange     bool   `json:"scrub_range"`     // zpool scrub -S/-E (≥ 2.4)
+	ZarcNames      bool   `json:"zarc_names"`      // zarcsummary/zarcstat (≥ 2.4; si no, arc_summary/arcstat)
+	JSONOutput     bool   `json:"json_output"`     // salida --json de zpool/zfs (≥ 2.3)
+	Version        string `json:"version"`         // "2.3.2" ("desconocida" si no se pudo sondear)
+}
+
+// HistoryEntry — línea de 'zpool history -i <pool>' (contrato:
+// GET /api/pools/{name}/history, más reciente primero).
+type HistoryEntry struct {
+	Ts          time.Time `json:"ts"`
+	Command     string    `json:"command"`
+	DurationSec float64   `json:"duration_sec,omitempty"` // 0 = sin duración registrada
+}
+
+// ArcStats — tamaño del ARC y tasa de aciertos (contrato: GET /api/performance).
+type ArcStats struct {
+	SizeBytes uint64  `json:"size_bytes"`
+	HitPct    float64 `json:"hit_pct"`
+}
+
+// PoolPerf — throughput actual de un pool en bytes/s.
+type PoolPerf struct {
+	Name     string  `json:"name"`
+	ReadBps  float64 `json:"read_bps"`
+	WriteBps float64 `json:"write_bps"`
+}
+
+// Performance — contrato GET /api/performance. Arc es nil cuando no hay
+// fuente de estadísticas ARC en el sistema (la UI oculta la tarjeta).
+type Performance struct {
+	Arc   *ArcStats  `json:"arc"`
+	Pools []PoolPerf `json:"pools"`
 }
 
 // Dataset — contrato GET /api/datasets.
@@ -47,6 +97,11 @@ type Dataset struct {
 	AvailBytes  uint64 `json:"avail_bytes"`
 	QuotaBytes  uint64 `json:"quota_bytes"`
 	Mountpoint  string `json:"mountpoint"`
+	// Encryption — valor efectivo de la propiedad encryption ("off" si no hay
+	// cifrado; "aes-256-gcm"… si cifrado, heredado o propio).
+	Encryption string `json:"encryption"`
+	// KeyStatus — "available" | "unavailable" | "-" (sin cifrado).
+	KeyStatus string `json:"keystatus"`
 }
 
 // Snapshot — contrato GET /api/snapshots (dentro de SnapGroup).

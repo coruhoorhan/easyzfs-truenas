@@ -44,7 +44,7 @@ let authFails = 0;
 let stopped = true;
 
 const SSE_TYPES: AppEvent['type'][] = [
-  'pool.status', 'scrub.progress', 'disk.temp', 'alert.new', 'job.finished', 'overview',
+  'pool.status', 'scrub.progress', 'disk.temp', 'alert.new', 'job.finished', 'longop.update', 'overview',
 ];
 
 function clearRetry(): void {

@@ -19,7 +19,9 @@ import (
 	"easyzfs/internal/collectors"
 	"easyzfs/internal/config"
 	"easyzfs/internal/hub"
+	"easyzfs/internal/longops"
 	"easyzfs/internal/push"
+	"easyzfs/internal/replication"
 	"easyzfs/internal/scheduler"
 	"easyzfs/internal/settings"
 	"easyzfs/internal/users"
@@ -36,12 +38,16 @@ type Server struct {
 	pools      collectors.PoolProvider
 	disks      collectors.DiskProvider
 	sysTimers  collectors.SysTimerProvider
+	perf       collectors.PerfProvider
+	caps       collectors.CapProvider
 	act        *actions.Service
 	sched      *scheduler.Scheduler
 	jstore     *scheduler.Store
 	h          *hub.Hub
 	push       *push.Sender
 	backup     *backup.Store
+	longOps    *longops.Manager
+	repl       *replication.Runner
 	started    time.Time
 	version    string
 	build      string
@@ -61,12 +67,16 @@ type Deps struct {
 	Pools      collectors.PoolProvider
 	Disks      collectors.DiskProvider
 	SysTimers  collectors.SysTimerProvider
+	Perf       collectors.PerfProvider
+	Caps       collectors.CapProvider
 	Actions    *actions.Service
 	Sched      *scheduler.Scheduler
 	Jobs       *scheduler.Store
 	Hub        *hub.Hub
 	Push       *push.Sender
 	Backup     *backup.Store
+	LongOps    *longops.Manager
+	Repl       *replication.Runner
 	Version    string
 	Build      string
 	ZFSVersion string
@@ -78,8 +88,9 @@ func NewServer(d Deps) *Server {
 		cfg: d.Cfg, db: d.DB, auth: d.Auth, users: d.Users,
 		alerter: d.Alerter, settings: d.Settings,
 		pools: d.Pools, disks: d.Disks, sysTimers: d.SysTimers,
+		perf: d.Perf, caps: d.Caps,
 		act: d.Actions, sched: d.Sched, jstore: d.Jobs, h: d.Hub, push: d.Push,
-		backup: d.Backup,
+		backup: d.Backup, longOps: d.LongOps, repl: d.Repl,
 		started: time.Now(), version: d.Version, build: d.Build, zfsVersion: d.ZFSVersion,
 		loginLimiter: newLoginLimiter(),
 	}
@@ -122,11 +133,23 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("POST /api/pools/{name}/vdev", s.auth.RequireAdmin(s.addVdev))
 	a.HandleFunc("POST /api/pools/{name}/vdev/action", s.auth.RequireAdmin(s.vdevAction))
 	a.HandleFunc("POST /api/pools/{name}/replace", s.auth.RequireAdmin(s.replaceDisk))
+	a.HandleFunc("POST /api/pools/{name}/autotrim", s.auth.RequireAdmin(s.setAutotrim))
+	a.HandleFunc("POST /api/pools/{name}/checkpoint", s.auth.RequireAdmin(s.poolCheckpoint))
+	a.HandleFunc("POST /api/pools/{name}/expand", s.auth.RequireAdmin(s.expandPool))
+	a.HandleFunc("GET /api/pools/{name}/history", s.poolHistory)
+	a.HandleFunc("GET /api/performance", s.getPerformance)
 	// datasets
 	a.HandleFunc("GET /api/datasets", s.listDatasets)
 	a.HandleFunc("POST /api/datasets", s.auth.RequireAdmin(s.createDataset))
 	a.HandleFunc("PATCH /api/datasets/{name}", s.auth.RequireAdmin(s.patchDataset))
 	a.HandleFunc("DELETE /api/datasets/{name}", s.auth.RequireAdmin(s.deleteDataset))
+	a.HandleFunc("POST /api/datasets/{name}/rewrite", s.auth.RequireAdmin(s.rewriteDataset))
+	a.HandleFunc("POST /api/datasets/{name}/unlock", s.auth.RequireAdmin(s.unlockDataset))
+	a.HandleFunc("POST /api/datasets/{name}/lock", s.auth.RequireAdmin(s.lockDataset))
+	a.HandleFunc("POST /api/datasets/{name}/change-key", s.auth.RequireAdmin(s.changeKeyDataset))
+	// operaciones largas (runner longops: rewrite, futura replicación)
+	a.HandleFunc("GET /api/longops", s.listLongOps)
+	a.HandleFunc("POST /api/longops/{id}/cancel", s.auth.RequireAdmin(s.cancelLongOp))
 	// snapshots
 	a.HandleFunc("GET /api/snapshots", s.listSnapshots)
 	a.HandleFunc("POST /api/snapshots", s.auth.RequireAdmin(s.createSnapshot))
@@ -139,6 +162,14 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("PATCH /api/jobs/{id}", s.auth.RequireAdmin(s.patchJob))
 	a.HandleFunc("DELETE /api/jobs/{id}", s.auth.RequireAdmin(s.deleteJob))
 	a.HandleFunc("POST /api/jobs/{id}/run", s.auth.RequireAdmin(s.runJob))
+	// replicación ZFS send/recv (mutaciones: admin)
+	a.HandleFunc("GET /api/replication", s.listReplication)
+	a.HandleFunc("POST /api/replication", s.auth.RequireAdmin(s.createReplication))
+	a.HandleFunc("PATCH /api/replication/{id}", s.auth.RequireAdmin(s.patchReplication))
+	a.HandleFunc("DELETE /api/replication/{id}", s.auth.RequireAdmin(s.deleteReplication))
+	a.HandleFunc("POST /api/replication/{id}/run", s.auth.RequireAdmin(s.runReplication))
+	a.HandleFunc("GET /api/replication/sshkey", s.getReplicationSSHKey)
+	a.HandleFunc("POST /api/replication/test", s.auth.RequireAdmin(s.testReplication))
 	// discos
 	a.HandleFunc("GET /api/disks", s.listDisks)
 	a.HandleFunc("POST /api/disks/{dev}/smart-test", s.auth.RequireAdmin(s.smartTest))

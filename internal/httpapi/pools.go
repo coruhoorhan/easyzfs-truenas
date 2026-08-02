@@ -205,6 +205,179 @@ func (s *Server) vdevAction(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// setAutotrim — POST /api/pools/{name}/autotrim {enabled} → 204.
+func (s *Server) setAutotrim(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if s.cfg.Mock {
+		// MOCK=1: sin zpool real; mutación simulada sobre la caché del mock.
+		type autotrimSetter interface{ SetAutotrim(string, bool) }
+		if m, ok := s.pools.(autotrimSetter); ok {
+			m.SetAutotrim(name, body.Enabled)
+		}
+		s.act.AuditOnly(r.Context(), actor(r), "pool.autotrim", name, map[string]any{"enabled": body.Enabled})
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err := s.act.SetAutotrim(r.Context(), actor(r), name, body.Enabled); err != nil {
+		actionErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// poolCheckpoint — POST /api/pools/{name}/checkpoint {action:create|discard,
+// confirm:"<pool>"} → 202. Operación delicada: siempre exige confirm.
+func (s *Server) poolCheckpoint(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Action  string `json:"action"`
+		Confirm string `json:"confirm"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !requireConfirm(w, body.Confirm, name) {
+		return
+	}
+	if s.cfg.Mock {
+		// MOCK=1: checkpoint simulado sobre la caché del mock.
+		type ckSetter interface{ SetCheckpoint(string, bool) }
+		switch body.Action {
+		case "create", "discard":
+			if m, ok := s.pools.(ckSetter); ok {
+				m.SetCheckpoint(name, body.Action == "create")
+			}
+			s.act.AuditOnly(r.Context(), actor(r), "pool.checkpoint."+body.Action, name, nil)
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			writeErr(w, http.StatusBadRequest, "invalid_input", "action debe ser create|discard")
+		}
+		return
+	}
+	var err error
+	switch body.Action {
+	case "create":
+		err = s.act.CheckpointCreate(r.Context(), actor(r), name)
+	case "discard":
+		err = s.act.CheckpointDiscard(r.Context(), actor(r), name)
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid_input", "action debe ser create|discard")
+		return
+	}
+	if err != nil {
+		actionErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// expandPool — POST /api/pools/{name}/expand {vdev:"raidz2-0", disk:"sdX",
+// confirm:"<pool>"} (admin) → 202. RAID-Z expansion (OpenZFS ≥ 2.3): añade UN
+// disco a un vdev raidz existente. Gate por capability; el vdev debe ser un
+// raidz del pool y el disco un físico libre (no en uso por ningún pool).
+func (s *Server) expandPool(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Vdev    string `json:"vdev"`
+		Disk    string `json:"disk"`
+		Confirm string `json:"confirm"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !s.caps.Capabilities().RaidzExpansion {
+		writeErr(w, http.StatusBadRequest, "not_supported",
+			"RAID-Z expansion requiere OpenZFS ≥ 2.3 en este host")
+		return
+	}
+	if !requireConfirm(w, body.Confirm, name) {
+		return
+	}
+	// El pool debe existir y el vdev ser uno de sus raidz (de la caché).
+	found := false
+	vdevOK := false
+	for _, p := range s.pools.Pools() {
+		if p.Name != name {
+			continue
+		}
+		found = true
+		for _, rv := range p.RaidzVdevs {
+			if rv == body.Vdev {
+				vdevOK = true
+			}
+		}
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "not_found", "pool no encontrado")
+		return
+	}
+	if !vdevOK {
+		writeErr(w, http.StatusBadRequest, "invalid_input",
+			"el vdev '"+body.Vdev+"' no es un raidz del pool '"+name+"'")
+		return
+	}
+	// El disco debe ser un físico conocido, libre y no en uso por ningún pool.
+	base := stripPart(strings.TrimPrefix(body.Disk, "/dev/"))
+	diskOK := false
+	for _, d := range s.disks.Disks() {
+		if d.Dev == base && d.Pool == "" && !d.InUse {
+			diskOK = true
+		}
+	}
+	if !diskOK {
+		writeErr(w, http.StatusConflict, "dev_in_use",
+			"el disco '"+body.Disk+"' no está libre (en uso o desconocido)")
+		return
+	}
+	for _, p := range s.pools.Pools() {
+		for _, v := range p.Vdevs {
+			key := stripPart(strings.TrimPrefix(v.Path, "/dev/"))
+			if key == "" {
+				key = stripPart(v.Dev)
+			}
+			if key != "" && key == base {
+				writeErr(w, http.StatusConflict, "dev_in_use",
+					"el disco '"+body.Disk+"' ya pertenece al pool '"+p.Name+"'")
+				return
+			}
+		}
+	}
+	if s.cfg.Mock {
+		// MOCK=1: expansión simulada con progreso en la caché del mock.
+		type expander interface {
+			Expand(pool, vdev, disk string)
+		}
+		if m, ok := s.pools.(expander); ok {
+			m.Expand(name, body.Vdev, base)
+		}
+		s.act.AuditOnly(r.Context(), actor(r), "pool.expand", name,
+			map[string]any{"vdev": body.Vdev, "disk": base})
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	if err := s.act.PoolExpand(r.Context(), actor(r), name, body.Vdev, base, true); err != nil {
+		actionErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// poolHistory — GET /api/pools/{name}/history → lista (caché del colector).
+func (s *Server) poolHistory(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.pools.History(r.PathValue("name")))
+}
+
+// getPerformance — GET /api/performance → {arc, pools[]} (caché del colector).
+func (s *Server) getPerformance(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.perf.Performance())
+}
+
 // stripPart quita el sufijo de partición:
 // 'sdb1'→'sdb' (solo estilo sdX/vdX/hdX), 'nvme0n1p2'→'nvme0n1', 'mmcblk0p1'→'mmcblk0'.
 // OJO: 'nvme0n1' (disco entero) NO debe perder el '1' final.

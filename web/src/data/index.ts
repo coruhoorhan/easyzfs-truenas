@@ -37,8 +37,9 @@ function setProvider(p: DataProvider, isDemoMode: boolean) {
 async function startMock(): Promise<void> {
   const m = new MockProvider();
   setProvider(m, true);
-  // Sesión local "demo" (no toca el backend)
-  await m.login(DEMO_USER, '');
+  // Sesión local "demo" (no toca el backend). Permite elegir el usuario
+  // demo (p.ej. 'maria' para probar el rol no-admin) vía localStorage.
+  await m.login(localStorage.getItem('zfc-demo-user') || DEMO_USER, '');
 }
 
 // Inicialización al arrancar la app

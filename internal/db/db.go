@@ -77,6 +77,29 @@ var migrations = []string{
 	// v11: idioma por usuario (skill webapp-shell: users.language = fuente de
 	// verdad; localStorage del navegador solo es caché). 'auto' = navegador.
 	`ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'auto';`,
+	// v12: replicación ZFS (send/recv local y SSH, lote C). Incremental con
+	// bookmark 'ezrepl-last' (last_bookmark = snapshot al que apunta); raw=1
+	// fuerza 'zfs send -w' (obligatorio en datasets cifrados); force_full=1
+	// permite reiniciar la replicación destruyendo el destino si el
+	// incremental diverge. schedule usa el formato de jobs (daily@06:00…).
+	`CREATE TABLE IF NOT EXISTS replication_jobs (
+	  id            INTEGER PRIMARY KEY,
+	  source        TEXT NOT NULL,
+	  dest_type     TEXT NOT NULL CHECK(dest_type IN ('local','ssh')),
+	  dest_dataset  TEXT NOT NULL,
+	  host          TEXT NOT NULL DEFAULT '',
+	  user          TEXT NOT NULL DEFAULT '',
+	  port          INTEGER NOT NULL DEFAULT 22,
+	  raw           INTEGER NOT NULL DEFAULT 0,
+	  force_full    INTEGER NOT NULL DEFAULT 0,
+	  schedule      TEXT NOT NULL,
+	  enabled       INTEGER NOT NULL DEFAULT 1,
+	  last_bookmark TEXT NOT NULL DEFAULT '',
+	  last_run      TEXT,
+	  last_ok       INTEGER,
+	  last_error    TEXT NOT NULL DEFAULT '',
+	  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+	);`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

@@ -46,9 +46,9 @@ export default function Snapshots() {
         </button>
       </div>
       {loading && !data && <Spinner label={t('loading')} />}
-      <div className="card">
+      <div className="grid snaps">
         {groups.map((g) => (
-          <div className={`snapgroup ${open.has(g.dataset) ? 'open' : ''}`} key={g.dataset}>
+          <div className={`card snapgroup ${open.has(g.dataset) ? 'open' : ''}`} key={g.dataset}>
             <div className="snapg-head" role="button" tabIndex={0} aria-expanded={open.has(g.dataset)}
               onClick={() => toggle(g.dataset)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(g.dataset); } }}>
@@ -75,7 +75,7 @@ export default function Snapshots() {
             </div>
           </div>
         ))}
-        {data && groups.length === 0 && <div className="empty">{t('empty')}</div>}
+        {data && groups.length === 0 && <div className="card"><div className="empty">{t('empty')}</div></div>}
       </div>
     </div>
   );

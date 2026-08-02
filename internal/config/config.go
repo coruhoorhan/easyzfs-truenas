@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -23,6 +24,13 @@ type Config struct {
 	VAPIDPublicKey  string // VAPID_PUBLIC_KEY (Web Push; la genera el instalador)
 	VAPIDPrivateKey string // VAPID_PRIVATE_KEY (solo servidor; si falta, push desactivado)
 	VAPIDSubject    string // VAPID_SUBJECT (def "mailto:easyzfs@localhost"; siempre mailto:)
+}
+
+// DataDir — directorio de datos del daemon (deriva de DB_PATH): ahí viven la
+// BD, los backups y el material SSH de la replicación (ssh/id_ed25519 y
+// ssh/known_hosts — nunca el ~/.ssh del sistema).
+func (c *Config) DataDir() string {
+	return filepath.Dir(c.DBPath)
 }
 
 // PushEnabled — Web Push operativo: hacen falta AMBAS claves VAPID.

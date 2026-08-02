@@ -5,8 +5,9 @@ import { emitEvent } from './events';
 import { ApiError } from './types';
 import type {
   Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, SessionUser, Settings, Snapshot,
+  Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, SessionUser, Settings, Snapshot,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
+  CreateReplicationReq, ReplicationJob, ReplicationSSHKey, ReplicationTestResult, UpdateReplicationReq,
 } from './types';
 
 const GiB = 1024 ** 3;
@@ -50,7 +51,11 @@ export class MockProvider implements DataProvider {
     name: 'EasyZFS', version: '0.1.0', build: '2026-08-01', go: 'go1.23.4', os_arch: 'linux/amd64',
     uptime_sec: 17 * 86400 + 4 * 3600, rss_bytes: 21 * 1024 ** 2,
     db_bytes: Math.round(8.4 * 1024 ** 2), db_path: '/var/lib/easyzfs/app.db',
-    zfs_version: 'OpenZFS 2.2.6', demo: true,
+    zfs_version: '2.4.1', demo: true,
+    capabilities: {
+      rewrite: true, raidz_expansion: true, scrub_all: true,
+      scrub_range: true, zarc_names: true, json_output: true, version: '2.4.1',
+    },
   };
 
   private settings: Settings = {
@@ -70,14 +75,17 @@ export class MockProvider implements DataProvider {
 
   private pools: Pool[] = [
     {
-      name: 'tank', status: 'DEGRADED', topo: 'mirror-0 (2×1,86 TB NVMe)',
+      name: 'tank', status: 'DEGRADED', topo: 'raidz2 (4×1,86 TB NVMe)',
       used_bytes: Math.round(4.9 * TiB), total_bytes: Math.round(7.2 * TiB),
       frag_pct: 12, comp_ratio: 1.42,
       scrub: { state: 'done', pct: 100, eta_sec: 0, ts: iso(daysAgo(6, 2)), errors: 0 },
       vdevs: [
-        { dev: 'nvme0n1', path: '/dev/nvme0n1', role: 'mirror-0', status: 'ONLINE', temp_c: 48 },
-        { dev: '8ab95469-2ae7-411a-af39-47b1d4f39d3c', role: 'mirror-0', status: 'FAULTED', temp_c: 0 },
+        { dev: 'nvme0n1', path: '/dev/nvme0n1', role: 'raidz2', status: 'ONLINE', temp_c: 48 },
+        { dev: 'nvme1n1', path: '/dev/nvme1n1', role: 'raidz2', status: 'ONLINE', temp_c: 48 },
+        { dev: '8ab95469-2ae7-411a-af39-47b1d4f39d3c', role: 'raidz2', status: 'FAULTED', temp_c: 0 },
       ],
+      autotrim: false, checkpoint: true,
+      raidz_vdevs: ['raidz2-0'], // objetivo del botón Expandir (RAID-Z expansion)
     },
     {
       name: 'ssd', status: 'ONLINE', topo: 'stripe (1×238 GB NVMe)',
@@ -85,15 +93,20 @@ export class MockProvider implements DataProvider {
       frag_pct: 4, comp_ratio: 1.18,
       scrub: { state: 'running', pct: 62, eta_sec: 12 * 60, ts: iso(daysAgo(0, 5)), errors: 0 },
       vdevs: [{ dev: 'nvme3n1', path: '/dev/nvme3n1', role: '—', status: 'ONLINE', temp_c: 55 }],
+      autotrim: true, checkpoint: false,
     },
   ];
 
   private datasets: Dataset[] = [
-    { name: 'tank/documentos', type: 'fs', compression: 'lz4', used_bytes: Math.round(1.2 * TiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: 0, mountpoint: '/tank/documentos' },
-    { name: 'tank/fotos', type: 'fs', compression: 'lz4', used_bytes: Math.round(2.8 * TiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: Math.round(4 * TiB), mountpoint: '/tank/fotos' },
-    { name: 'tank/backups', type: 'fs', compression: 'zstd', used_bytes: Math.round(0.9 * TiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: Math.round(1 * TiB), mountpoint: '/tank/backups' },
-    { name: 'ssd/vm-docker', type: 'volume', compression: 'lz4', used_bytes: Math.round(180 * GiB), avail_bytes: Math.round(640 * GiB), quota_bytes: 0, mountpoint: '—' },
-    { name: 'ssd/lxc-cache', type: 'fs', compression: 'lz4', used_bytes: Math.round(42 * GiB), avail_bytes: Math.round(640 * GiB), quota_bytes: 0, mountpoint: '/ssd/lxc-cache' },
+    { name: 'tank/documentos', type: 'fs', compression: 'lz4', used_bytes: Math.round(1.2 * TiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: 0, mountpoint: '/tank/documentos', encryption: 'off', keystatus: '-' },
+    { name: 'tank/fotos', type: 'fs', compression: 'lz4', used_bytes: Math.round(2.8 * TiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: Math.round(4 * TiB), mountpoint: '/tank/fotos', encryption: 'off', keystatus: '-' },
+    { name: 'tank/backups', type: 'fs', compression: 'zstd', used_bytes: Math.round(0.9 * TiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: Math.round(1 * TiB), mountpoint: '/tank/backups', encryption: 'off', keystatus: '-' },
+    // Cifrado nativo desbloqueado (clave cargada, montado)
+    { name: 'tank/secretos', type: 'fs', compression: 'zstd', used_bytes: Math.round(42 * GiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: 0, mountpoint: '/tank/secretos', encryption: 'aes-256-gcm', keystatus: 'available' },
+    // Cifrado nativo bloqueado (sin clave: no montado; se abre con Desbloquear)
+    { name: 'tank/boveda', type: 'fs', compression: 'zstd', used_bytes: Math.round(512 * GiB), avail_bytes: Math.round(2.3 * TiB), quota_bytes: 0, mountpoint: '—', encryption: 'aes-256-gcm', keystatus: 'unavailable' },
+    { name: 'ssd/vm-docker', type: 'volume', compression: 'lz4', used_bytes: Math.round(180 * GiB), avail_bytes: Math.round(640 * GiB), quota_bytes: 0, mountpoint: '—', encryption: 'off', keystatus: '-' },
+    { name: 'ssd/lxc-cache', type: 'fs', compression: 'lz4', used_bytes: Math.round(42 * GiB), avail_bytes: Math.round(640 * GiB), quota_bytes: 0, mountpoint: '/ssd/lxc-cache', encryption: 'off', keystatus: '-' },
   ];
 
   // 148 snapshots en total repartidos por dataset
@@ -187,6 +200,19 @@ export class MockProvider implements DataProvider {
       if (v) v.temp_c = d.temp_c;
       emitEvent({ type: 'disk.temp', dev: d.dev, temp_c: d.temp_c });
     }, 8000));
+
+    // Simulación: evento ZFS en tiempo real (colector events / 'zpool events'):
+    // a los 12 s llega una alerta zed.* como si hubiera saltado un ereport.
+    this.timers.push(setTimeout(() => {
+      const alert: Alert = {
+        id: ++this.alertSeq, ts: iso(new Date()), level: 'crit',
+        source: 'zed.ereport.fs.zfs.checksum',
+        message: 'Errores de checksum en nvme1n1 (evento ZFS, pool tank)',
+        acked: false, target: 'disks:nvme1n1',
+      };
+      this.alerts.unshift(alert);
+      emitEvent({ type: 'alert.new', alert });
+    }, 12000));
   }
 
   // Libera los temporizadores al salir del modo demo
@@ -295,6 +321,7 @@ export class MockProvider implements DataProvider {
       frag_pct: 1, comp_ratio: 1.0,
       scrub: { state: 'none', pct: 0, eta_sec: 0, ts: iso(new Date()), errors: 0 },
       vdevs: r.disks.map((dev) => ({ dev, role: r.topo === 'stripe' ? '—' : `${r.topo}-0`, status: 'ONLINE', temp_c: 33 })),
+      autotrim: false, checkpoint: false,
     });
     this.disks.forEach((d) => { if (r.disks.includes(d.dev)) d.pool = r.name; });
     emitEvent({ type: 'overview' });
@@ -359,17 +386,126 @@ export class MockProvider implements DataProvider {
     }
     emitEvent({ type: 'overview' });
   };
+  setAutotrim = async (pool: string, enabled: boolean) => {
+    await delay(250);
+    const p = this.pools.find((x) => x.name === pool);
+    if (!p) throw new ApiError(404, 'not_found', 'Pool no encontrado');
+    p.autotrim = enabled;
+    emitEvent({ type: 'overview' });
+  };
+  checkpointPool = async (pool: string, action: 'create' | 'discard', confirm: string) => {
+    await delay(300);
+    if (confirm !== pool) throw new ApiError(400, 'confirm_required', `Escribe "${pool}" para confirmar`);
+    const p = this.pools.find((x) => x.name === pool);
+    if (!p) throw new ApiError(404, 'not_found', 'Pool no encontrado');
+    p.checkpoint = action === 'create';
+    emitEvent({ type: 'overview' });
+  };
+  getPoolHistory = async (pool: string): Promise<PoolHistoryEntry[]> => {
+    await delay();
+    if (pool === 'tank') {
+      return [
+        { ts: iso(daysAgo(0, 4)), command: 'zfs snapshot -r tank@auto-2026-08-01_06-00', duration_sec: 1.42 },
+        { ts: iso(daysAgo(1, 2)), command: 'zpool scrub tank', duration_sec: 14250.8 },
+        { ts: iso(daysAgo(3, 11)), command: 'zfs set compression=zstd tank/backups', duration_sec: 0.04 },
+        { ts: iso(daysAgo(9, 18)), command: 'zpool checkpoint tank', duration_sec: 0.61 },
+        { ts: iso(daysAgo(30, 10)), command: 'zpool create tank mirror nvme0n1 nvme1n1', duration_sec: 2.10 },
+      ];
+    }
+    return [
+      { ts: iso(daysAgo(0, 5)), command: 'zpool scrub ssd' },
+      { ts: iso(daysAgo(0, 6)), command: 'zfs snapshot -r ssd@auto-2026-08-01_06-00', duration_sec: 0.91 },
+      { ts: iso(daysAgo(20, 9)), command: 'zpool set autotrim=on ssd', duration_sec: 0.03 },
+      { ts: iso(daysAgo(60, 12)), command: 'zpool create ssd nvme3n1', duration_sec: 1.74 },
+    ];
+  };
+  getPerformance = async (): Promise<Performance> => {
+    await delay();
+    return {
+      arc: { size_bytes: Math.round(3.8 * GiB), hit_pct: 92.4 },
+      pools: this.pools.map((p, i) => ({
+        name: p.name,
+        read_bps: Math.round((41 + i * 180) * 1024 ** 2),
+        write_bps: Math.round((12 + i * 84) * 1024 ** 2),
+      })),
+    };
+  };
 
   // ---- Datasets ----
   getDatasets = async () => { await delay(); return this.datasets.map((d) => ({ ...d })); };
   createDataset = async (r: CreateDatasetReq) => {
     await delay(250);
+    if (r.encryption && (r.passphrase ?? '').length < 8) {
+      throw new ApiError(400, 'invalid_input', 'La passphrase debe tener al menos 8 caracteres');
+    }
     this.datasets.push({
       name: `${r.pool}/${r.name}`, type: r.type, compression: r.compression,
       used_bytes: 1024 ** 2, avail_bytes: Math.round(2 * TiB),
       quota_bytes: r.type === 'volume' ? (r.volsize_bytes ?? 0) : r.quota_bytes,
       mountpoint: r.type === 'fs' ? `/${r.pool}/${r.name}` : '—',
+      encryption: r.encryption ? 'aes-256-gcm' : 'off',
+      keystatus: r.encryption ? 'available' : '-',
     });
+  };
+
+  // ---- Cifrado nativo (lote D; la clave se descarta tras la llamada) ----
+  unlockDataset = async (name: string, key: string) => {
+    await delay(400);
+    const d = this.datasets.find((x) => x.name === name);
+    if (!d || d.encryption === 'off' || d.encryption === '-') throw new ApiError(400, 'invalid_input', 'El dataset no está cifrado');
+    if (!key) throw new ApiError(400, 'invalid_input', 'Se requiere la passphrase');
+    d.keystatus = 'available';
+    if (d.type === 'fs' && (!d.mountpoint || d.mountpoint === '—')) d.mountpoint = '/' + name;
+    this.activity.unshift({ ts: iso(new Date()), text: 'Dataset desbloqueado', detail: name });
+    emitEvent({ type: 'overview' });
+  };
+  lockDataset = async (name: string) => {
+    await delay(300);
+    const d = this.datasets.find((x) => x.name === name);
+    if (!d || d.encryption === 'off' || d.encryption === '-') throw new ApiError(400, 'invalid_input', 'El dataset no está cifrado');
+    d.keystatus = 'unavailable';
+    d.mountpoint = '—';
+    this.activity.unshift({ ts: iso(new Date()), text: 'Dataset bloqueado', detail: name });
+    emitEvent({ type: 'overview' });
+  };
+  changeDatasetKey = async (name: string, currentKey: string, newKey: string) => {
+    await delay(400);
+    const d = this.datasets.find((x) => x.name === name);
+    if (!d || d.encryption === 'off' || d.encryption === '-') throw new ApiError(400, 'invalid_input', 'El dataset no está cifrado');
+    if (!currentKey) throw new ApiError(400, 'invalid_input', 'Se requiere la passphrase actual');
+    if (newKey.length < 8) throw new ApiError(400, 'invalid_input', 'La passphrase nueva debe tener al menos 8 caracteres');
+    this.activity.unshift({ ts: iso(new Date()), text: 'Clave de cifrado cambiada', detail: name });
+  };
+
+  // ---- RAID-Z expansion (lote D; gate capability + disco libre) ----
+  expandPool = async (pool: string, vdev: string, disk: string, confirm: string) => {
+    await delay(400);
+    if (!this.version.capabilities?.raidz_expansion) throw new ApiError(400, 'not_supported', 'RAID-Z expansion requiere OpenZFS ≥ 2.3');
+    if (confirm !== pool) throw new ApiError(400, 'confirm_required', `Escribe "${pool}" para confirmar`);
+    const p = this.pools.find((x) => x.name === pool);
+    if (!p) throw new ApiError(404, 'not_found', 'Pool no encontrado');
+    if (!(p.raidz_vdevs ?? []).includes(vdev)) throw new ApiError(400, 'invalid_input', `El vdev '${vdev}' no es un raidz del pool`);
+    const d = this.disks.find((x) => x.dev === disk);
+    if (!d || (d.pool !== '—' && d.pool !== '') || d.in_use) throw new ApiError(409, 'dev_in_use', `El disco '${disk}' no está libre`);
+    const role = vdev.replace(/-\d+$/, '');
+    p.vdevs.push({ dev: disk, path: '/dev/' + disk, role, status: 'ONLINE', temp_c: d.temp_c ?? 33 });
+    d.pool = pool;
+    // Expansión simulada con progreso (~1%/s, evento por tick)
+    p.scrub = { state: 'running', kind: 'expand', pct: 0, eta_sec: 100, ts: iso(new Date()), errors: 0 };
+    const timer = setInterval(() => {
+      if (p.scrub.state !== 'running' || p.scrub.kind !== 'expand') { clearInterval(timer); return; }
+      p.scrub.pct = Math.min(100, p.scrub.pct + 2);
+      p.scrub.eta_sec = Math.max(0, Math.round((100 - p.scrub.pct) / 2));
+      emitEvent({ type: 'scrub.progress', pool, pct: p.scrub.pct, eta_sec: p.scrub.eta_sec, kind: 'expand' });
+      if (p.scrub.pct >= 100) {
+        p.scrub = { state: 'done', kind: 'expand', pct: 100, eta_sec: 0, ts: iso(new Date()), errors: 0 };
+        this.activity.unshift({ ts: iso(new Date()), text: 'Expansión RAID-Z completada', detail: `${pool} · ${vdev} + ${disk}` });
+        clearInterval(timer);
+        emitEvent({ type: 'overview' });
+      }
+    }, 1000);
+    this.timers.push(timer);
+    emitEvent({ type: 'overview' });
   };
   updateDataset = async (name: string, p: { quota_bytes?: number; compression?: string }) => {
     await delay();
@@ -381,6 +517,70 @@ export class MockProvider implements DataProvider {
     if (confirm !== name) throw new ApiError(400, 'confirm_required', 'Confirmación incorrecta');
     this.datasets = this.datasets.filter((d) => d.name !== name);
     this.snaps = this.snaps.filter((g) => g.dataset !== name);
+  };
+
+  // ---- Operaciones largas (zfs rewrite simulado; runner del backend) ----
+  private longops: LongOp[] = [
+    {
+      id: 'op-demo-1', type: 'rewrite', target: 'tank/backups', pid: 4213,
+      started: iso(daysAgo(2, 11)), ended: iso(daysAgo(2, 12)), status: 'done',
+      lines: ['Reescritura completada'],
+    },
+  ];
+  private longopSeq = 1;
+
+  getLongOps = async (): Promise<LongOp[]> => {
+    await delay();
+    return this.longops.map((o) => ({ ...o, lines: [...o.lines] }));
+  };
+
+  cancelLongOp = async (id: string) => {
+    await delay(150);
+    const op = this.longops.find((o) => o.id === id);
+    if (!op) throw new ApiError(404, 'not_found', 'Operación no encontrada');
+    if (op.status !== 'running') throw new ApiError(409, 'not_running', 'La operación ya no está en curso');
+    op.status = 'canceled';
+    op.ended = iso(new Date());
+    op.lines.push('Cancelada por el usuario');
+    emitEvent({ type: 'longop.update', op: { ...op } });
+  };
+
+  rewriteDataset = async (name: string, confirm: string): Promise<{ op_id: string }> => {
+    await delay(300);
+    if (!this.version.capabilities?.rewrite) throw new ApiError(400, 'not_supported', 'zfs rewrite requiere OpenZFS ≥ 2.3.4');
+    if (confirm !== name) throw new ApiError(400, 'confirm_required', 'Confirmación incorrecta');
+    const d = this.datasets.find((x) => x.name === name);
+    if (!d || d.type !== 'fs' || !d.mountpoint || d.mountpoint === '—') {
+      throw new ApiError(400, 'invalid_input', 'Dataset inexistente, no es filesystem o no está montado');
+    }
+    if (this.longops.some((o) => o.status === 'running' && o.target === name)) {
+      throw new ApiError(409, 'already_running', `Ya hay una operación en curso sobre ${name}`);
+    }
+    const op: LongOp = {
+      id: `op-demo-${++this.longopSeq}`, type: 'rewrite', target: name,
+      pid: 4300 + this.longopSeq, started: iso(new Date()), status: 'running',
+      lines: ['Reescribiendo bloques de ' + d.mountpoint + '…'],
+    };
+    this.longops.unshift(op);
+    emitEvent({ type: 'longop.update', op: { ...op } });
+    // Simulación: completa a los ~9 s con líneas de progreso
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      if (op.status !== 'running') { clearInterval(timer); return; }
+      if (step >= 3) {
+        op.status = 'done';
+        op.ended = iso(new Date());
+        op.lines.push('Reescritura completada');
+        this.activity.unshift({ ts: op.ended, text: 'Reescritura de datos completada', detail: name });
+        clearInterval(timer);
+      } else {
+        op.lines.push(`Procesados ${step * 38} % de los bloques…`);
+      }
+      emitEvent({ type: 'longop.update', op: { ...op } });
+    }, 3000);
+    this.timers.push(timer);
+    return { op_id: op.id };
   };
 
   // ---- Snapshots ----
@@ -416,6 +616,102 @@ export class MockProvider implements DataProvider {
     const [ds] = full.split('@');
     if (confirm !== ds) throw new ApiError(400, 'confirm_required', `Escribe "${ds}" para confirmar`);
     this.activity.unshift({ ts: iso(new Date()), text: 'Rollback ejecutado', detail: full });
+  };
+
+  // ---- Replicación (demo: 1 local OK, 1 SSH con error de autenticación) ----
+  private replJobs: ReplicationJob[] = [
+    {
+      id: 1, source: 'tank/fotos', dest_type: 'local', dest_dataset: 'tank/backups/fotos',
+      host: '', user: '', port: 22, raw: false, force_full: false,
+      schedule: 'daily@06:30', enabled: true,
+      last_bookmark: 'ezrepl-20260801-063000', last_run: iso(daysAgo(0, 6)),
+      last_ok: true, last_error: '', next_run: iso(daysAgo(-1, 6)),
+    },
+    {
+      id: 2, source: 'tank/documentos', dest_type: 'ssh', dest_dataset: 'bak/documentos',
+      host: 'nas-backup.lan', user: 'zfsrepl', port: 22, raw: true, force_full: false,
+      schedule: 'hourly@:20', enabled: true,
+      last_bookmark: 'ezrepl-20260730-112000', last_run: iso(daysAgo(0, 3)),
+      last_ok: false,
+      last_error: 'ssh: Permission denied (publickey) — instala la clave pública del servidor en el destino',
+      next_run: iso(daysAgo(-1, 3)),
+    },
+  ];
+  private replSeq = 3;
+
+  getReplicationJobs = async () => { await delay(); return this.replJobs.map((j) => ({ ...j })); };
+  createReplicationJob = async (r: CreateReplicationReq) => {
+    await delay();
+    this.replJobs.push({
+      id: this.replSeq++, source: r.source, dest_type: r.dest_type, dest_dataset: r.dest_dataset,
+      host: r.host ?? '', user: r.user ?? '', port: r.port ?? 22,
+      raw: !!r.raw, force_full: !!r.force_full, schedule: r.schedule, enabled: true,
+      last_bookmark: '', last_run: null, last_ok: null, last_error: '', next_run: iso(daysAgo(-1)),
+    });
+  };
+  updateReplicationJob = async (id: number, r: UpdateReplicationReq) => {
+    await delay();
+    const j = this.replJobs.find((x) => x.id === id);
+    if (j) Object.assign(j, r);
+  };
+  deleteReplicationJob = async (id: number, _c: string) => {
+    await delay();
+    this.replJobs = this.replJobs.filter((j) => j.id !== id);
+  };
+  runReplicationJob = async (id: number) => {
+    await delay(200);
+    const j = this.replJobs.find((x) => x.id === id);
+    if (!j) throw new ApiError(404, 'not_found', 'Job de replicación no encontrado');
+    const target = j.dest_type === 'ssh' ? `${j.source} → ${j.user}@${j.host}:${j.dest_dataset}` : `${j.source} → ${j.dest_dataset}`;
+    if (this.longops.some((o) => o.status === 'running' && o.type === 'replication' && o.target === target)) {
+      throw new ApiError(409, 'already_running', 'Ya hay una replicación en curso para este job');
+    }
+    const op: LongOp = {
+      id: `op-demo-${++this.longopSeq}`, type: 'replication', target,
+      pid: 5100 + this.longopSeq, started: iso(new Date()), status: 'running',
+      lines: [`zfs send ${j.raw ? '-w ' : ''}${j.source}@ezrepl-nuevo…`],
+    };
+    this.longops.unshift(op);
+    emitEvent({ type: 'longop.update', op: { ...op } });
+    const fail = j.dest_type === 'ssh'; // demo: los ssh fallan con error de auth legible
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      if (op.status !== 'running') { clearInterval(timer); return; }
+      if (step >= 3) {
+        op.status = fail ? 'error' : 'done';
+        op.ended = iso(new Date());
+        j.last_run = op.ended;
+        j.last_ok = !fail;
+        if (fail) {
+          op.error = 'exit status 255';
+          op.lines.push('zfsrepl@' + j.host + ': Permission denied (publickey).');
+          j.last_error = 'ssh: Permission denied (publickey) — instala la clave pública del servidor en el destino';
+        } else {
+          op.lines.push('Replicación completada');
+          j.last_error = '';
+          j.last_bookmark = 'ezrepl-' + new Date().toISOString().slice(0, 10).replaceAll('-', '') + '-000000';
+        }
+        this.history.unshift({ ts: op.ended, tipo: 'replication', target, ok: !fail, detail: fail ? j.last_error : 'ok' });
+        emitEvent({ type: 'replication.finished', id: j.id, ok: !fail, detail: fail ? j.last_error : 'ok' });
+        clearInterval(timer);
+      } else {
+        op.lines.push(`send: ${step * 410} MiB / 1,2 GiB (${step * 33} %)…`);
+      }
+      emitEvent({ type: 'longop.update', op: { ...op } });
+    }, 1500);
+    this.timers.push(timer);
+  };
+  getReplicationSSHKey = async (): Promise<ReplicationSSHKey> => {
+    await delay();
+    return {
+      public_key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoKeyEasyZFSReplication0123456789abcdef easyzfs-replication',
+      instructions: 'Añade esta clave a ~/.ssh/authorized_keys del usuario destino. Para no usar root: zfs allow -u <usuario> snapshot,send,receive,destroy,hold,bookmark <pool>',
+    };
+  };
+  testReplication = async (_h: string, _u: string, _p: number): Promise<ReplicationTestResult> => {
+    await delay(700);
+    return { ok: false, error: 'autenticación fallida (Permission denied): instala la clave pública del servidor en el authorized_keys del usuario destino' };
   };
 
   // ---- Tareas ----

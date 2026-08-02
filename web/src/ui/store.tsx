@@ -2,7 +2,7 @@
 // Router ligero basado en hash (#/vista).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { SessionUser } from '../data/types';
+import type { Capabilities, SessionUser } from '../data/types';
 import { getProvider, initProvider, enterDemoSession, exitDemoSession } from '../data';
 import { syncPushSubscription } from '../data/push';
 import { AUTH_EXPIRED_EVENT, connectSSE, disconnectSSE } from '../data/events';
@@ -39,6 +39,8 @@ interface AppCtx {
   themeEff: 'light' | 'dark';
   setTheme: (m: ThemeMode) => void;
   isAdmin: boolean;
+  // Capacidades de OpenZFS del host (feature-gating; null hasta conocerlas)
+  caps: Capabilities | null;
   // Contador para forzar refresco de datos tras mutaciones
   refresh: () => void;
   dataVersion: number;
@@ -55,6 +57,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>(getThemeMode());
   const [themeEff, setThemeEff] = useState<'light' | 'dark'>(effectiveTheme());
   const [dataVersion, setDataVersion] = useState(0);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
+
+  // Capacidades OpenZFS (feature-gating; silencioso si falla). Se piden en el
+  // arranque y se RE-piden al establecer sesión (login / sesión existente /
+  // demo): sin sesión el backend responde 401 y los botones gateados
+  // (Expandir, Reescribir…) quedarían ocultos hasta recargar la página.
+  const fetchCaps = useCallback(() => {
+    getProvider().getVersion().then((v) => setCaps(v.capabilities ?? null)).catch(() => {});
+  }, []);
 
   // Arranque: idioma, tema, provider y sesión existente
   useEffect(() => {
@@ -71,9 +82,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       const { demo: d } = await initProvider();
       setDemo(d);
+      fetchCaps();
       try {
         const me = await getProvider().me();
         setUser(me);
+        // Sesión ya activa: reintenta las capabilities (la petición del
+        // arranque pudo fallar con 401 si aún no había cookie de sesión)
+        fetchCaps();
         // Idioma: la BD es la fuente de verdad (users.language); si difiere
         // del modo guardado en este navegador (caché), manda la BD.
         if (me.language && me.language !== getLangMode()) setLangMode(me.language);
@@ -86,7 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setReady(true);
     })();
     return () => { offLang(); offTheme(); };
-  }, []);
+  }, [fetchCaps]);
 
   // Router por hash
   useEffect(() => {
@@ -105,11 +120,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (u: string, p: string) => {
     const s = await getProvider().login(u, p);
     setUser(s);
+    // Re-fetch de capabilities con la sesión recién creada (sin sesión el
+    // backend da 401 y los botones gateados no aparecerían hasta recargar)
+    fetchCaps();
     // El idioma de la BD manda sobre el caché local del navegador
     if (s.language && s.language !== getLangMode()) setLangMode(s.language);
     connectSSE(); // reabre el stream con la sesión recién creada
     void syncPushSubscription(); // re-sincroniza la suscripción push (silencioso)
-  }, []);
+  }, [fetchCaps]);
 
   const logout = useCallback(async () => {
     disconnectSSE(); // corta el stream antes de cerrar la sesión
@@ -139,8 +157,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await enterDemoSession();
     setDemo(true);
     try { setUser(await getProvider().me()); } catch { setUser(null); }
+    fetchCaps(); // capabilities del provider mock (la petición del arranque fue contra el HTTP y falló)
     setDataVersion((v) => v + 1);
-  }, []);
+  }, [fetchCaps]);
 
   // Cierra la sesión demo y vuelve a la pantalla de login (provider HTTP)
   const exitDemo = useCallback(() => {
@@ -170,8 +189,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo,
     t, langMode, setLang, themeMode, themeEff, setTheme,
     isAdmin: user?.role === 'admin',
+    caps,
     refresh, dataVersion,
-  }), [ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo, t, langMode, setLang, themeMode, themeEff, setTheme, refresh, dataVersion]);
+  }), [ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo, t, langMode, setLang, themeMode, themeEff, setTheme, caps, refresh, dataVersion]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
