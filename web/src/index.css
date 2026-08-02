@@ -485,16 +485,14 @@ a.abouttile:hover,button.abouttile:hover{background:var(--surface2)}
   .dash-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;align-items:start}
 }
 
-/* Tareas: en pantalla muy ancha la lista principal (tareas programadas)
-   ocupa la columna izquierda y el resto se apila a la derecha */
+/* Tareas: en pantalla muy ancha fluye en 2 columnas equilibradas (multicol).
+   Antes era grid con .tk-jobs abarcando 5 filas a la izquierda: cuando había
+   pocas tareas quedaba un hueco gigante bajo la primera tarjeta. Multicol
+   reparte el alto sin huecos y nunca parte una tarjeta. */
 @media(min-width:1800px){
-  .tasks-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:0 22px;align-items:start}
-  .tasks-grid .tk-next{grid-column:2;grid-row:1}
-  .tasks-grid .tk-jobs{grid-column:1;grid-row:1/6;margin-top:0}
-  .tasks-grid .tk-repl{grid-column:2}
-  .tasks-grid .tk-sys{grid-column:2}
-  .tasks-grid .tk-ops{grid-column:2}
-  .tasks-grid .tk-hist{grid-column:2}
+  .tasks-grid{columns:2;column-gap:22px}
+  .tasks-grid>.sect{break-inside:avoid;margin-top:0}
+  .tasks-grid>.sect+.sect{margin-top:22px}
 }
 
 /* densidad compacta: html{font-size:13.5px} (theme.ts) + ajustes puntuales
