@@ -73,6 +73,9 @@ export class HttpProvider implements DataProvider {
   setMyPassword = (current: string, next: string) => post<void>('/me/password', { current, new: next });
   setMyLanguage = (language: Lang) => put<void>('/me/language', { language });
 
+  updateMyProfile = (display_name: string, email: string) =>
+    put<void>('/me/profile', { display_name, email });
+
   getUsers = () => get<UserInfo[]>('/users');
   createUser = (r: CreateUserReq) => post<void>('/users', r);
   deleteUser = (name: string, confirm: string) => del<void>(`/users/${enc(name)}`, { confirm });

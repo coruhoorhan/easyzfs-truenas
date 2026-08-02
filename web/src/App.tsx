@@ -15,6 +15,7 @@ import { timeAgo } from './ui/format';
 import { toggleTheme } from './ui/theme';
 import { lazyRetry } from './ui/lazyRetry';
 import { useUpdateAvailable } from './ui/updatecheck';
+import { useReleaseCheck, getReleaseDismissed, dismissRelease } from './ui/releasecheck';
 import type { Alert } from './data/types';
 import Login from './views/Login';
 
@@ -120,6 +121,15 @@ function Shell() {
   const [hasPending, setHasPending] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
   const updateAvailable = useUpdateAvailable(ready && !!user && !demo);
+  // Ribbon "nueva release en GitHub" (check pasivo 1/día, descartable por versión)
+  const [version, setVersion] = useState('');
+  const [relDismissed, setRelDismissed] = useState(getReleaseDismissed());
+  const rel = useReleaseCheck(version || undefined, ready && !!user && !demo);
+  useEffect(() => {
+    if (!ready || !user || demo) return;
+    getProvider().getVersion().then((v) => setVersion(v.version)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user, demo]);
 
   const toggleCollapsed = () => {
     setCollapsed((c) => {
@@ -193,7 +203,7 @@ function Shell() {
               <span className="avatar" aria-hidden="true"><IconUser size={16} /></span>
               {!collapsed && (
                 <span className="ublbl">
-                  <b>{user.user}</b>
+                  <b>{user.display_name || user.user}</b>
                   <span>{isAdmin ? t('mu_r_admin') : t('mu_r_user')} · {t('s_account')}</span>
                 </span>
               )}
@@ -226,6 +236,16 @@ function Shell() {
               </button>
             </div>
           )}
+          {rel.kind === 'available' && relDismissed !== rel.version && (
+            <div className="relbar" role="status">
+              <span>{t('upd_rel_banner', { v: rel.version })}</span>
+              <a href={rel.url} target="_blank" rel="noreferrer">{t('ab_viewrel')}</a>
+              <button className="btn sm" style={{ marginLeft: 'auto' }}
+                onClick={() => { dismissRelease(rel.version); setRelDismissed(rel.version); }}>
+                {t('upd_rel_dismiss')}
+              </button>
+            </div>
+          )}
           {demo && (
             <div className="demobar" role="status">
               <span className="dot" />
@@ -238,7 +258,11 @@ function Shell() {
           <header className="top">
             <div>
               <h1>{t(active as never)}</h1>
-              <div className="sub">{t(`sub_${active}` as never)}</div>
+              <div className="sub">
+                {active === 'dash' && user.display_name
+                  ? t('dash_hello', { name: user.display_name })
+                  : t(`sub_${active}` as never)}
+              </div>
             </div>
             <div className="head-actions">
               <button className="iconbtn" title={t('a11y_alerts')} aria-label={t('a11y_alerts')}

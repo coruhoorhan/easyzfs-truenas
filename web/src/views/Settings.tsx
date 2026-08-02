@@ -1,15 +1,20 @@
-// Vista Ajustes: tarjetas con el título dentro (como NetPulse) en grid de 2
-// columnas en pantalla ancha. Apariencia (tema/acento/densidad/animaciones),
-// Mi sesión (idioma, contraseña, logout), push, zona admin (usuarios, copia
-// de seguridad, umbrales, notificaciones) y Acerca de (con datos del sistema).
+// Vista Ajustes (layout 2-Ago-2026, spec del usuario):
+//   Fila 1: Apariencia (60%) + Umbrales de salud (40%, admin)
+//   Fila 2: Mi perfil (idioma, nombre, email, contraseña inline) + Push
+//   Zona admin: Usuarios | Copia de seguridad | Notificaciones (horizontal)
+//   Acerca de: ancho completo (4 tiles + instalar PWA + sistema)
+// "Comprobar actualizaciones" NO es un botón: releasecheck.ts comprueba 1
+// vez al día en segundo plano y avisa con un ribbon superior (ver App.tsx);
+// aquí solo queda un icono de estado en la cabecera de la zona admin.
 import { useEffect, useRef, useState } from 'react';
 import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtDuration, timeAgo } from '../ui/format';
 import { Seg, Select, Spinner, Switch, Badge } from '../components/ui';
-import { Logo, IconCode, IconList, IconHome, IconShield, IconDownload, IconCheck, IconSun, IconMoon, IconMonitor } from '../components/icons';
+import { Logo, IconCode, IconList, IconHeart, IconShield, IconDownload, IconCheck, IconSun, IconMoon, IconMonitor, IconUpload } from '../components/icons';
 import { useModal } from '../components/Modal';
 import { usePush } from '../data/push';
+import { useReleaseCheck } from '../ui/releasecheck';
 import {
   ACCENTS, getAccent, setAccent, getDensity, setDensity,
   getReduceMotion, setReduceMotion,
@@ -71,104 +76,31 @@ const HORAS = Array.from({ length: 24 }, (_, h) => ({
   v: String(h), label: `${String(h).padStart(2, '0')}:00`,
 }));
 
-// Repo público de la app (para "Comprobar actualizaciones").
-const REPO = 'gnacho/easyzfs';
-const REPO_URL = `https://github.com/${REPO}`;
+// Repo público de la app (tiles de Acerca de).
+const REPO_URL = 'https://github.com/gnacho/easyzfs';
 
-// Comparación semver numérica ('v' opcional): 1.10.0 > 1.9.0.
-function compareSemver(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
-  const pb = b.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  return 0;
-}
-
-type UpdateState =
-  | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'uptodate' }
-  | { kind: 'available'; version: string; url: string }
-  | { kind: 'error' };
-
-// "Comprobar actualizaciones": GET anónima SOLO al pulsar el botón contra la
-// última release del repo en GitHub (fallback a tags si no hay release).
-// Nada de phone-home automático; no sale ningún dato de la instalación.
-function useAppUpdate(currentVersion: string | undefined) {
+// Icono de estado de releases en la cabecera de la zona admin: la
+// comprobación es pasiva (1/día, ver ui/releasecheck.ts); aquí solo se
+// refleja el resultado. Sin botón "comprobar" (decisión del usuario).
+function ReleaseIcon({ version }: { version: string | undefined }) {
   const { t } = useApp();
-  const [state, setState] = useState<UpdateState>({ kind: 'idle' });
-
-  const check = async () => {
-    if (!currentVersion) return;
-    setState({ kind: 'checking' });
-    try {
-      let res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
-      let tag = '';
-      let url = `${REPO_URL}/releases`;
-      if (res.ok) {
-        const j = await res.json();
-        tag = j.tag_name ?? '';
-        url = j.html_url ?? url;
-      } else if (res.status === 404) {
-        // Sin release publicada: fallback al último tag
-        res = await fetch(`https://api.github.com/repos/${REPO}/tags?per_page=1`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const tags = await res.json();
-        tag = tags?.[0]?.name ?? '';
-        url = `${REPO_URL}/releases/tag/${tag}`;
-      } else {
-        throw new Error(`HTTP ${res.status}`); // 403 = rate-limit 60/h por IP
-      }
-      if (tag && compareSemver(tag, currentVersion) > 0) {
-        setState({ kind: 'available', version: tag.replace(/^v/, ''), url });
-      } else {
-        setState({ kind: 'uptodate' });
-      }
-    } catch {
-      setState({ kind: 'error' });
-    }
-  };
-
-  return { state, check, t };
-}
-
-// Fila "Comprobar actualizaciones" de la tarjeta Acerca de.
-function UpdateCheck({ version }: { version: string | undefined }) {
-  const { state, check, t } = useAppUpdate(version);
-  return (
-    <div style={{ marginTop: 14 }}>
-      {state.kind === 'idle' && (
-        <button className="btn" onClick={() => { void check(); }} disabled={!version}>
-          {t('ab_checkupd')}
-        </button>
-      )}
-      {state.kind === 'checking' && (
-        <span className="muted">{t('ab_checking')}</span>
-      )}
-      {state.kind === 'uptodate' && (
-        <span style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600 }} role="status">
-          {t('ab_uptodate', { v: version ?? '' })}
-        </span>
-      )}
-      {state.kind === 'available' && (
-        <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }} role="status">
-          {t('ab_newver', { v: state.version })}
-          {' · '}
-          <a href={state.url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
-            {t('ab_viewrel')}
-          </a>
-        </span>
-      )}
-      {state.kind === 'error' && (
-        <span className="form-err" role="alert" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          {t('ab_upderr')}
-          <button className="btn sm" onClick={() => { void check(); }}>{t('ab_retry')}</button>
-        </span>
-      )}
-    </div>
-  );
+  const rel = useReleaseCheck(version, true);
+  if (rel.kind === 'available') {
+    return (
+      <a href={rel.url} target="_blank" rel="noreferrer" className="relico new"
+        title={t('ab_newver', { v: rel.version })} aria-label={t('ab_newver', { v: rel.version })}>
+        <IconUpload size={14} /><span>v{rel.version}</span>
+      </a>
+    );
+  }
+  if (rel.kind === 'uptodate') {
+    return (
+      <span className="relico ok" title={t('ab_uptodate', { v: version ?? '' })} role="status">
+        <IconCheck size={11} />
+      </span>
+    );
+  }
+  return null;
 }
 
 // Tarjeta "Copia de seguridad" (zona admin): patrón ajuste-proceso — estado
@@ -422,8 +354,88 @@ function PushSection() {
   );
 }
 
+// Tarjeta "Mi perfil": idioma, nombre visible (saludos), email opcional y
+// cambio de contraseña INLINE (estilo NetPulse: el form se despliega dentro
+// de la tarjeta, sin modal) + cerrar sesión.
+function ProfileCard() {
+  const { t, user, langMode, setLang, logout, reloadUser } = useApp();
+  const [name, setName] = useState(user?.display_name ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  const [cur, setCur] = useState('');
+  const [p1, setP1] = useState('');
+  const [p2, setP2] = useState('');
+
+  const save = async () => {
+    setBusy(true); setMsg(''); setErr('');
+    try {
+      await getProvider().updateMyProfile(name.trim(), email.trim());
+      reloadUser(); // actualiza sidebar/saludo con el nombre nuevo
+      setMsg(t('saved_ok'));
+    } catch (e) { setErr(errorMessage(e, t)); }
+    setBusy(false);
+  };
+
+  const changePass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (p1 !== p2) { setErr(t('s_mypass_mismatch')); return; }
+    setBusy(true); setMsg(''); setErr('');
+    try {
+      await getProvider().setMyPassword(cur, p1);
+      setShowPass(false); setCur(''); setP1(''); setP2('');
+      setMsg(t('saved_ok'));
+    } catch (ex) { setErr(errorMessage(ex, t)); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="card pad">
+      <h3 className="cardtitle">{t('s_profile')}</h3>
+      <label>{t('s_lang')}</label>
+      <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
+        options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
+      <label htmlFor="pf-name">{t('s_displayname')}</label>
+      <input id="pf-name" value={name} maxLength={64} placeholder={user?.user}
+        autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
+      <p className="muted" style={{ marginTop: 4 }}>{t('s_displayname_d')}</p>
+      <label htmlFor="pf-email">{t('s_email')}</label>
+      <input id="pf-email" type="email" value={email} maxLength={254}
+        autoComplete="email" onChange={(e) => setEmail(e.target.value)} />
+      <p className="muted" style={{ marginTop: 4 }}>{t('s_email_d')}</p>
+      <div className="m-actions" style={{ justifyContent: 'flex-start' }}>
+        <button className="btn primary" disabled={busy} onClick={() => { void save(); }}>{t('save')}</button>
+        <button className="btn" onClick={() => setShowPass((v) => !v)}>{t('s_mypass')}</button>
+        <button className="btn danger" onClick={logout}>{t('logout')}</button>
+      </div>
+      {showPass && (
+        <form onSubmit={(e) => { void changePass(e); }}
+          style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <label htmlFor="pf-cur">{t('s_mypass_cur')}</label>
+          <input id="pf-cur" type="password" autoComplete="current-password" value={cur}
+            onChange={(e) => setCur(e.target.value)} required />
+          <label htmlFor="pf-p1">{t('mp_new')}</label>
+          <input id="pf-p1" type="password" autoComplete="new-password" value={p1}
+            onChange={(e) => setP1(e.target.value)} minLength={8} required />
+          <label htmlFor="pf-p2">{t('s_mypass2')}</label>
+          <input id="pf-p2" type="password" autoComplete="new-password" value={p2}
+            onChange={(e) => setP2(e.target.value)} minLength={8} required />
+          <div className="m-actions">
+            <button type="submit" className="btn primary"
+              disabled={busy || !cur || p1.length < 8 || p1 !== p2}>{t('update')}</button>
+          </div>
+        </form>
+      )}
+      {msg && <p style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600, marginTop: 10 }} role="status">{msg}</p>}
+      {err && <p className="form-err" role="alert" style={{ marginTop: 10 }}>{err}</p>}
+    </div>
+  );
+}
+
 export default function Settings() {
-  const { t, langMode, setLang, themeMode, themeEff, setTheme, isAdmin, user, logout, refresh } = useApp();
+  const { t, themeMode, themeEff, setTheme, isAdmin, user, refresh } = useApp();
   const { openModal } = useModal();
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [users, setUsers] = useState<Awaited<ReturnType<ReturnType<typeof getProvider>['getUsers']>> | null>(null);
@@ -488,8 +500,9 @@ export default function Settings() {
   ];
 
   return (
-    <div className="view settings-grid">
-      {/* ---- Apariencia (estilo NetPulse: previews con variables reales) ---- */}
+    <div className="view">
+      {/* ---- Fila 1: Apariencia (60%) + Umbrales de salud (40%, admin) ---- */}
+      <div className={`st-row${isAdmin ? ' st-top' : ''}`}>
       <div className="card pad">
         <h3 className="cardtitle">{t('s_appear')}</h3>
         <label>{t('s_theme')}</label>
@@ -536,24 +549,108 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ---- Notificaciones push (todos los usuarios) ---- */}
-      <PushSection />
-
-      {/* ---- Mi sesión: idioma + contraseña + logout ---- */}
-      <div className="card pad">
-        <h3 className="cardtitle">{t('s_session')}</h3>
-        <label>{t('s_lang')}</label>
-        <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
-          options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
-        <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 16 }}>
-          <button className="btn" onClick={() => openModal('mypass')}>{t('s_mypass')}</button>
-          <button className="btn danger" onClick={logout}>{t('logout')}</button>
+      {/* ---- Umbrales de salud (admin; junto a Apariencia) ---- */}
+      {isAdmin && (
+        <div className="card pad admin-card">
+          <h3 className="cardtitle">{t('s_thresh')}</h3>
+          <p className="muted">{t('s_thresh_d')}</p>
+          <label htmlFor="th-warn">{t('s_cap_warn')}</label>
+          <input id="th-warn" type="number" value={settings.cap_warn_pct}
+            onChange={(e) => setSettings({ ...settings, cap_warn_pct: +e.target.value })} />
+          <label htmlFor="th-crit">{t('s_cap_crit')}</label>
+          <input id="th-crit" type="number" value={settings.cap_crit_pct}
+            onChange={(e) => setSettings({ ...settings, cap_crit_pct: +e.target.value })} />
+          <label htmlFor="th-temp">{t('s_temp')}</label>
+          <input id="th-temp" type="number" value={settings.disk_temp_c}
+            onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
+          {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
+          <div className="m-actions">
+            <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
+          </div>
         </div>
+      )}
       </div>
 
-      {/* ---- Acerca de (con datos del sistema integrados) ---- */}
+      {/* ---- Fila 2: Mi perfil + Notificaciones push ---- */}
+      <div className="st-row">
+        <ProfileCard />
+        <PushSection />
+      </div>
+
+      {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
+      {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}<ReleaseIcon version={version?.version} /></h2>}
+      {isAdmin && (
+      <div className="st-row st-admin">
+
+
+      {/* ---- Usuarios ---- */}
+      <div className="card pad admin-card">
+        <h3 className="cardtitle">{t('s_users')}
+          <span className="actions" style={{ float: 'right' }}>
+            <button className="btn sm primary" onClick={() => openModal('newuser')}>+ {t('s_newuser')}</button>
+          </span>
+        </h3>
+        <div>
+          {(users ?? []).map((u) => (
+            <div className="rowitem" key={u.user}>
+              <div className="grow">
+                <div className="t1" style={{ fontSize: 14 }}>
+                  {u.display_name || u.user}
+                  {u.user === user?.user && <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{t('you')}</span>}
+                  <span className={`rolebadge ${u.role}`}>{u.role === 'admin' ? t('mu_r_admin') : t('mu_r_user')}</span>
+                </div>
+                <div className="t2">
+                  {u.user} · {t('s_last_login')}: {timeAgo(u.last_login, t)} · {u.sessions}{' '}
+                  {u.sessions === 1 ? t('s_session_one') : t('s_sessions')}
+                </div>
+              </div>
+              <Select value={u.language ?? 'auto'} ariaLabel={t('s_lang')}
+                options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]}
+                onChange={(v) => {
+                  const lang = v as 'auto' | 'es' | 'en';
+                  setUsers((cur) => cur?.map((x) => (x.user === u.user ? { ...x, language: lang } : x)) ?? cur);
+                  getProvider().setUserLanguage(u.user, lang).catch(() => {});
+                }} />
+              <button className="btn sm" onClick={() => openModal('passwd', { user: u.user })}>{t('s_passwd')}</button>
+              {u.user !== user?.user && (
+                <button className="btn sm danger" onClick={() => openModal('deluser', { user: u.user })}>{t('s_delete_user')}</button>
+              )}
+            </div>
+          ))}
+          {users && users.length === 0 && <div className="empty">{t('empty')}</div>}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('s_roles_d')}</p>
+      </div>
+
+      {/* ---- Copia de seguridad de la BD ---- */}
+      <BackupCard settings={settings} onSave={saveSettings} />
+
+      {/* ---- Notificaciones webhook ---- */}
+      <div className="card pad admin-card">
+        <h3 className="cardtitle">{t('s_notif')}</h3>
+        <label htmlFor="nf-hook">{t('s_webhook')}</label>
+        <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}
+          onChange={(e) => setSettings({ ...settings, webhook: e.target.value })} />
+        <label className="checklabel" style={{ marginTop: 16 }}>
+          <input type="checkbox" checked={settings.notify_scrub_errors}
+            onChange={(e) => setSettings({ ...settings, notify_scrub_errors: e.target.checked })} />
+          {t('s_n_scrub')}
+        </label>
+        <label className="checklabel">
+          <input type="checkbox" checked={settings.notify_smart_change}
+            onChange={(e) => setSettings({ ...settings, notify_smart_change: e.target.checked })} />
+          {t('s_n_smart')}
+        </label>
+        <div className="m-actions">
+          <button className="btn primary" onClick={() => saveSettings({})}>{t('save')}</button>
+        </div>
+      </div>
+      </div>
+      )}
+
+      {/* ---- Acerca de (ancho completo: 4 tiles + instalar PWA + sistema) ---- */}
       {version && (
-        <div className="card pad">
+        <div className="card pad st-about">
           <h3 className="cardtitle">{t('s_about')}</h3>
           <div className="about">
             <div className="logo"><Logo size={46} /></div>
@@ -580,9 +677,9 @@ export default function Settings() {
               <span>{t('ab_chlog_d')}</span>
             </a>
             <div className="abouttile">
-              <span className="t-ico"><IconHome size={16} /></span>
-              <b>{t('ab_home')}</b>
-              <span>{t('ab_home_d')}</span>
+              <span className="t-ico"><IconHeart size={16} /></span>
+              <b>{t('ab_kofi')}</b>
+              <span>{t('ab_kofi_d')}</span>
             </div>
             <div className="abouttile">
               <span className="t-ico"><IconShield size={16} /></span>
@@ -615,8 +712,6 @@ export default function Settings() {
             </div>
           )}
 
-          <UpdateCheck version={version?.version} />
-
           {/* Sistema (datos del servidor, integrados en Acerca de) */}
           <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <div className="kv"><span>{t('ab_rt')}</span><span className="mono">{version.go} {version.os_arch}</span></div>
@@ -629,97 +724,6 @@ export default function Settings() {
 
           <div className="aboutfoot mono">
             {version?.name ?? 'EasyZFS'} v{version?.version ?? '0.1.0'} · {version?.zfs_version ?? 'OpenZFS'} · AGPL-3.0
-          </div>
-        </div>
-      )}
-
-      {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
-      {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}</h2>}
-
-      {/* ---- Usuarios (solo admin; fila completa: contiene tabla) ---- */}
-      {isAdmin && (
-        <div className="card pad admin-card wide">
-          <h3 className="cardtitle">{t('s_users')}
-            <span className="actions" style={{ float: 'right' }}>
-              <button className="btn sm primary" onClick={() => openModal('newuser')}>+ {t('s_newuser')}</button>
-            </span>
-          </h3>
-          <div>
-            {(users ?? []).map((u) => (
-              <div className="rowitem" key={u.user}>
-                <div className="grow">
-                  <div className="t1" style={{ fontSize: 14 }}>
-                    {u.user}
-                    {u.user === user?.user && <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{t('you')}</span>}
-                    <span className={`rolebadge ${u.role}`}>{u.role === 'admin' ? t('mu_r_admin') : t('mu_r_user')}</span>
-                  </div>
-                  <div className="t2">
-                    {t('s_last_login')}: {timeAgo(u.last_login, t)} · {u.sessions}{' '}
-                    {u.sessions === 1 ? t('s_session_one') : t('s_sessions')}
-                  </div>
-                </div>
-                <Select value={u.language ?? 'auto'} ariaLabel={t('s_lang')}
-                  options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]}
-                  onChange={(v) => {
-                    const lang = v as 'auto' | 'es' | 'en';
-                    setUsers((cur) => cur?.map((x) => (x.user === u.user ? { ...x, language: lang } : x)) ?? cur);
-                    getProvider().setUserLanguage(u.user, lang).catch(() => {});
-                  }} />
-                <button className="btn sm" onClick={() => openModal('passwd', { user: u.user })}>{t('s_passwd')}</button>
-                {u.user !== user?.user && (
-                  <button className="btn sm danger" onClick={() => openModal('deluser', { user: u.user })}>{t('s_delete_user')}</button>
-                )}
-              </div>
-            ))}
-            {users && users.length === 0 && <div className="empty">{t('empty')}</div>}
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('s_roles_d')}</p>
-        </div>
-      )}
-
-      {/* ---- Copia de seguridad de la BD (solo admin) ---- */}
-      {isAdmin && <BackupCard settings={settings} onSave={saveSettings} />}
-
-      {/* ---- Umbrales (solo admin) ---- */}
-      {isAdmin && (
-        <div className="card pad admin-card">
-          <h3 className="cardtitle">{t('s_thresh')}</h3>
-          <p className="muted">{t('s_thresh_d')}</p>
-          <label htmlFor="th-warn">{t('s_cap_warn')}</label>
-          <input id="th-warn" type="number" value={settings.cap_warn_pct}
-            onChange={(e) => setSettings({ ...settings, cap_warn_pct: +e.target.value })} />
-          <label htmlFor="th-crit">{t('s_cap_crit')}</label>
-          <input id="th-crit" type="number" value={settings.cap_crit_pct}
-            onChange={(e) => setSettings({ ...settings, cap_crit_pct: +e.target.value })} />
-          <label htmlFor="th-temp">{t('s_temp')}</label>
-          <input id="th-temp" type="number" value={settings.disk_temp_c}
-            onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
-          {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
-          <div className="m-actions">
-            <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
-          </div>
-        </div>
-      )}
-
-      {/* ---- Notificaciones webhook (solo admin) ---- */}
-      {isAdmin && (
-        <div className="card pad admin-card">
-          <h3 className="cardtitle">{t('s_notif')}</h3>
-          <label htmlFor="nf-hook">{t('s_webhook')}</label>
-          <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}
-            onChange={(e) => setSettings({ ...settings, webhook: e.target.value })} />
-          <label className="checklabel" style={{ marginTop: 16 }}>
-            <input type="checkbox" checked={settings.notify_scrub_errors}
-              onChange={(e) => setSettings({ ...settings, notify_scrub_errors: e.target.checked })} />
-            {t('s_n_scrub')}
-          </label>
-          <label className="checklabel">
-            <input type="checkbox" checked={settings.notify_smart_change}
-              onChange={(e) => setSettings({ ...settings, notify_smart_change: e.target.checked })} />
-            {t('s_n_smart')}
-          </label>
-          <div className="m-actions">
-            <button className="btn primary" onClick={() => saveSettings({})}>{t('save')}</button>
           </div>
         </div>
       )}

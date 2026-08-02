@@ -28,6 +28,7 @@ export interface DataProvider {
   me(): Promise<SessionUser>;
   setMyPassword(current: string, next: string): Promise<void>;
   setMyLanguage(language: Lang): Promise<void>;
+  updateMyProfile(displayName: string, email: string): Promise<void>;
 
   // Usuarios (admin)
   getUsers(): Promise<UserInfo[]>;

@@ -8,12 +8,16 @@ export interface SessionUser {
   user: string;
   role: Role;
   language?: Lang; // ausente en respuestas viejas del server
+  display_name?: string; // nombre visible (saludos); vacío = username
+  email?: string;
 }
 
 export interface UserInfo {
   user: string;
   role: Role;
   language?: Lang;
+  display_name?: string;
+  email?: string;
   last_login: string;
   sessions: number;
 }
