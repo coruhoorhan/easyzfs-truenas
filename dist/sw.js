@@ -29,7 +29,8 @@ self.addEventListener("push", (event) => {
       // El texto ya llega FINAL e i18n desde el servidor (ES/EN).
       const titulo = datos.title || "EasyZFS";
       const opciones = {
-        body: datos.body || "Tienes una alerta nueva",
+        // Fallback bilingüe: ante payload corrupto no se conoce el idioma.
+        body: datos.body || "Tienes una alerta nueva · New alert",
         icon: ICON,
         badge: ICON,
         tag: datos.tag || "easyzfs", // coalescing: mismo tag reemplaza la anterior
@@ -47,6 +48,10 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "/";
+  // WindowClient.url es ABSOLUTA y la url del payload puede ser relativa
+  // ("/#/pools"): normalizar antes de comparar, si no la rama focus es
+  // código muerto.
+  const abs = new URL(url, self.location.origin).href;
 
   event.waitUntil(
     clients
@@ -54,7 +59,7 @@ self.addEventListener("notificationclick", (event) => {
       .then((lista) => {
         // Si ya hay una ventana con esa URL, enfocarla en vez de abrir otra.
         for (const cliente of lista) {
-          if (cliente.url === url && "focus" in cliente) return cliente.focus();
+          if (cliente.url === abs && "focus" in cliente) return cliente.focus();
         }
         return clients.openWindow(url);
       }),

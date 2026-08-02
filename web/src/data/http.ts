@@ -4,8 +4,8 @@ import { ApiError } from './types';
 import { notifyAuthExpired } from './events';
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushSubscriptionJSON, SessionUser, Settings,
-  SnapshotGroup, SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
+  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
+  SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 const BASE = '/api';
@@ -97,7 +97,7 @@ export class HttpProvider implements DataProvider {
   deleteJob = (id: number, confirm: string) => del<void>(`/jobs/${id}`, { confirm });
   runJob = (id: number) => post<void>(`/jobs/${id}/run`);
   getJobHistory = () => get<JobHistoryItem[]>('/jobs/history');
-  getSystemTimers = () => get<SystemTimer[]>('/system-timers');
+  getSystemTimers = () => get<SystemTimersResp>('/system-timers');
   setSystemTimerSchedule = (t: SystemTimer, schedule: string) =>
     post<void>('/system-timers/schedule', { source: t.source, name: t.name, origin: t.origin ?? '', line: t.line ?? 0, schedule });
   migrateSystemTimer = (t: SystemTimer, newName: string) =>
@@ -109,6 +109,17 @@ export class HttpProvider implements DataProvider {
 
   getPushVapidKey = () => get<{ publicKey: string }>('/push/vapid-public-key');
   pushSubscribe = (sub: PushSubscriptionJSON, lang: 'es' | 'en') =>
-    post<void>('/push/subscribe', { endpoint: sub.endpoint, keys: sub.keys, lang });
+    post<void>('/push/subscribe', {
+      endpoint: sub.endpoint, keys: sub.keys, lang,
+      origin: window.location.origin, // para notification.navigate absoluta
+    });
   pushUnsubscribe = (endpoint: string) => del<void>('/push/unsubscribe', { endpoint });
+
+  getPushPreferences = () =>
+    get<{ preferences: PushPreference[] }>('/push/preferences');
+  putPushPreference = (tipo: PushAlertTipo, enabled: boolean) =>
+    put<void>('/push/preferences', { tipo, enabled });
+  getPushQuietHours = () => get<PushQuietHours>('/push/quiet-hours');
+  putPushQuietHours = (q: { enabled: boolean; start: number; end: number }) =>
+    put<void>('/push/quiet-hours', q);
 }

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -24,8 +25,20 @@ const schedsysInterval = 5 * time.Minute
 
 // SchedSysCollector — caché de temporizadores del sistema.
 type SchedSysCollector struct {
-	mu     sync.RWMutex
-	timers []model.SysTimer
+	mu      sync.RWMutex
+	timers  []model.SysTimer
+	systemd bool // systemd disponible como init (systemctl + /run/systemd/system)
+}
+
+// SystemdAvailable — systemd operativo como sistema de init: systemctl en
+// PATH Y directorio de runtime /run/systemd/system (ausente en contenedores,
+// WSL o inits alternativos aunque systemctl exista).
+func SystemdAvailable() bool {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return false
+	}
+	st, err := os.Stat("/run/systemd/system")
+	return err == nil && st.IsDir()
 }
 
 // NewSchedSysCollector crea el colector de tareas del sistema.
@@ -58,6 +71,13 @@ func (c *SchedSysCollector) SysTimers() []model.SysTimer {
 	return out
 }
 
+// SystemdAvailable implementa SysTimerProvider: si el sistema tiene systemd.
+func (c *SchedSysCollector) SystemdAvailable() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.systemd
+}
+
 // Refresh — fuerza una pasada inmediata (tras editar/migrar una tarea).
 func (c *SchedSysCollector) Refresh(ctx context.Context) { c.collectOnce(ctx) }
 
@@ -79,6 +99,7 @@ func (c *SchedSysCollector) collectOnce(ctx context.Context) {
 	}
 	c.mu.Lock()
 	c.timers = out
+	c.systemd = SystemdAvailable()
 	c.mu.Unlock()
 }
 

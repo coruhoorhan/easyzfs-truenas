@@ -6,6 +6,7 @@ package collectors
 
 import (
 	"context"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -175,6 +176,13 @@ func (m *Mock) SysTimers() []model.SysTimer {
 			Origin:  "/etc/cron.d/backup", Line: 7, Editable: true,
 		},
 	}
+}
+
+// SystemdAvailable implementa SysTimerProvider: en demo se asume systemd
+// presente (la UI muestra la opción de cambio a systemd timer). Para pruebas,
+// EASYZFS_MOCK_SYSTEMD=0 simula un sistema sin systemd.
+func (m *Mock) SystemdAvailable() bool {
+	return os.Getenv("EASYZFS_MOCK_SYSTEMD") != "0"
 }
 
 // build — el escenario estático inicial.

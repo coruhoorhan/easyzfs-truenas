@@ -5,8 +5,8 @@ import { emitEvent } from './events';
 import { ApiError } from './types';
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, SessionUser, Settings, Snapshot,
-  SnapshotGroup, SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
+  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushAlertTipo, SessionUser, Settings, Snapshot,
+  SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 const GiB = 1024 ** 3;
@@ -411,7 +411,11 @@ export class MockProvider implements DataProvider {
     emitEvent({ type: 'job.finished', id, ok: true, detail: 'ejecutado manualmente' });
   };
   getJobHistory = async () => { await delay(); return this.history.map((h) => ({ ...h })); };
-  getSystemTimers = async () => { await delay(); return this.systemTimers.map((s) => ({ ...s })); };
+  getSystemTimers = async (): Promise<SystemTimersResp> => {
+    await delay();
+    // Demo: systemd disponible (la UI muestra la opción de cambio a timer).
+    return { timers: this.systemTimers.map((s) => ({ ...s })), systemd_available: true };
+  };
   setSystemTimerSchedule = async (task: SystemTimer, schedule: string) => {
     await delay(300);
     const t = this.systemTimers.find((x) => x.source === task.source && x.name === task.name && x.line === task.line);
@@ -449,4 +453,18 @@ export class MockProvider implements DataProvider {
   getPushVapidKey = async () => { await delay(); return { publicKey: '' }; };
   pushSubscribe = async () => { await delay(); };
   pushUnsubscribe = async () => { await delay(); };
+  // La sección de preferencias no se muestra en demo; stubs por el contrato.
+  getPushPreferences = async () => {
+    await delay();
+    return {
+      preferences: (['pool_capacity', 'pool_status', 'scrub_errors', 'disk_temp', 'smart_status'] as PushAlertTipo[])
+        .map((tipo) => ({ tipo, enabled: true })),
+    };
+  };
+  putPushPreference = async () => { await delay(); };
+  getPushQuietHours = async () => {
+    await delay();
+    return { enabled: false, start: null, end: null, tz: 'Europe/Madrid' };
+  };
+  putPushQuietHours = async () => { await delay(); };
 }

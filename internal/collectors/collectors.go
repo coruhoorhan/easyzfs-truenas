@@ -33,6 +33,7 @@ type DiskProvider interface {
 // SysTimerProvider — caché de tareas del sistema (cron + systemd timers).
 type SysTimerProvider interface {
 	SysTimers() []model.SysTimer
+	SystemdAvailable() bool // systemd operativo como init (botón "Cambiar" en UI)
 }
 
 // Providers agrupa las cachés que consume httpapi.

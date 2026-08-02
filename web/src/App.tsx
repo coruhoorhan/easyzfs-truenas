@@ -202,8 +202,8 @@ function Shell() {
         </main>
       </div>
 
-      <nav className="bottomnav" aria-label="principal">
-        {navItems.slice(0, 5).map((n) => {
+      <nav className="bottomnav" aria-label={t('a11y_mainnav')}>
+        {navItems.map((n) => {
           const Ico = n.icon;
           return (
             <button key={n.id} className={n.id === active ? 'active' : ''} onClick={() => navigate(n.id)}>

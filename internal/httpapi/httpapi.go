@@ -141,6 +141,11 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("GET /api/push/vapid-public-key", s.getPushVapidKey)
 	a.HandleFunc("POST /api/push/subscribe", s.postPushSubscribe)
 	a.HandleFunc("DELETE /api/push/unsubscribe", s.deletePushUnsubscribe)
+	// preferencias de notificación (cada usuario gestiona las suyas)
+	a.HandleFunc("GET /api/push/preferences", s.getPushPreferences)
+	a.HandleFunc("PUT /api/push/preferences", s.putPushPreferences)
+	a.HandleFunc("GET /api/push/quiet-hours", s.getPushQuietHours)
+	a.HandleFunc("PUT /api/push/quiet-hours", s.putPushQuietHours)
 	// SSE (con el usuario de la sesión para la regla no-duplicar push/SSE)
 	a.Handle("GET /api/events", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.h.ServeSSE(w, r, actor(r))

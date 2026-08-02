@@ -25,6 +25,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
   const [err, setErr] = useState('');
   const [disks, setDisks] = useState<Disk[]>([]);
   const pct = pool.total_bytes > 0 ? (pool.used_bytes / pool.total_bytes) * 100 : 0;
+  const cap = fmtBytesPair(pool.used_bytes, pool.total_bytes);
   const running = pool.scrub.state === 'running';
   const resilvering = running && pool.scrub.kind === 'resilver';
   const ok = pool.status === 'ONLINE';
@@ -67,9 +68,9 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontWeight: 700, fontSize: 17 }}>
-            {fmtBytesPair(pool.used_bytes, pool.total_bytes).split(' de ')[0]}
-            <span style={{ fontSize: 12.5, color: 'var(--text2)', fontWeight: 500 }}>
-              {' '}{t('pool_of')} {fmtBytesPair(pool.used_bytes, pool.total_bytes).split(' de ')[1]}
+            {cap.used}
+            <span className="muted" style={{ fontWeight: 500 }}>
+              {' '}{t('pool_of')} {cap.total}
             </span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text2)' }}>{fmtPct(pct)} {t('pool_used')}</div>
@@ -174,7 +175,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
             {running ? t('pool_scrub_pause') : t('pool_scrub_now')}
           </button>
         )}
-        {running && !resilvering && <button className="btn sm" onClick={() => scrub('stop')}>Stop</button>}
+        {running && !resilvering && <button className="btn sm" onClick={() => scrub('stop')}>{t('pool_scrub_stop')}</button>}
         <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('pool_add_vdev_hint')}
           onClick={() => openModal('addvdev', { pool: pool.name })}>{t('pool_add_vdev')}</button>
         <button className="btn sm danger" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : t('pool_export_hint')}

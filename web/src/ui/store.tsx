@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import type { SessionUser } from '../data/types';
 import { getProvider, initProvider, enterDemoSession, exitDemoSession } from '../data';
+import { syncPushSubscription } from '../data/push';
 import { AUTH_EXPIRED_EVENT, connectSSE, disconnectSSE } from '../data/events';
 import { ApiError } from '../data/types';
 import { initLang, onLangChange, setLangMode, t as translate, getLangMode } from './i18n';
@@ -71,6 +72,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDemo(d);
       try {
         setUser(await getProvider().me());
+        // Re-sincronización silenciosa de la suscripción push (idioma/origin
+        // actuales; upsert por endpoint). Nunca en demo (sin push real).
+        if (!d) void syncPushSubscription();
       } catch {
         setUser(null); // sin sesión → pantalla de login
       }
@@ -97,6 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const s = await getProvider().login(u, p);
     setUser(s);
     connectSSE(); // reabre el stream con la sesión recién creada
+    void syncPushSubscription(); // re-sincroniza la suscripción push (silencioso)
   }, []);
 
   const logout = useCallback(async () => {

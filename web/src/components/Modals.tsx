@@ -7,6 +7,8 @@ import { fmtBytes, parseSize } from '../ui/format';
 import { statusLabel } from '../ui/labels';
 import { ModalBox, useModal } from './Modal';
 import { Seg } from './ui';
+import { SYS_SCHED_DEFAULT, buildSysSchedule, parseSysSchedule } from '../ui/syssched';
+import type { SysSchedState } from '../ui/syssched';
 import type { Dataset, Disk, Job, Pool, SystemTimer, Topo } from '../data/types';
 
 // ---------- utilidades comunes ----------
@@ -92,7 +94,7 @@ function SnapshotModal({ preset, onClose }: { preset?: string; onClose: () => vo
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('nsn_title')}>
       <form onSubmit={submit}>
         <h3>{t('nsn_title')}</h3>
         <p className="desc">{t('nsn_desc')}</p>
@@ -158,7 +160,7 @@ function NewPoolModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('np_title')}>
       <h3>{t('np_title')}</h3>
       <p className="desc">{t('np_desc')}</p>
       <div className="chips" style={{ marginTop: 12 }}>
@@ -192,7 +194,7 @@ function NewPoolModal({ onClose }: { onClose: () => void }) {
             onClick={() => toggle(d.dev)}
             onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(d.dev); } }}>
             <span className="mono">{d.dev}</span>
-            <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text2)' }}>{d.model} · {fmtBytes(d.size_bytes)}</span>
+            <span className="muted" style={{ flex: 1 }}>{d.model} · {fmtBytes(d.size_bytes)}</span>
             <span className="badge info">{t('np_free')}</span>
           </div>
         ))}
@@ -200,7 +202,7 @@ function NewPoolModal({ onClose }: { onClose: () => void }) {
           ⚠️ {t('np_warn')} {usable > 0 && <>{t('np_usable')}: <b>~{fmtBytes(usable)}</b>.</>}
         </p>
         {sel.size < minDisks && <p className="form-err">{t('np_need_disks', { n: minDisks })}</p>}
-        <label htmlFor="np-confirm">{t('ex_confirm_lbl')}</label>
+        <label htmlFor="np-confirm">{t('ex_confirm_lbl_pool')}</label>
         <input id="np-confirm" placeholder={name.trim()} value={confirm}
           onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
         {err && <p className="form-err" role="alert">{err}</p>}
@@ -242,7 +244,7 @@ function NewDatasetModal({ vol, onClose }: { vol: boolean; onClose: () => void }
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={vol ? t('nds_title_vol') : t('nds_title_fs')}>
       <form onSubmit={submit}>
         <h3>{vol ? t('nds_title_vol') : t('nds_title_fs')}</h3>
         <p className="desc">{t('nds_desc')}</p>
@@ -293,7 +295,7 @@ function EditDatasetModal({ ds, onClose }: { ds: Dataset; onClose: () => void })
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('eds_title')}>
       <form onSubmit={submit}>
         <h3>{t('eds_title')}</h3>
         <p className="desc mono">{ds.name}</p>
@@ -335,16 +337,16 @@ function DeleteDatasetModal({ name, onClose }: { name: string; onClose: () => vo
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('dds_title')}>
       <form onSubmit={submit}>
         <h3>{t('dds_title')}</h3>
         <p className="desc">{t('dds_desc')}</p>
         <p className="desc mono" style={{ marginTop: 8 }}>{name}</p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginTop: 16 }}>
-          <input type="checkbox" style={{ width: 'auto' }} checked={recursive} onChange={(e) => setRecursive(e.target.checked)} />
+        <label className="checklabel" style={{ marginTop: 16 }}>
+          <input type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} />
           {t('dds_recursive')}
         </label>
-        <label htmlFor="dd-confirm">{t('ex_confirm_lbl').replace('pool', 'dataset')}</label>
+        <label htmlFor="dd-confirm">{t('ex_confirm_lbl_dataset')}</label>
         <input id="dd-confirm" placeholder={name} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
@@ -375,19 +377,19 @@ function ExportPoolModal({ pool, onClose }: { pool: string; onClose: () => void 
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('ex_title')}>
       <form onSubmit={submit}>
         <h3>{t('ex_title')}</h3>
         <p className="desc">{t('ex_desc')} <b className="mono">{pool}</b></p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginTop: 16 }}>
-          <input type="checkbox" style={{ width: 'auto' }} checked={force} onChange={(e) => setForce(e.target.checked)} />
+        <label className="checklabel" style={{ marginTop: 16 }}>
+          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
           {t('ex_force')}
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--err)' }}>
-          <input type="checkbox" style={{ width: 'auto' }} checked={destroy} onChange={(e) => setDestroy(e.target.checked)} />
+        <label className="checklabel" style={{ color: 'var(--err)' }}>
+          <input type="checkbox" checked={destroy} onChange={(e) => setDestroy(e.target.checked)} />
           {t('ex_destroy')}
         </label>
-        <label htmlFor="ex-confirm">{t('ex_confirm_lbl')}</label>
+        <label htmlFor="ex-confirm">{t('ex_confirm_lbl_pool')}</label>
         <input id="ex-confirm" placeholder={pool} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
@@ -465,7 +467,7 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={mode === 'vdev' ? t('av_title') : t('rp_title')}>
       <form onSubmit={submit}>
         <h3>{mode === 'vdev' ? t('av_title') : t('rp_title')}</h3>
         <p className="desc">
@@ -487,7 +489,7 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
               onClick={() => toggle(d.dev)}
               onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(d.dev); } }}>
               <span className="mono">{d.dev}</span>
-              <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text2)' }}>{d.model} · {fmtBytes(d.size_bytes)}</span>
+              <span className="muted" style={{ flex: 1 }}>{d.model} · {fmtBytes(d.size_bytes)}</span>
               <span className="badge info">{t('np_free')}</span>
             </div>
           ))}
@@ -526,8 +528,8 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
                 </select>
               )}
               {hidden > 0 && (
-                <label style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6, fontSize: 12.5, color: 'var(--text2)', cursor: 'pointer' }}>
-                  <input type="checkbox" style={{ width: 'auto' }} checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+                <label className="checklabel" style={{ gap: 7, marginTop: 6, fontSize: 12.5, color: 'var(--text2)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
                   {t('rp_show_all', { n: hidden })}
                 </label>
               )}
@@ -535,7 +537,7 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
           })()}
         </>)}
 
-        <label htmlFor="pd-confirm">{t('ex_confirm_lbl')}</label>
+        <label htmlFor="pd-confirm">{t('ex_confirm_lbl_pool')}</label>
         <input id="pd-confirm" placeholder={pool} value={confirm}
           onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
         {err && <p className="form-err" role="alert">{err}</p>}
@@ -550,47 +552,71 @@ function PoolDiskModal({ pool, mode, presetOld, presetNew, onClose }: { pool: st
 }
 
 // ---------- editar periodicidad de una tarea del sistema ----------
+// Modo fácil por defecto: preset (cada hora/diario/semanal/mensual) que se
+// convierte EN CLIENTE a la sintaxis del origen (cron u OnCalendar). El modo
+// avanzado muestra el input en crudo. Si la schedule actual no encaja en un
+// preset simple, se abre directamente en avanzado.
 function SysSchedModal({ task, onClose }: { task: SystemTimer; onClose: () => void }) {
   const { t, refresh, isAdmin } = useApp();
-  const [sched, setSched] = useState(task.schedule ?? '');
+  const isCron = task.source === 'cron';
+  const [initial] = useState(() => parseSysSchedule(task.schedule ?? '', task.source));
+  const [advanced, setAdvanced] = useState(initial === null);
+  const [preset, setPreset] = useState<SysSchedState>(() => initial ?? SYS_SCHED_DEFAULT);
+  const [raw, setRaw] = useState(task.schedule ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const isCron = task.source === 'cron';
+
+  const generated = buildSysSchedule(preset, task.source);
+  const sched = advanced ? raw.trim() : generated;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr('');
     try {
-      await getProvider().setSystemTimerSchedule(task, sched.trim());
+      await getProvider().setSystemTimerSchedule(task, sched);
       refresh(); onClose();
     } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('ss_title')}>
       <form onSubmit={submit}>
         <h3>{t('ss_title')}</h3>
         <p className="desc">
           <b className="mono">{task.name}</b> · <span className={`badge ${isCron ? 'warn' : 'info'}`} style={{ padding: '1px 7px' }}>{task.source}</span>
         </p>
         <p className="desc mono" style={{ fontSize: 12 }}>{task.command}</p>
-        <label htmlFor="ss-sched">{t('ss_lbl')}</label>
-        <input id="ss-sched" value={sched} onChange={(e) => setSched(e.target.value)}
-          placeholder={isCron ? '0 3 * * *' : 'daily'} autoComplete="off" className="mono" />
-        <p className="desc" style={{ marginTop: 6, fontSize: 12, color: 'var(--text2)' }}>
-          {isCron ? t('ss_hint_cron') : t('ss_hint_sysd')}
-        </p>
+        <label>{t('ss_mode')}</label>
+        <Seg value={advanced ? 'adv' : 'easy'} onChange={(v) => setAdvanced(v === 'adv')} ariaLabel={t('ss_mode')}
+          options={[
+            { v: 'easy', label: t('ss_mode_easy') },
+            { v: 'adv', label: t('ss_mode_adv') },
+          ]} />
+        {!advanced && (<>
+          <ScheduleFields s={preset} set={setPreset} showRetention={false}
+            retention="" setRetention={() => { /* sin retención en tareas del sistema */ }} t={t as never} />
+          <label htmlFor="ss-result">{t('ss_result')}</label>
+          <input id="ss-result" readOnly value={generated} className="mono" />
+        </>)}
+        {advanced && (<>
+          <label htmlFor="ss-sched">{t('ss_lbl')}</label>
+          <input id="ss-sched" value={raw} onChange={(e) => setRaw(e.target.value)}
+            placeholder={isCron ? '0 3 * * *' : 'daily'} autoComplete="off" className="mono" />
+          <p className="desc" style={{ marginTop: 6, fontSize: 12, color: 'var(--text2)' }}>
+            {isCron ? t('ss_hint_cron') : t('ss_hint_sysd')}
+          </p>
+        </>)}
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
-          <SubmitBtn label={t('save')} busy={busy} disabled={!isAdmin || !sched.trim()} />
+          <SubmitBtn label={t('save')} busy={busy} disabled={!isAdmin || !sched} />
         </div>
       </form>
     </ModalBox>
   );
 }
 
-// ---------- migrar cron → systemd timer ----------
+// ---------- cambiar cron → systemd timer ----------
 function SysMigrateModal({ task, onClose }: { task: SystemTimer; onClose: () => void }) {
   const { t, refresh, isAdmin } = useApp();
   const [name, setName] = useState('');
@@ -607,7 +633,7 @@ function SysMigrateModal({ task, onClose }: { task: SystemTimer; onClose: () => 
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('sm_title')}>
       <form onSubmit={submit}>
         <h3>{t('sm_title')}</h3>
         <p className="desc">{t('sm_desc')}</p>
@@ -617,7 +643,7 @@ function SysMigrateModal({ task, onClose }: { task: SystemTimer; onClose: () => 
         <p className="desc" style={{ fontSize: 12, color: 'var(--text2)' }}>{t('sm_note')}</p>
         <label htmlFor="sm-name">{t('sm_name_lbl')}</label>
         <input id="sm-name" value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="scrub-semanal" autoComplete="off" className="mono" pattern="[a-z0-9][a-z0-9\-]*" />
+          placeholder={t('sm_name_ph')} autoComplete="off" className="mono" pattern="[a-z0-9][a-z0-9\-]*" />
         <p className="desc" style={{ marginTop: 6, fontSize: 12, color: 'var(--text2)' }}>
           easyzfs-<b>{name || '…'}</b>.timer
         </p>
@@ -649,11 +675,11 @@ function DetachModal({ pool, dev, path, onClose }: { pool: string; dev: string; 
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('dt_title')}>
       <form onSubmit={submit}>
         <h3>{t('dt_title')}</h3>
         <p className="desc">{t('dt_desc', { dev: label, pool })}</p>
-        <label htmlFor="dt-confirm">{t('ex_confirm_lbl')}</label>
+        <label htmlFor="dt-confirm">{t('ex_confirm_lbl_pool')}</label>
         <input id="dt-confirm" placeholder={pool} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
@@ -684,7 +710,7 @@ function RollbackModal({ full, onClose }: { full: string; onClose: () => void })
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('rb_title')}>
       <form onSubmit={submit}>
         <h3>{t('rb_title')}</h3>
         <p className="desc">{t('rb_desc1')} <b className="mono">{ds}</b> {t('rb_desc2')} <b className="mono">{snap}</b>.</p>
@@ -719,7 +745,7 @@ function DeleteSnapModal({ full, onClose }: { full: string; onClose: () => void 
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('dsn_title')}>
       <form onSubmit={submit}>
         <h3>{t('dsn_title')}</h3>
         <p className="desc">{t('dsn_desc')}</p>
@@ -828,7 +854,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
   const { t, refresh } = useApp();
   const datasets = useLoad(() => getProvider().getDatasets());
   const pools = useLoad(() => getProvider().getPools());
-  const [tipo, setTipo] = useState<'snapshot' | 'scrub' | 'smart'>('snapshot');
+  const [tipo, setTipo] = useState<'snapshot' | 'scrub' | 'trim' | 'smart'>('snapshot');
   const [target, setTarget] = useState('');
   const [sched, setSched] = useState<SchedState>({ freq: 'daily', minute: '15', time: '06:00', weekday: 'sun', monthday: 1 });
   const [retention, setRetention] = useState('1m');
@@ -839,7 +865,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     // Ajusta el objetivo por defecto según el tipo de tarea
     if (tipo === 'smart') setTarget('all');
-    else if (tipo === 'scrub' && pools?.length) setTarget(pools[0].name);
+    else if ((tipo === 'scrub' || tipo === 'trim') && pools?.length) setTarget(pools[0].name);
     else if (tipo === 'snapshot' && datasets?.length) setTarget(datasets[0].name);
   }, [tipo, pools, datasets]);
 
@@ -857,7 +883,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('nt_title')}>
       <form onSubmit={submit}>
         <h3>{t('nt_title')}</h3>
         <p className="desc">{t('nt_desc')}</p>
@@ -866,12 +892,16 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
           options={[
             { v: 'snapshot', label: t('tk_type_snapshot') },
             { v: 'scrub', label: t('tk_type_scrub') },
+            { v: 'trim', label: t('tk_type_trim') },
             { v: 'smart', label: t('tk_type_smart') },
           ]} />
+        {tipo === 'trim' && (
+          <p className="desc" style={{ marginTop: 8, fontSize: 12, color: 'var(--text2)' }}>{t('nt_trim_desc')}</p>
+        )}
         <label htmlFor="nt-target">{t('nt_target')}</label>
         <select id="nt-target" value={target} onChange={(e) => setTarget(e.target.value)}>
           {tipo === 'smart' && <option value="all">{t('nt_all_disks')}</option>}
-          {tipo === 'scrub' && (pools ?? []).map((p) => <option key={p.name} value={p.name}>{p.name} {t('nt_pool_full')}</option>)}
+          {(tipo === 'scrub' || tipo === 'trim') && (pools ?? []).map((p) => <option key={p.name} value={p.name}>{p.name} {t('nt_pool_full')}</option>)}
           {tipo === 'snapshot' && (<>
             {(datasets ?? []).map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
             {(pools ?? []).map((p) => <option key={p.name} value={p.name}>{p.name} {t('nt_pool_full')}</option>)}
@@ -917,14 +947,14 @@ function EditScheduleModal({ job, onClose }: { job: Job; onClose: () => void }) 
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('et_title')}>
       <form onSubmit={submit}>
         <h3>{t('et_title')}</h3>
         <p className="desc">{t('et_job')}: <b className="mono">{job.tipo} · {job.target}</b></p>
         <ScheduleFields s={sched} set={setSched} showRetention={job.tipo === 'snapshot'}
           retention={retention} setRetention={setRetention} t={t as never} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginTop: 16 }}>
-          <input type="checkbox" defaultChecked style={{ width: 'auto' }} /> {t('et_notify')}
+        <label className="checklabel" style={{ marginTop: 16 }}>
+          <input type="checkbox" defaultChecked /> {t('et_notify')}
         </label>
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
@@ -956,7 +986,7 @@ function NewUserModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('mu_title')}>
       <form onSubmit={submit}>
         <h3>{t('mu_title')}</h3>
         <p className="desc">{t('mu_d')}</p>
@@ -999,7 +1029,7 @@ function MyPasswdModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('s_mypass')}>
       <form onSubmit={submit}>
         <h3>{t('s_mypass')}</h3>
         <label htmlFor="myp-cur">{t('s_mypass_cur')}</label>
@@ -1040,7 +1070,7 @@ function PasswdModal({ user, onClose }: { user: string; onClose: () => void }) {
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('mp_title')}>
       <form onSubmit={submit}>
         <h3>{t('mp_title')}</h3>
         <p className="desc">{t('mp_user')}: <b className="mono">{user}</b></p>
@@ -1049,8 +1079,8 @@ function PasswdModal({ user, onClose }: { user: string; onClose: () => void }) {
           onChange={(e) => setP1(e.target.value)} minLength={8} required />
         <label htmlFor="mp-p2">{t('mp_new2')}</label>
         <input id="mp-p2" type="password" value={p2} onChange={(e) => setP2(e.target.value)} minLength={8} required />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginTop: 16 }}>
-          <input type="checkbox" style={{ width: 'auto' }} checked={closeSess} onChange={(e) => setCloseSess(e.target.checked)} />
+        <label className="checklabel" style={{ marginTop: 16 }}>
+          <input type="checkbox" checked={closeSess} onChange={(e) => setCloseSess(e.target.checked)} />
           {t('mp_close')}
         </label>
         {err && <p className="form-err" role="alert">{err}</p>}
@@ -1079,7 +1109,7 @@ function DeleteUserModal({ user, onClose }: { user: string; onClose: () => void 
   };
 
   return (
-    <ModalBox onClose={onClose}>
+    <ModalBox onClose={onClose} label={t('du_title')}>
       <form onSubmit={submit}>
         <h3>{t('du_title')}</h3>
         <p className="desc">{t('du_desc')}</p>

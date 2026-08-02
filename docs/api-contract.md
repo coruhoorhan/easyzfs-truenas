@@ -28,8 +28,8 @@ Números: bytes en enteros (el front formatea a TiB/GiB con coma es-ES). Fechas:
 - `POST /api/alerts/{id}/ack` → 204.
 
 ## Tareas del sistema (cron + systemd timers, solo lectura)
-- `GET /api/system-timers` → `[{source:"systemd"|"cron", name, schedule, next_run, last_run, command, origin}]`
-  - Lo que YA existe en el sistema (colector `schedsys`, refresco 5 min; sin systemd/cron devuelve `[]`, nunca error).
+- `GET /api/system-timers` → `{timers:[{source:"systemd"|"cron", name, schedule, next_run, last_run, command, origin}], systemd_available:bool}`
+  - Lo que YA existe en el sistema (colector `schedsys`, refresco 5 min; sin systemd/cron devuelve `[]`, nunca error). `systemd_available` = systemctl en PATH + `/run/systemd/system` (la UI oculta el cambio cron→systemd si es false; `POST /api/system-timers/migrate` responde 400 `systemd_unavailable`).
   - systemd: `name` = unidad `.timer`, `command` = unidad activada, `next_run`/`last_run` tal como los devuelve `systemctl list-timers`, `schedule` = `""` (list-timers no expone OnCalendar), `origin` = `"systemctl list-timers"`.
   - cron: `schedule` = expresión cron (`"30 3 * * *"`) o `"@daily"`/`"@hourly"`/… (entradas de `/etc/cron.{hourly,daily,…}`), `command` = comando, `next_run`/`last_run` = `""`, `origin` = `"crontab"`, `"crontab (root)"`, `"/etc/crontab"`, `"/etc/cron.d/<fichero>"`, `"/etc/cron.daily"`…
 
@@ -58,7 +58,7 @@ Números: bytes en enteros (el front formatea a TiB/GiB con coma es-ES). Fechas:
 - `POST /api/snapshots/{full}/rollback` `{confirm}` → 202
 
 ## Jobs (tareas programadas)
-- `GET /api/jobs` → `[{id, tipo:"snapshot"|"scrub"|"smart_short"|"smart_long", target, schedule, retention, enabled, last_run, last_result, next_run}]`
+- `GET /api/jobs` → `[{id, tipo:"snapshot"|"scrub"|"trim"|"smart_short"|"smart_long", target, schedule, retention, enabled, last_run, last_result, next_run}]`
   - `schedule` formato propio: `hourly@:15`, `daily@06:00`, `weekly:sun@03:00`, `monthly:1@02:00`
 - `POST /api/jobs` `{tipo, target, schedule, retention?}` → 201
 - `PATCH /api/jobs/{id}` `{enabled?, schedule?, retention?}` → 204
@@ -72,6 +72,20 @@ Números: bytes en enteros (el front formatea a TiB/GiB con coma es-ES). Fechas:
   - `temp_c: null` = sin lectura (eMMC, USB sin SAT, smartctl no disponible); `null` no es lo mismo que `0`. El front muestra "—".
   - `smart:"unknown"` + `smart_detail:"no disponible"` cuando el disco no habla smartctl: no es un error.
 - `POST /api/disks/{dev}/smart-test` `{type:"short"|"long"}` → 202
+
+## Notificaciones push (Web Push)
+Los endpoints de suscripción devuelven 503 `push_not_configured` si el servidor no tiene claves VAPID. El texto de las notificaciones se compone server-side (ES/EN) según el `lang` guardado en la suscripción.
+- `GET /api/push/vapid-public-key` → `{publicKey}` para `pushManager.subscribe()`.
+- `POST /api/push/subscribe` `{endpoint, keys:{p256dh, auth}, lang?, origin?}` → 204. Upsert por `endpoint` (re-suscripciones y rotaciones actualizan la fila y reasignan `user_id`).
+  - `lang` — `"es"|"en"`; ausente/desconocido no pisa el guardado.
+  - `origin` — `window.location.origin` del navegador (p. ej. `https://zfs.example.com`). El servidor compone con él `url` y `notification.navigate` ABSOLUTAS en el payload (Declarative Web Push las exige); vacío = fallback a relativa. El upsert lo actualiza.
+  - 400 `invalid_endpoint` (no https://), 400 `invalid_keys` (p256dh debe ser base64url de 65 bytes y auth base64url de 16 bytes), 400 `invalid_origin` (no http(s)://).
+- `DELETE /api/push/unsubscribe` `{endpoint}` → 204. Solo borra suscripciones del propio usuario.
+- `GET /api/push/preferences` → `{preferences:[{tipo, enabled}]}`. Los 5 tipos del catálogo (`pool_capacity`, `pool_status`, `scrub_errors`, `disk_temp`, `smart_status`), siempre presentes; `enabled` por defecto `true` si no hay fila guardada.
+- `PUT /api/push/preferences` `{tipo, enabled}` → 204. Upsert por `(usuario, tipo)`. 400 `invalid_tipo` si el tipo es desconocido.
+- `GET /api/push/quiet-hours` → `{enabled, start, end, tz}`. `start`/`end` son `null` cuando `enabled:false`. `tz` fija de momento: `Europe/Madrid`.
+- `PUT /api/push/quiet-hours` `{enabled, start, end}` → 204. `start`/`end`: hora local 0-23; la ventana puede cruzar medianoche (22 → 8). 400 `invalid_hours` si fuera de 0-23 o `start == end`.
+  - Efecto en el envío: las críticas atraviesan el horario silencioso SIEMPRE; warn/info dentro de la ventana se encolan (`notification_queue`) y se entregan al terminar (ticker de 60 s).
 
 ## SSE (tiempo real)
 - `GET /api/events` — stream `text/event-stream`, heartbeat `:ping` cada 25 s, cabecera `X-Accel-Buffering: no`.

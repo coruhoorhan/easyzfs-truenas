@@ -46,7 +46,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if !scheduler.ValidTipos[body.Tipo] {
 		writeErr(w, http.StatusBadRequest, "invalid_input",
-			"tipo inválido (snapshot|scrub|smart_short|smart_long)")
+			"tipo inválido (snapshot|scrub|trim|smart_short|smart_long)")
 		return
 	}
 	if body.Target == "" {

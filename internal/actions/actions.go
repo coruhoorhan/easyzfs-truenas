@@ -173,6 +173,19 @@ func (s *Service) Scrub(ctx context.Context, actor, pool, action string) error {
 	return nil
 }
 
+// Trim — 'zpool trim <pool>': libera los bloques no usados hacia el SSD.
+// No es destructivo ni verifica datos (no confundir con scrub); confirm=false.
+func (s *Service) Trim(ctx context.Context, actor, pool string) error {
+	if !rePool.MatchString(pool) {
+		return ErrInvalidName
+	}
+	s.audit(ctx, actor, "pool.trim", pool, nil, false)
+	if _, err := executil.Run(ctx, 15*time.Second, "zpool", "trim", pool); err != nil {
+		return fmt.Errorf("trim: %w", err)
+	}
+	return nil
+}
+
 // VdevAdd — 'zpool add <pool> [topo] <disks...>'.
 // confirmed debe ser true solo si el handler validó {"confirm":pool}.
 func (s *Service) VdevAdd(ctx context.Context, actor, pool, topo string, disks []string, confirmed bool) error {

@@ -123,10 +123,15 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// listSystemTimers — GET /api/system-timers → tareas del sistema (cron +
-// systemd timers, solo lectura, desde la caché del colector schedsys).
+// listSystemTimers — GET /api/system-timers → {timers, systemd_available}:
+// tareas del sistema (cron + systemd timers, solo lectura, desde la caché del
+// colector schedsys) y si systemd está disponible como init (la UI oculta la
+// opción de cambio cron→systemd cuando no lo está).
 func (s *Server) listSystemTimers(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.sysTimers.SysTimers())
+	writeJSON(w, http.StatusOK, map[string]any{
+		"timers":            s.sysTimers.SysTimers(),
+		"systemd_available": s.sysTimers.SystemdAvailable(),
+	})
 }
 
 // findSysTimer — busca la tarea en la caché del colector por identidad
@@ -182,6 +187,13 @@ func (s *Server) sysTimerMigrate(w http.ResponseWriter, r *http.Request) {
 	task, ok := s.findSysTimer(body.sysTimerID)
 	if !ok || !task.Editable || task.Source != "cron" {
 		writeErr(w, http.StatusNotFound, "not_found", "tarea no encontrada o no migrable")
+		return
+	}
+	// Defensa en backend (la UI oculta el botón, pero el endpoint es público):
+	// sin systemd no se puede crear un timer.
+	if !s.sysTimers.SystemdAvailable() {
+		writeErr(w, http.StatusBadRequest, "systemd_unavailable",
+			"systemd no está disponible en este sistema; no se puede cambiar a systemd timer")
 		return
 	}
 	if err := s.act.SysTaskMigrate(r.Context(), actor(r), task, body.NewName); err != nil {

@@ -45,7 +45,7 @@ export default function Login() {
             <Logo size={40} />
             <div>
               <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-.02em' }}>EasyZFS</div>
-              <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('login_sub')}</div>
+              <div className="muted">{t('login_sub')}</div>
             </div>
           </div>
           <form method="post" onSubmit={submit}>
@@ -57,8 +57,8 @@ export default function Login() {
             <input id="lg-pass" name="password" type="password"
               autoComplete={remember ? 'current-password' : 'off'} value={pass}
               onChange={(e) => setPass(e.target.value)} required />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginTop: 14 }}>
-              <input type="checkbox" style={{ width: 'auto' }} checked={remember}
+            <label className="checklabel" style={{ marginTop: 14 }}>
+              <input type="checkbox" checked={remember}
                 onChange={(e) => setRemember(e.target.checked)} />
               {t('login_remember')}
             </label>

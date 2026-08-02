@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtDuration, timeAgo } from '../ui/format';
-import { Seg, Select, Spinner, Badge } from '../components/ui';
+import { Seg, Select, Spinner, Switch, Badge } from '../components/ui';
 import { Logo, IconCode, IconList, IconHome, IconShield, IconDownload } from '../components/icons';
 import { useModal } from '../components/Modal';
 import { usePush } from '../data/push';
@@ -12,7 +12,8 @@ import {
   ACCENTS, getAccent, setAccent, getDensity, setDensity,
 } from '../ui/theme';
 import type { AccentId, Density, ThemeMode } from '../ui/theme';
-import type { Settings as SettingsData } from '../data/types';
+import type { I18nKey } from '../ui/i18n';
+import type { PushAlertTipo, PushPreference, Settings as SettingsData } from '../data/types';
 
 // Evento beforeinstallprompt (PWA), no tipado en lib.dom
 interface BeforeInstallPromptEvent extends Event {
@@ -29,22 +30,112 @@ function isStandalone(): boolean {
     || (navigator as { standalone?: boolean }).standalone === true;
 }
 
-// Mini-preview visual de un tema (barras simuladas, sin animación)
+// Mini-preview visual de un tema (barras simuladas, sin animación).
+// Los colores viven en CSS (.tpreview-l/.tpreview-d, variables --tpv-*): cero hex aquí.
 function ThemePreview({ mode }: { mode: ThemeMode }) {
-  const mini = (key: string, bg: string, bar: string) => (
-    <div key={key} style={{
-      flex: 1, background: bg, borderRadius: 6, padding: 5,
-      display: 'flex', flexDirection: 'column', gap: 4,
-    }}>
-      <div style={{ height: 5, borderRadius: 3, background: bar, width: '72%' }} />
-      <div style={{ height: 5, borderRadius: 3, background: bar, width: '52%' }} />
-      <div style={{ height: 5, borderRadius: 3, background: 'var(--accent)', width: '36%' }} />
+  const mini = (key: string, cls: string) => (
+    <div key={key} className={`tpv ${cls}`}>
+      <div className="tpv-bar" style={{ width: '72%' }} />
+      <div className="tpv-bar" style={{ width: '52%' }} />
+      <div className="tpv-bar" style={{ background: 'var(--accent)', width: '36%' }} />
     </div>
   );
   return (
     <div className="tpreview" aria-hidden="true">
-      {mode !== 'dark' && mini('l', '#f6f6f3', '#dcdcd4')}
-      {mode !== 'light' && mini('d', '#0e1210', '#2a332d')}
+      {mode !== 'dark' && mini('l', 'tpreview-l')}
+      {mode !== 'light' && mini('d', 'tpreview-d')}
+    </div>
+  );
+}
+
+// Etiqueta traducida de cada tipo de alerta (exhaustivo sobre PushAlertTipo).
+const TIPO_LABEL: Record<PushAlertTipo, I18nKey> = {
+  pool_capacity: 's_pt_pool_capacity',
+  pool_status: 's_pt_pool_status',
+  scrub_errors: 's_pt_scrub_errors',
+  disk_temp: 's_pt_disk_temp',
+  smart_status: 's_pt_smart_status',
+};
+
+// Opciones de hora 00–23 para el horario silencioso.
+const HORAS = Array.from({ length: 24 }, (_, h) => ({
+  v: String(h), label: `${String(h).padStart(2, '0')}:00`,
+}));
+
+// Subsección de configuración de alertas (visible con push activado): switches
+// por tipo + horario silencioso. Las críticas siempre llegan (texto visible).
+function PushPrefs() {
+  const { t } = useApp();
+  const [prefs, setPrefs] = useState<PushPreference[] | null>(null);
+  // Estado local del horario silencioso (start/end siempre números; al
+  // desactivar se conservan para reactivar con los mismos valores).
+  const [quiet, setQuiet] = useState<{ enabled: boolean; start: number; end: number } | null>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    getProvider().getPushPreferences()
+      .then((r) => alive && setPrefs(r.preferences)).catch(() => {});
+    getProvider().getPushQuietHours()
+      .then((q) => alive && setQuiet({ enabled: q.enabled, start: q.start ?? 22, end: q.end ?? 8 }))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const toggleTipo = (tipo: PushAlertTipo, enabled: boolean) => {
+    setPrefs((cur) => cur?.map((p) => (p.tipo === tipo ? { ...p, enabled } : p)) ?? cur);
+    setErr('');
+    getProvider().putPushPreference(tipo, enabled).catch((e) => setErr(errorMessage(e, t)));
+  };
+
+  const saveQuiet = (next: { enabled: boolean; start: number; end: number }) => {
+    setQuiet(next);
+    setErr('');
+    if (next.enabled && next.start === next.end) {
+      setErr(t('s_quiet_err')); // el servidor también lo valida (400 invalid_hours)
+      return;
+    }
+    getProvider().putPushQuietHours(next).catch((e) => setErr(errorMessage(e, t)));
+  };
+
+  if (!prefs && !quiet) return null;
+  return (
+    <div style={{ marginTop: 16 }}>
+      {prefs && (
+        <>
+          <label>{t('s_push_types')}</label>
+          <p className="muted" style={{ marginTop: 0 }}>{t('s_push_types_d')}</p>
+          {prefs.map((p) => (
+            <div key={p.tipo} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 0' }}>
+              <span style={{ flex: 1, fontSize: 13.5 }}>{t(TIPO_LABEL[p.tipo])}</span>
+              <Switch checked={p.enabled} ariaLabel={t(TIPO_LABEL[p.tipo])}
+                onChange={(v) => toggleTipo(p.tipo, v)} />
+            </div>
+          ))}
+        </>
+      )}
+      {quiet && (
+        <>
+          <label style={{ marginTop: 12 }}>{t('s_quiet')}</label>
+          <p className="muted" style={{ marginTop: 0 }}>{t('s_quiet_d')}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 0' }}>
+            <span style={{ flex: 1, fontSize: 13.5 }}>{t('s_quiet_enable')}</span>
+            <Switch checked={quiet.enabled} ariaLabel={t('s_quiet_enable')}
+              onChange={(v) => saveQuiet({ ...quiet, enabled: v })} />
+          </div>
+          {quiet.enabled && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+              <span className="muted">{t('s_quiet_from')}</span>
+              <Select value={String(quiet.start)} ariaLabel={t('s_quiet_from')} options={HORAS}
+                onChange={(v) => saveQuiet({ ...quiet, start: +v })} />
+              <span className="muted">{t('s_quiet_to')}</span>
+              <Select value={String(quiet.end)} ariaLabel={t('s_quiet_to')} options={HORAS}
+                onChange={(v) => saveQuiet({ ...quiet, end: +v })} />
+            </div>
+          )}
+        </>
+      )}
+      {err && <p className="form-err" role="alert" style={{ marginTop: 8 }}>{err}</p>}
     </div>
   );
 }
@@ -63,10 +154,10 @@ function PushSection() {
     <div className="sect">
       <h2>{t('s_push')}</h2>
       <div className="card pad">
-        <p style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('s_push_d')}</p>
+        <p className="muted">{t('s_push_d')}</p>
 
         {state === 'unknown' && (
-          <p style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('loading')}</p>
+          <p className="muted">{t('loading')}</p>
         )}
 
         {(state === 'idle' || state === 'subscribing' || state === 'error') && (
@@ -82,27 +173,30 @@ function PushSection() {
         )}
 
         {state === 'subscribed' && (
-          <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-            <Badge tone="ok" dot={false}>{t('s_push_on')}</Badge>
-            <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('s_push_on_d')}</span>
-            <button className="btn sm" onClick={() => { void unsubscribe(); }}>{t('s_push_disable')}</button>
-          </div>
+          <>
+            <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <Badge tone="ok" dot={false}>{t('s_push_on')}</Badge>
+              <span className="muted">{t('s_push_on_d')}</span>
+              <button className="btn sm" onClick={() => { void unsubscribe(); }}>{t('s_push_disable')}</button>
+            </div>
+            <PushPrefs />
+          </>
         )}
 
         {state === 'denied' && (
           <p style={{ fontSize: 12.5, color: 'var(--warn)', marginTop: 10 }} role="alert">{t('s_push_denied')}</p>
         )}
         {state === 'unsupported' && (
-          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_unsupported')}</p>
+          <p className="muted" style={{ marginTop: 10 }}>{t('s_push_unsupported')}</p>
         )}
         {state === 'needs-ios-install' && (
-          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_ios')}</p>
+          <p className="muted" style={{ marginTop: 10 }}>{t('s_push_ios')}</p>
         )}
         {state === 'demo' && (
-          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_demo')}</p>
+          <p className="muted" style={{ marginTop: 10 }}>{t('s_push_demo')}</p>
         )}
         {state === 'not-configured' && (
-          <p style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 10 }}>{t('s_push_notcfg')}</p>
+          <p className="muted" style={{ marginTop: 10 }}>{t('s_push_notcfg')}</p>
         )}
       </div>
     </div>
@@ -110,7 +204,7 @@ function PushSection() {
 }
 
 export default function Settings() {
-  const { t, langMode, setLang, themeMode, setTheme, isAdmin, user, logout, refresh } = useApp();
+  const { t, langMode, setLang, themeMode, themeEff, setTheme, isAdmin, user, logout, refresh } = useApp();
   const { openModal } = useModal();
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [users, setUsers] = useState<Awaited<ReturnType<ReturnType<typeof getProvider>['getUsers']>> | null>(null);
@@ -192,11 +286,12 @@ export default function Settings() {
         <label>{t('s_accent')}</label>
         <div className="swatches" role="group" aria-label={t('s_accent')}>
           {(Object.keys(ACCENTS) as AccentId[]).map((id) => (
-            <button key={id} type="button" title={id} aria-label={id}
+            <button key={id} type="button" title={t(`acc_${id}`)} aria-label={t(`acc_${id}`)}
               className={`swatch${accent === id ? ' sel' : ''}`}
               aria-pressed={accent === id}
               onClick={() => { setAccent(id); setAccentState(id); }}>
-              <span style={{ background: `linear-gradient(135deg, ${ACCENTS[id].light[0]} 50%, ${ACCENTS[id].dark[0]} 50%)` }} />
+              {/* el círculo pinta el color del tema EFECTIVO (el que se aplicará) */}
+              <span style={{ background: ACCENTS[id][themeEff][0] }} />
             </button>
           ))}
         </div>
@@ -209,7 +304,7 @@ export default function Settings() {
           ]} />
         <label>{t('s_lang')}</label>
         <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
-          options={[{ v: 'auto', label: '🌐 Auto' }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
+          options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
       </div>
 
       {/* ---- Usuarios (solo admin) ---- */}
@@ -227,7 +322,7 @@ export default function Settings() {
                   <div className="t1" style={{ fontSize: 14 }}>
                     {u.user}
                     {u.user === user?.user && <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{t('you')}</span>}
-                    <span className={`rolebadge ${u.role}`}>{u.role === 'admin' ? 'Admin' : t('mu_r_user')}</span>
+                    <span className={`rolebadge ${u.role}`}>{u.role === 'admin' ? t('mu_r_admin') : t('mu_r_user')}</span>
                   </div>
                   <div className="t2">
                     {t('s_last_login')}: {timeAgo(u.last_login, t)} · {u.sessions}{' '}
@@ -251,7 +346,7 @@ export default function Settings() {
         <div className="sect">
           <h2>{t('s_thresh')}</h2>
           <div className="card pad">
-            <p style={{ fontSize: 12.5, color: 'var(--text2)' }}>{t('s_thresh_d')}</p>
+            <p className="muted">{t('s_thresh_d')}</p>
             <label htmlFor="th-warn">{t('s_cap_warn')}</label>
             <input id="th-warn" type="number" value={settings.cap_warn_pct}
               onChange={(e) => setSettings({ ...settings, cap_warn_pct: +e.target.value })} />
@@ -277,13 +372,13 @@ export default function Settings() {
             <label htmlFor="nf-hook">{t('s_webhook')}</label>
             <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}
               onChange={(e) => setSettings({ ...settings, webhook: e.target.value })} />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginTop: 16 }}>
-              <input type="checkbox" style={{ width: 'auto' }} checked={settings.notify_scrub_errors}
+            <label className="checklabel" style={{ marginTop: 16 }}>
+              <input type="checkbox" checked={settings.notify_scrub_errors}
                 onChange={(e) => setSettings({ ...settings, notify_scrub_errors: e.target.checked })} />
               {t('s_n_scrub')}
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', fontSize: 13.5, fontWeight: 500, color: 'var(--text)' }}>
-              <input type="checkbox" style={{ width: 'auto' }} checked={settings.notify_smart_change}
+            <label className="checklabel">
+              <input type="checkbox" checked={settings.notify_smart_change}
                 onChange={(e) => setSettings({ ...settings, notify_smart_change: e.target.checked })} />
               {t('s_n_smart')}
             </label>
@@ -339,7 +434,7 @@ export default function Settings() {
                   v{version.version} · build {version.build}
                 </div>
               )}
-              <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 2 }}>{t('s_about_d')}</div>
+              <div className="muted" style={{ marginTop: 2 }}>{t('s_about_d')}</div>
             </div>
           </div>
 

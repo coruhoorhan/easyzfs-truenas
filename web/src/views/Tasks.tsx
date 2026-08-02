@@ -13,7 +13,7 @@ import { describeSchedule } from '../components/Modals';
 import { useState } from 'react';
 
 const TIPO_CLS: Record<JobType, 'info' | 'ok' | 'warn'> = {
-  snapshot: 'info', scrub: 'ok', smart_short: 'warn', smart_long: 'warn', poweroff: 'warn',
+  snapshot: 'info', scrub: 'ok', trim: 'ok', smart_short: 'warn', smart_long: 'warn', poweroff: 'warn',
 };
 
 export default function Tasks() {
@@ -34,7 +34,7 @@ export default function Tasks() {
 
   const tipoLbl = (j: JobType) =>
     j === 'smart_short' ? t('tk_type_smart_short') : j === 'smart_long' ? t('tk_type_smart_long')
-    : j === 'snapshot' ? t('tk_type_snapshot') : t('tk_type_scrub');
+    : j === 'snapshot' ? t('tk_type_snapshot') : j === 'trim' ? t('tk_type_trim') : t('tk_type_scrub');
 
   const run = async (id: number) => {
     setErr('');
@@ -48,6 +48,8 @@ export default function Tasks() {
   };
 
   const list = jobs.data ?? [];
+  // systemd disponible como init: condiciona botón "Cambiar", burbuja y texto
+  const systemdAvailable = sys.data?.systemd_available ?? false;
   const upcoming = list
     .filter((j) => j.enabled && j.next_run)
     .sort((a, b) => a.next_run.localeCompare(b.next_run))
@@ -113,23 +115,26 @@ export default function Tasks() {
       <div className="sect">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {t('tk_system')}
-          <InfoBubble title={t('tk_cronvs_title')}>
-            <b>cron</b>
-            <ul>
-              <li>{t('tk_cronvs_cron1')}</li>
-              <li>{t('tk_cronvs_cron2')}</li>
-            </ul>
-            <b>systemd timer</b>
-            <ul>
-              <li>{t('tk_cronvs_sysd1')}</li>
-              <li>{t('tk_cronvs_sysd2')}</li>
-              <li>{t('tk_cronvs_sysd3')}</li>
-            </ul>
-          </InfoBubble>
+          {/* Sin systemd no tiene sentido la comparativa cron vs systemd */}
+          {systemdAvailable && (
+            <InfoBubble title={t('tk_cronvs_title')}>
+              <b>cron</b>
+              <ul>
+                <li>{t('tk_cronvs_cron1')}</li>
+                <li>{t('tk_cronvs_cron2')}</li>
+              </ul>
+              <b>systemd timer</b>
+              <ul>
+                <li>{t('tk_cronvs_sysd1')}</li>
+                <li>{t('tk_cronvs_sysd2')}</li>
+                <li>{t('tk_cronvs_sysd3')}</li>
+              </ul>
+            </InfoBubble>
+          )}
         </h2>
         <div className="card">
           {sys.loading && !sys.data && <Spinner label={t('loading')} />}
-          {(sys.data ?? []).map((s, i) => (
+          {(sys.data?.timers ?? []).map((s, i) => (
             <div className="rowitem" key={i}>
               <Badge tone={s.source === 'systemd' ? 'info' : 'warn'} dot={false} style={{ padding: '2px 8px' }}>
                 {s.source}
@@ -146,15 +151,17 @@ export default function Tasks() {
                 <button className="btn sm" title={t('ss_btn_hint')}
                   onClick={() => openModal('syssched', { task: s })}>{t('edit')}</button>
               )}
-              {isAdmin && s.editable && s.source === 'cron' && (
+              {isAdmin && s.editable && s.source === 'cron' && systemdAvailable && (
                 <button className="btn sm" title={t('sm_btn_hint')}
                   onClick={() => openModal('sysmigrate', { task: s })}>{t('sm_btn')}</button>
               )}
             </div>
           ))}
-          {sys.data && sys.data.length === 0 && <div className="empty">{t('empty')}</div>}
+          {sys.data && sys.data.timers.length === 0 && <div className="empty">{t('empty')}</div>}
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('tk_system_d')}</p>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+          {systemdAvailable ? t('tk_system_d') : t('tk_system_d_nosysd')}
+        </p>
       </div>
 
       <div className="sect">
