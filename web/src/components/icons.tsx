@@ -35,6 +35,7 @@ export const IconDownload = (p: P) => base(p, <><path d="M21 15v4a2 2 0 0 1-2 2H
 export const IconList = (p: P) => base(p, <><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></>);
 export const IconLock = (p: P) => base(p, <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>);
 export const IconUnlock = (p: P) => base(p, <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 7.7-1.5" /></>);
+export const IconHeart = (p: P) => base(p, <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" />);
 
 // Logo de la app: diseño "E de capas" (assets de branding en /icons)
 export function Logo({ size = 30 }: { size?: number }) {

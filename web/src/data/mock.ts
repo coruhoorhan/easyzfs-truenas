@@ -288,6 +288,10 @@ export class MockProvider implements DataProvider {
   };
   setMyPassword = async (_c: string, _n: string) => { await delay(); };
   setMyLanguage = async (_l: Lang) => { await delay(); };
+  updateMyProfile = async (d: string, e: string) => {
+    await delay();
+    if (this.session) this.session = { ...this.session, display_name: d, email: e };
+  };
 
   // ---- Usuarios ----
   getUsers = async () => { await delay(); return this.users.map((u) => ({ ...u })); };

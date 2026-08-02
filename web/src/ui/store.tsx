@@ -44,6 +44,8 @@ interface AppCtx {
   // Contador para forzar refresco de datos tras mutaciones
   refresh: () => void;
   dataVersion: number;
+  // Re-lee /api/me (tras guardar perfil: nombre visible, email…)
+  reloadUser: () => void;
 }
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -184,14 +186,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
   const setTheme = useCallback((m: ThemeMode) => setThemeMode(m), []);
   const refresh = useCallback(() => setDataVersion((v) => v + 1), []);
+  const reloadUser = useCallback(() => {
+    getProvider().me().then(setUser).catch(() => {});
+  }, []);
 
   const value = useMemo<AppCtx>(() => ({
     ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo,
     t, langMode, setLang, themeMode, themeEff, setTheme,
     isAdmin: user?.role === 'admin',
     caps,
-    refresh, dataVersion,
-  }), [ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo, t, langMode, setLang, themeMode, themeEff, setTheme, caps, refresh, dataVersion]);
+    refresh, dataVersion, reloadUser,
+  }), [ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo, t, langMode, setLang, themeMode, themeEff, setTheme, caps, refresh, dataVersion, reloadUser]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
