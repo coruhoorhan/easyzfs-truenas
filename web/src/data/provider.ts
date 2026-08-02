@@ -1,6 +1,6 @@
 // Interfaz DataProvider: abstrae el origen de datos (HTTP real o mock demo).
 import type {
-  Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
+  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
@@ -15,6 +15,11 @@ export interface DataProvider {
   getAlerts(): Promise<Alert[]>;
   ackAlert(id: number): Promise<void>;
   getOverview(): Promise<Overview>;
+
+  // Copia de seguridad de la BD (admin; la descarga es enlace directo con cookie)
+  getBackupStatus(): Promise<BackupStatus>;
+  runBackup(): Promise<BackupFile>;
+  importBackup(file: File): Promise<void>;
 
   // Auth y sesión
   login(user: string, password: string): Promise<SessionUser>;

@@ -1,11 +1,13 @@
-// Vista Ajustes: apariencia, usuarios (admin), umbrales, notificaciones,
-// sesión, acerca de (estilo netpulse) y datos del sistema.
-import { useEffect, useState } from 'react';
+// Vista Ajustes: tarjetas con el título dentro (como NetPulse) en grid de 2
+// columnas en pantalla ancha. Apariencia (tema/acento/densidad/animaciones),
+// Mi sesión (idioma, contraseña, logout), push, zona admin (usuarios, copia
+// de seguridad, umbrales, notificaciones) y Acerca de (con datos del sistema).
+import { useEffect, useRef, useState } from 'react';
 import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtDuration, timeAgo } from '../ui/format';
 import { Seg, Select, Spinner, Switch, Badge } from '../components/ui';
-import { Logo, IconCode, IconList, IconHome, IconShield, IconDownload } from '../components/icons';
+import { Logo, IconCode, IconList, IconHome, IconShield, IconDownload, IconCheck, IconSun, IconMoon, IconMonitor } from '../components/icons';
 import { useModal } from '../components/Modal';
 import { usePush } from '../data/push';
 import {
@@ -14,7 +16,7 @@ import {
 } from '../ui/theme';
 import type { AccentId, Density, ThemeMode } from '../ui/theme';
 import type { I18nKey } from '../ui/i18n';
-import type { PushAlertTipo, PushPreference, Settings as SettingsData } from '../data/types';
+import type { BackupStatus, PushAlertTipo, PushPreference, Settings as SettingsData } from '../data/types';
 
 // Evento beforeinstallprompt (PWA), no tipado en lib.dom
 interface BeforeInstallPromptEvent extends Event {
@@ -31,20 +33,26 @@ function isStandalone(): boolean {
     || (navigator as { standalone?: boolean }).standalone === true;
 }
 
-// Mini-preview visual de un tema (barras simuladas, sin animación).
-// Los colores viven en CSS (.tpreview-l/.tpreview-d, variables --tpv-*): cero hex aquí.
+// Mini-preview de un tema estilo NetPulse: mini-UI (barra superior, sidebar,
+// barra de acento, bloque) pintada con las VARIABLES CSS REALES scopeando
+// data-theme en el propio contenedor — cero valores duplicados.
 function ThemePreview({ mode }: { mode: ThemeMode }) {
-  const mini = (key: string, cls: string) => (
-    <div key={key} className={`tpv ${cls}`}>
-      <div className="tpv-bar" style={{ width: '72%' }} />
-      <div className="tpv-bar" style={{ width: '52%' }} />
-      <div className="tpv-bar" style={{ background: 'var(--accent)', width: '36%' }} />
+  const half = (
+    <div className="tpv-half">
+      <div className="tpv-top" />
+      <div className="tpv-row">
+        <div className="tpv-side" />
+        <div className="tpv-main">
+          <div className="tpv-accent" />
+          <div className="tpv-block" />
+        </div>
+      </div>
     </div>
   );
   return (
-    <div className="tpreview" aria-hidden="true">
-      {mode !== 'dark' && mini('l', 'tpreview-l')}
-      {mode !== 'light' && mini('d', 'tpreview-d')}
+    <div className="tpv" aria-hidden="true">
+      {mode !== 'dark' && <div className="tpv-scope" data-theme="light">{half}</div>}
+      {mode !== 'light' && <div className="tpv-scope" data-theme="dark">{half}</div>}
     </div>
   );
 }
@@ -163,6 +171,118 @@ function UpdateCheck({ version }: { version: string | undefined }) {
   );
 }
 
+// Tarjeta "Copia de seguridad" (zona admin): patrón ajuste-proceso — estado
+// (último + próximo), configuración (switch + frecuencia + retención) y
+// acciones (Forzar ahora / Exportar / Importar) en la misma tarjeta.
+function BackupCard({ settings, onSave }: {
+  settings: SettingsData;
+  onSave: (patch: Partial<SettingsData>) => Promise<void>;
+}) {
+  const { t } = useApp();
+  const [st, setSt] = useState<BackupStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = () => getProvider().getBackupStatus().then(setSt).catch(() => {});
+  useEffect(() => {
+    let alive = true;
+    getProvider().getBackupStatus().then((s) => alive && setSt(s)).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const FREQS = [1, 6, 12, 24, 48, 72].map((h) => ({ v: String(h), label: t('bk_freq_h', { h }) }));
+
+  const runNow = async () => {
+    setBusy(true); setMsg(''); setErr('');
+    try {
+      const f = await getProvider().runBackup();
+      setMsg(t('bk_done', { f: f.file }));
+      load();
+    } catch (e) { setErr(errorMessage(e, t)); }
+    setBusy(false);
+  };
+
+  const doImport = async () => {
+    if (!importFile) return;
+    setBusy(true); setErr('');
+    try {
+      await getProvider().importBackup(importFile);
+      // El server hace swap y reinicia el proceso; recargamos al cabo de unos
+      // segundos para volver al login con la BD importada.
+      setMsg(t('bk_import_restarting'));
+      setTimeout(() => location.reload(), 4000);
+    } catch (e) {
+      setErr(errorMessage(e, t));
+      setBusy(false);
+      setImportFile(null);
+    }
+  };
+
+  return (
+    <div className="card pad">
+      <h3 className="cardtitle">{t('bk_title')}</h3>
+
+      {/* Estado */}
+      <div className="kv"><span>{t('bk_last')}</span>
+        <span>{st?.last
+          ? <>{st.last.file} · {timeAgo(st.last.ts, t)} · {fmtBytes(st.last.bytes)}</>
+          : t('bk_never')}</span>
+      </div>
+      {st?.next_run && (
+        <div className="kv"><span>{t('bk_next')}</span><span>{timeAgo(st.next_run, t)}</span></div>
+      )}
+      {st?.running && <div className="kv"><span></span><span className="muted">{t('bk_running')}</span></div>}
+
+      {/* Configuración */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 14 }}>
+        <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{t('bk_enable')}</span>
+        <Switch checked={settings.backup_enabled} ariaLabel={t('bk_enable')}
+          onChange={(v) => { void onSave({ backup_enabled: v }); }} />
+      </div>
+      <div style={settings.backup_enabled ? undefined : { opacity: 0.4, pointerEvents: 'none' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 150 }}>
+            <label>{t('bk_freq')}</label>
+            <Select value={String(settings.backup_freq_hours)} ariaLabel={t('bk_freq')}
+              options={FREQS}
+              onChange={(v) => { void onSave({ backup_freq_hours: +v }); }} />
+          </div>
+          <div style={{ width: 130 }}>
+            <label htmlFor="bk-ret">{t('bk_retention')}</label>
+            <input id="bk-ret" type="number" min={1} max={30} value={settings.backup_retention_days}
+              onChange={(e) => { void onSave({ backup_retention_days: +e.target.value }); }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Acciones */}
+      <div className="m-actions" style={{ justifyContent: 'flex-start' }}>
+        <button className="btn" disabled={busy} onClick={() => { void runNow(); }}>{t('bk_run')}</button>
+        <a className="btn" href="/api/backup/download" download>{t('bk_export')}</a>
+        <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>{t('bk_import')}</button>
+        <input ref={fileRef} type="file" accept=".db,application/octet-stream" style={{ display: 'none' }}
+          onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
+      </div>
+
+      {/* Importación: confirmación destructiva inline de dos pasos */}
+      {importFile && (
+        <div className="rebuildbar" style={{ marginTop: 12 }}>
+          <span style={{ flex: 1, minWidth: 220 }}>{t('bk_import_q', { f: importFile.name })}</span>
+          <button className="btn sm danger" disabled={busy} onClick={() => { void doImport(); }}>
+            {t('bk_import_btn')}
+          </button>
+          <button className="btn sm" disabled={busy} onClick={() => setImportFile(null)}>{t('cancel')}</button>
+        </div>
+      )}
+      {msg && <p style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600, marginTop: 10 }} role="status">{msg}</p>}
+      {err && <p className="form-err" role="alert" style={{ marginTop: 10 }}>{err}</p>}
+    </div>
+  );
+}
+
 // Subsección de configuración de alertas (visible con push activado): switches
 // por tipo + horario silencioso. Las críticas siempre llegan (texto visible).
 function PushPrefs() {
@@ -252,10 +372,9 @@ function PushSection() {
   const { state, error, subscribe, unsubscribe } = usePush();
 
   return (
-    <div className="sect">
-      <h2>{t('s_push')}</h2>
-      <div className="card pad">
-        <p className="muted">{t('s_push_d')}</p>
+    <div className="card pad">
+      <h3 className="cardtitle">{t('s_push')}</h3>
+      <p className="muted">{t('s_push_d')}</p>
 
         {state === 'unknown' && (
           <p className="muted">{t('loading')}</p>
@@ -299,7 +418,6 @@ function PushSection() {
         {state === 'not-configured' && (
           <p className="muted" style={{ marginTop: 10 }}>{t('s_push_notcfg')}</p>
         )}
-      </div>
     </div>
   );
 }
@@ -363,27 +481,31 @@ export default function Settings() {
     && settings.disk_temp_c >= 20 && settings.disk_temp_c <= 90;
   const threshOk = capOk && tempOk;
 
-  const themeOpts: { v: ThemeMode; label: string }[] = [
-    { v: 'light', label: t('s_theme_light') },
-    { v: 'dark', label: t('s_theme_dark') },
-    { v: 'auto', label: t('s_theme_auto') },
+  const themeOpts: { v: ThemeMode; label: string; icon: typeof IconSun }[] = [
+    { v: 'light', label: t('s_theme_light'), icon: IconSun },
+    { v: 'dark', label: t('s_theme_dark'), icon: IconMoon },
+    { v: 'auto', label: t('s_theme_auto'), icon: IconMonitor },
   ];
 
   return (
-    <div className="view">
-      {/* ---- Apariencia ---- */}
+    <div className="view settings-grid">
+      {/* ---- Apariencia (estilo NetPulse: previews con variables reales) ---- */}
       <div className="card pad">
-        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{t('s_appear')}</h3>
+        <h3 className="cardtitle">{t('s_appear')}</h3>
         <label>{t('s_theme')}</label>
-        <div className="themegrid" role="group" aria-label={t('s_theme')}>
-          {themeOpts.map((o) => (
-            <button key={o.v} type="button"
-              className={`themecard${themeMode === o.v ? ' sel' : ''}`}
-              aria-pressed={themeMode === o.v} onClick={() => setTheme(o.v)}>
-              <ThemePreview mode={o.v} />
-              <span className="lbl">{o.label}</span>
-            </button>
-          ))}
+        <div className="themegrid" role="radiogroup" aria-label={t('s_theme')}>
+          {themeOpts.map((o) => {
+            const Ico = o.icon;
+            return (
+              <button key={o.v} type="button" role="radio" aria-checked={themeMode === o.v}
+                className={`themecard${themeMode === o.v ? ' sel' : ''}`}
+                onClick={() => setTheme(o.v)}>
+                <ThemePreview mode={o.v} />
+                <span className="lbl"><Ico size={13} />{o.label}</span>
+                {themeMode === o.v && <span className="check"><IconCheck /></span>}
+              </button>
+            );
+          })}
         </div>
         <label>{t('s_accent')}</label>
         <div className="swatches" role="group" aria-label={t('s_accent')}>
@@ -412,139 +534,27 @@ export default function Settings() {
           <Switch checked={reduceMotion} ariaLabel={t('s_rm')}
             onChange={(v) => { setReduceMotion(v); setReduceMotionState(v); }} />
         </div>
-        <label>{t('s_lang')}</label>
-        <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
-          options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
       </div>
-
-      {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
-      {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}</h2>}
-
-      {/* ---- Usuarios (solo admin) ---- */}
-      {isAdmin && (
-        <div className="sect">
-          <h2>{t('s_users')}
-            <span className="actions">
-              <button className="btn sm primary" onClick={() => openModal('newuser')}>+ {t('s_newuser')}</button>
-            </span>
-          </h2>
-          <div className="card">
-            {(users ?? []).map((u) => (
-              <div className="rowitem" key={u.user}>
-                <div className="grow">
-                  <div className="t1" style={{ fontSize: 14 }}>
-                    {u.user}
-                    {u.user === user?.user && <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{t('you')}</span>}
-                    <span className={`rolebadge ${u.role}`}>{u.role === 'admin' ? t('mu_r_admin') : t('mu_r_user')}</span>
-                  </div>
-                  <div className="t2">
-                    {t('s_last_login')}: {timeAgo(u.last_login, t)} · {u.sessions}{' '}
-                    {u.sessions === 1 ? t('s_session_one') : t('s_sessions')}
-                  </div>
-                </div>
-                <Select value={u.language ?? 'auto'} ariaLabel={t('s_lang')}
-                  options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]}
-                  onChange={(v) => {
-                    const lang = v as 'auto' | 'es' | 'en';
-                    setUsers((cur) => cur?.map((x) => (x.user === u.user ? { ...x, language: lang } : x)) ?? cur);
-                    getProvider().setUserLanguage(u.user, lang).catch(() => {});
-                  }} />
-                <button className="btn sm" onClick={() => openModal('passwd', { user: u.user })}>{t('s_passwd')}</button>
-                {u.user !== user?.user && (
-                  <button className="btn sm danger" onClick={() => openModal('deluser', { user: u.user })}>{t('s_delete_user')}</button>
-                )}
-              </div>
-            ))}
-            {users && users.length === 0 && <div className="empty">{t('empty')}</div>}
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('s_roles_d')}</p>
-        </div>
-      )}
-
-      {/* ---- Umbrales (solo admin) ---- */}
-      {isAdmin && (
-        <div className="sect">
-          <h2>{t('s_thresh')}</h2>
-          <div className="card pad">
-            <p className="muted">{t('s_thresh_d')}</p>
-            <label htmlFor="th-warn">{t('s_cap_warn')}</label>
-            <input id="th-warn" type="number" value={settings.cap_warn_pct}
-              onChange={(e) => setSettings({ ...settings, cap_warn_pct: +e.target.value })} />
-            <label htmlFor="th-crit">{t('s_cap_crit')}</label>
-            <input id="th-crit" type="number" value={settings.cap_crit_pct}
-              onChange={(e) => setSettings({ ...settings, cap_crit_pct: +e.target.value })} />
-            <label htmlFor="th-temp">{t('s_temp')}</label>
-            <input id="th-temp" type="number" value={settings.disk_temp_c}
-              onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
-            {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
-            <div className="m-actions">
-              <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ---- Notificaciones (solo admin) ---- */}
-      {isAdmin && (
-        <div className="sect">
-          <h2>{t('s_notif')}</h2>
-          <div className="card pad">
-            <label htmlFor="nf-hook">{t('s_webhook')}</label>
-            <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}
-              onChange={(e) => setSettings({ ...settings, webhook: e.target.value })} />
-            <label className="checklabel" style={{ marginTop: 16 }}>
-              <input type="checkbox" checked={settings.notify_scrub_errors}
-                onChange={(e) => setSettings({ ...settings, notify_scrub_errors: e.target.checked })} />
-              {t('s_n_scrub')}
-            </label>
-            <label className="checklabel">
-              <input type="checkbox" checked={settings.notify_smart_change}
-                onChange={(e) => setSettings({ ...settings, notify_smart_change: e.target.checked })} />
-              {t('s_n_smart')}
-            </label>
-            <div className="m-actions">
-              <button className="btn primary" onClick={() => saveSettings({})}>{t('save')}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ---- Notificaciones push (todos los usuarios) ---- */}
       <PushSection />
 
-      {msg && <p style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600, marginTop: 12 }} role="status">{msg}</p>}
-      {err && <p className="form-err" role="alert">{err}</p>}
-
-      {/* ---- Mi sesión ---- */}
-      <div className="sect">
-        <h2>{t('s_session')}</h2>
-        <div className="card pad">
-          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            <button className="btn" onClick={() => openModal('mypass')}>{t('s_mypass')}</button>
-            <button className="btn danger" onClick={logout}>{t('logout')}</button>
-          </div>
+      {/* ---- Mi sesión: idioma + contraseña + logout ---- */}
+      <div className="card pad">
+        <h3 className="cardtitle">{t('s_session')}</h3>
+        <label>{t('s_lang')}</label>
+        <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
+          options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
+        <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 16 }}>
+          <button className="btn" onClick={() => openModal('mypass')}>{t('s_mypass')}</button>
+          <button className="btn danger" onClick={logout}>{t('logout')}</button>
         </div>
       </div>
 
-      {/* ---- Sistema ---- */}
+      {/* ---- Acerca de (con datos del sistema integrados) ---- */}
       {version && (
-        <div className="sect">
-          <h2>{t('ab_system')}</h2>
-          <div className="card pad">
-            <div className="kv"><span>{t('ab_ver')}</span><span>{version.version} (build {version.build})</span></div>
-            <div className="kv"><span>{t('ab_rt')}</span><span className="mono">{version.go} {version.os_arch}</span></div>
-            <div className="kv"><span>{t('ab_up')}</span><span>{fmtDuration(version.uptime_sec)}</span></div>
-            <div className="kv"><span>{t('ab_mem')}</span><span>{fmtBytes(version.rss_bytes)}</span></div>
-            <div className="kv"><span>{t('ab_db')}</span><span>{fmtBytes(version.db_bytes)} · {version.db_path}</span></div>
-            <div className="kv"><span>ZFS</span><span className="mono">{version.zfs_version}</span></div>
-            <div className="kv"><span>{t('ab_lic')}</span><span>AGPL-3.0</span></div>
-          </div>
-        </div>
-      )}
-      {/* ---- Acerca de (estilo netpulse) ---- */}
-      <div className="sect">
-        <h2>{t('s_about')}</h2>
         <div className="card pad">
+          <h3 className="cardtitle">{t('s_about')}</h3>
           <div className="about">
             <div className="logo"><Logo size={46} /></div>
             <div style={{ flex: 1 }}>
@@ -559,7 +569,7 @@ export default function Settings() {
           </div>
 
           <div className="abouttiles">
-            <a className="abouttile" href="https://github.com/gnacho/easyzfs" target="_blank" rel="noreferrer">
+            <a className="abouttile" href={REPO_URL} target="_blank" rel="noreferrer">
               <span className="t-ico"><IconCode size={16} /></span>
               <b>{t('ab_code')}</b>
               <span>{t('ab_code_d')}</span>
@@ -607,11 +617,115 @@ export default function Settings() {
 
           <UpdateCheck version={version?.version} />
 
+          {/* Sistema (datos del servidor, integrados en Acerca de) */}
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div className="kv"><span>{t('ab_rt')}</span><span className="mono">{version.go} {version.os_arch}</span></div>
+            <div className="kv"><span>{t('ab_up')}</span><span>{fmtDuration(version.uptime_sec)}</span></div>
+            <div className="kv"><span>{t('ab_mem')}</span><span>{fmtBytes(version.rss_bytes)}</span></div>
+            <div className="kv"><span>{t('ab_db')}</span><span>{fmtBytes(version.db_bytes)} · {version.db_path}</span></div>
+            <div className="kv"><span>ZFS</span><span className="mono">{version.zfs_version}</span></div>
+            <div className="kv"><span>{t('ab_lic')}</span><span>AGPL-3.0</span></div>
+          </div>
+
           <div className="aboutfoot mono">
             {version?.name ?? 'EasyZFS'} v{version?.version ?? '0.1.0'} · {version?.zfs_version ?? 'OpenZFS'} · AGPL-3.0
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
+      {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}</h2>}
+
+      {/* ---- Usuarios (solo admin) ---- */}
+      {isAdmin && (
+        <div className="card pad">
+          <h3 className="cardtitle">{t('s_users')}
+            <span className="actions" style={{ float: 'right' }}>
+              <button className="btn sm primary" onClick={() => openModal('newuser')}>+ {t('s_newuser')}</button>
+            </span>
+          </h3>
+          <div>
+            {(users ?? []).map((u) => (
+              <div className="rowitem" key={u.user}>
+                <div className="grow">
+                  <div className="t1" style={{ fontSize: 14 }}>
+                    {u.user}
+                    {u.user === user?.user && <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{t('you')}</span>}
+                    <span className={`rolebadge ${u.role}`}>{u.role === 'admin' ? t('mu_r_admin') : t('mu_r_user')}</span>
+                  </div>
+                  <div className="t2">
+                    {t('s_last_login')}: {timeAgo(u.last_login, t)} · {u.sessions}{' '}
+                    {u.sessions === 1 ? t('s_session_one') : t('s_sessions')}
+                  </div>
+                </div>
+                <Select value={u.language ?? 'auto'} ariaLabel={t('s_lang')}
+                  options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]}
+                  onChange={(v) => {
+                    const lang = v as 'auto' | 'es' | 'en';
+                    setUsers((cur) => cur?.map((x) => (x.user === u.user ? { ...x, language: lang } : x)) ?? cur);
+                    getProvider().setUserLanguage(u.user, lang).catch(() => {});
+                  }} />
+                <button className="btn sm" onClick={() => openModal('passwd', { user: u.user })}>{t('s_passwd')}</button>
+                {u.user !== user?.user && (
+                  <button className="btn sm danger" onClick={() => openModal('deluser', { user: u.user })}>{t('s_delete_user')}</button>
+                )}
+              </div>
+            ))}
+            {users && users.length === 0 && <div className="empty">{t('empty')}</div>}
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('s_roles_d')}</p>
+        </div>
+      )}
+
+      {/* ---- Copia de seguridad de la BD (solo admin) ---- */}
+      {isAdmin && <BackupCard settings={settings} onSave={saveSettings} />}
+
+      {/* ---- Umbrales (solo admin) ---- */}
+      {isAdmin && (
+        <div className="card pad">
+          <h3 className="cardtitle">{t('s_thresh')}</h3>
+          <p className="muted">{t('s_thresh_d')}</p>
+          <label htmlFor="th-warn">{t('s_cap_warn')}</label>
+          <input id="th-warn" type="number" value={settings.cap_warn_pct}
+            onChange={(e) => setSettings({ ...settings, cap_warn_pct: +e.target.value })} />
+          <label htmlFor="th-crit">{t('s_cap_crit')}</label>
+          <input id="th-crit" type="number" value={settings.cap_crit_pct}
+            onChange={(e) => setSettings({ ...settings, cap_crit_pct: +e.target.value })} />
+          <label htmlFor="th-temp">{t('s_temp')}</label>
+          <input id="th-temp" type="number" value={settings.disk_temp_c}
+            onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
+          {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
+          <div className="m-actions">
+            <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Notificaciones webhook (solo admin) ---- */}
+      {isAdmin && (
+        <div className="card pad">
+          <h3 className="cardtitle">{t('s_notif')}</h3>
+          <label htmlFor="nf-hook">{t('s_webhook')}</label>
+          <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}
+            onChange={(e) => setSettings({ ...settings, webhook: e.target.value })} />
+          <label className="checklabel" style={{ marginTop: 16 }}>
+            <input type="checkbox" checked={settings.notify_scrub_errors}
+              onChange={(e) => setSettings({ ...settings, notify_scrub_errors: e.target.checked })} />
+            {t('s_n_scrub')}
+          </label>
+          <label className="checklabel">
+            <input type="checkbox" checked={settings.notify_smart_change}
+              onChange={(e) => setSettings({ ...settings, notify_smart_change: e.target.checked })} />
+            {t('s_n_smart')}
+          </label>
+          <div className="m-actions">
+            <button className="btn primary" onClick={() => saveSettings({})}>{t('save')}</button>
+          </div>
+        </div>
+      )}
+
+      {msg && <p style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600, marginTop: 12 }} role="status">{msg}</p>}
+      {err && <p className="form-err" role="alert">{err}</p>}
 
     </div>
   );

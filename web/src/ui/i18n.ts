@@ -287,6 +287,13 @@ const es = {
   s_rm: 'Reducir animaciones', s_rm_d: 'Desactiva transiciones y animaciones de la interfaz',
   s_admin_zone: 'Administración', s_account: 'Cuenta actual',
   a11y_collapse: 'Plegar menú', a11y_expand: 'Desplegar menú',
+  bk_title: 'Copia de seguridad', bk_last: 'Último respaldo', bk_next: 'Próximo',
+  bk_never: 'Aún no hay respaldos', bk_enable: 'Respaldo automático de la base de datos',
+  bk_freq: 'Frecuencia', bk_freq_h: 'cada {h} h', bk_retention: 'Retención (días)',
+  bk_run: 'Forzar ahora', bk_running: 'Respaldando…', bk_done: 'Respaldo creado: {f}',
+  bk_export: 'Exportar', bk_import: 'Importar',
+  bk_import_q: 'Importar {f} reemplazará la base de datos actual y la app se reiniciará. La BD actual quedará guardada como app.db.pre-import.',
+  bk_import_btn: 'Importar y reiniciar', bk_import_restarting: 'Base de datos importada. La app se está reiniciando…',
   ab_install_ios: 'En iOS: Compartir → «Añadir a pantalla de inicio»',
 
   // Modal usuarios
@@ -583,6 +590,13 @@ const en: Record<I18nKey, string> = {
   s_rm: 'Reduce motion', s_rm_d: 'Disables interface transitions and animations',
   s_admin_zone: 'Administration', s_account: 'Current account',
   a11y_collapse: 'Collapse menu', a11y_expand: 'Expand menu',
+  bk_title: 'Backup', bk_last: 'Latest backup', bk_next: 'Next',
+  bk_never: 'No backups yet', bk_enable: 'Automatic database backup',
+  bk_freq: 'Frequency', bk_freq_h: 'every {h} h', bk_retention: 'Retention (days)',
+  bk_run: 'Run now', bk_running: 'Running…', bk_done: 'Backup created: {f}',
+  bk_export: 'Export', bk_import: 'Import',
+  bk_import_q: 'Importing {f} will replace the current database and restart the app. The current DB will be kept as app.db.pre-import.',
+  bk_import_btn: 'Import and restart', bk_import_restarting: 'Database imported. The app is restarting…',
   ab_install_ios: 'On iOS: Share → “Add to Home Screen”',
 
   mu_title: 'New user', mu_d: 'The user will log in to the app with their own password.',

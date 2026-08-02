@@ -3,7 +3,7 @@ import type { DataProvider } from './provider';
 import { ApiError } from './types';
 import { notifyAuthExpired } from './events';
 import type {
-  Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
+  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
@@ -49,6 +49,22 @@ export class HttpProvider implements DataProvider {
   getAlerts = () => get<Alert[]>('/alerts');
   ackAlert = (id: number) => post<void>(`/alerts/${id}/ack`);
   getOverview = () => get<Overview>('/overview');
+
+  getBackupStatus = () => get<BackupStatus>('/backup/status');
+  runBackup = () => post<BackupFile>('/backup/run');
+  importBackup = async (file: File): Promise<void> => {
+    // Body crudo (no JSON): el server verifica magic + quick_check y, si es
+    // válido, hace swap y reinicia el proceso (202).
+    const res = await fetch(`${BASE}/backup/import`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, j?.error ?? 'http_error', j?.message ?? `HTTP ${res.status}`);
+    }
+  };
 
   login = (user: string, password: string) => post<SessionUser>('/login', { user, password });
   logout = () => post<void>('/logout');

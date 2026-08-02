@@ -4,7 +4,7 @@ import type { DataProvider } from './provider';
 import { emitEvent } from './events';
 import { ApiError } from './types';
 import type {
-  Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
+  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, SessionUser, Settings, Snapshot,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
@@ -56,6 +56,11 @@ export class MockProvider implements DataProvider {
   private settings: Settings = {
     lang: 'auto', cap_warn_pct: 80, cap_crit_pct: 90, disk_temp_c: 45,
     webhook: '', notify_scrub_errors: true, notify_smart_change: true,
+    backup_enabled: true, backup_freq_hours: 24, backup_retention_days: 3,
+  };
+
+  private backupLast: BackupFile | null = {
+    file: 'app-20260801-030000.db', ts: iso(daysAgo(1, 3)), bytes: 318 * 1024,
   };
 
   private users: UserInfo[] = [
@@ -193,6 +198,31 @@ export class MockProvider implements DataProvider {
   getVersion = async () => { await delay(); return { ...this.version }; };
   getSettings = async () => { await delay(); return { ...this.settings }; };
   putSettings = async (s: Settings) => { await delay(); this.settings = { ...s }; };
+
+  getBackupStatus = async (): Promise<BackupStatus> => {
+    await delay();
+    const s = this.settings;
+    return {
+      enabled: s.backup_enabled,
+      freq_hours: s.backup_freq_hours,
+      retention_days: s.backup_retention_days,
+      running: false,
+      last: this.backupLast,
+      next_run: s.backup_enabled && this.backupLast
+        ? iso(new Date(new Date(this.backupLast.ts).getTime() + s.backup_freq_hours * 3600e3))
+        : null,
+      dir: '/var/lib/easyzfs/backups',
+    };
+  };
+  runBackup = async (): Promise<BackupFile> => {
+    await delay(600);
+    this.backupLast = {
+      file: `app-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-000000.db`,
+      ts: iso(new Date()), bytes: 320 * 1024,
+    };
+    return { ...this.backupLast };
+  };
+  importBackup = async (_f: File) => { await delay(800); };
   getAlerts = async () => { await delay(); return this.alerts.map((a) => ({ ...a })); };
   ackAlert = async (id: number) => {
     await delay();
