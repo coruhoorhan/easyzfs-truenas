@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -158,18 +159,29 @@ func main() {
 }
 
 // spaHandler sirve la SPA embebida: fichero si existe, index.html si no
-// (fallback de rutas del cliente). Sin caché para index.html; estáticos con
-// caché larga (Vite les pone hash en el nombre).
+// (fallback de rutas del cliente). Cache-Control: index.html y sw.js siempre
+// se revalidan (no-cache) para que un despliegue nuevo se vea al recargar;
+// /assets/* es inmutable (Vite les pone hash en el nombre — si el hash cambia,
+// es un fichero distinto); el resto (iconos, manifest) con caché corta.
 func spaHandler(fsys http.FileSystem) http.Handler {
 	fileSrv := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
+		switch {
+		case path == "/" || path == "/index.html" || path == "/sw.js":
+			w.Header().Set("Cache-Control", "no-cache")
+		case strings.HasPrefix(path, "/assets/"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		default:
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		}
 		if path == "/" {
 			path = "/index.html"
 		}
 		f, err := fsys.Open(path)
 		if err != nil {
 			// fallback SPA: cualquier ruta no encontrada devuelve index.html
+			w.Header().Set("Cache-Control", "no-cache")
 			r.URL.Path = "/"
 			fileSrv.ServeHTTP(w, r)
 			return

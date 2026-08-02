@@ -91,12 +91,14 @@ func (s *Server) Handler() http.Handler {
 	// sesión
 	a.HandleFunc("POST /api/logout", s.logout)
 	a.HandleFunc("GET /api/me", s.me)
+	a.HandleFunc("PUT /api/me/language", s.putMyLanguage)
 	a.HandleFunc("POST /api/me/password", s.changeMyPassword)
 	// usuarios (admin)
 	a.HandleFunc("GET /api/users", s.auth.RequireAdmin(s.listUsers))
 	a.HandleFunc("POST /api/users", s.auth.RequireAdmin(s.createUser))
 	a.HandleFunc("DELETE /api/users/{name}", s.auth.RequireAdmin(s.deleteUser))
 	a.HandleFunc("POST /api/users/{name}/password", s.auth.RequireAdmin(s.setUserPassword))
+	a.HandleFunc("PUT /api/users/{name}/language", s.auth.RequireAdmin(s.setUserLanguage))
 	// sistema
 	a.HandleFunc("GET /api/version", s.getVersion)
 	a.HandleFunc("GET /api/settings", s.getSettings)

@@ -5,7 +5,7 @@ import { emitEvent } from './events';
 import { ApiError } from './types';
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushAlertTipo, SessionUser, Settings, Snapshot,
+  Dataset, Disk, Job, JobHistoryItem, Lang, Overview, Pool, PushAlertTipo, SessionUser, Settings, Snapshot,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
@@ -59,8 +59,8 @@ export class MockProvider implements DataProvider {
   };
 
   private users: UserInfo[] = [
-    { user: 'admin', role: 'admin', last_login: iso(daysAgo(0, 8)), sessions: 2 },
-    { user: 'maria', role: 'user', last_login: iso(daysAgo(1, 21)), sessions: 1 },
+    { user: 'admin', role: 'admin', language: 'auto', last_login: iso(daysAgo(0, 8)), sessions: 2 },
+    { user: 'maria', role: 'user', language: 'es', last_login: iso(daysAgo(1, 21)), sessions: 1 },
   ];
 
   private pools: Pool[] = [
@@ -231,13 +231,14 @@ export class MockProvider implements DataProvider {
     return { ...this.session };
   };
   setMyPassword = async (_c: string, _n: string) => { await delay(); };
+  setMyLanguage = async (_l: Lang) => { await delay(); };
 
   // ---- Usuarios ----
   getUsers = async () => { await delay(); return this.users.map((u) => ({ ...u })); };
   createUser = async (r: CreateUserReq) => {
     await delay();
     if (this.users.some((u) => u.user === r.user)) throw new ApiError(409, 'conflict', 'El usuario ya existe');
-    this.users.push({ user: r.user, role: r.role, last_login: iso(new Date()), sessions: 0 });
+    this.users.push({ user: r.user, role: r.role, language: 'auto', last_login: iso(new Date()), sessions: 0 });
   };
   deleteUser = async (name: string, confirm: string) => {
     await delay();
@@ -246,6 +247,10 @@ export class MockProvider implements DataProvider {
     this.users = this.users.filter((u) => u.user !== name);
   };
   setUserPassword = async (_n: string, _p: string, _c: boolean) => { await delay(); };
+  setUserLanguage = async (name: string, language: Lang) => {
+    await delay();
+    this.users = this.users.map((u) => (u.user === name ? { ...u, language } : u));
+  };
 
   // ---- Pools ----
   getPools = async () => { await delay(); return this.pools.map((p) => ({ ...p, vdevs: p.vdevs.map((v) => ({ ...v })), scrub: { ...p.scrub } })); };

@@ -1,37 +1,45 @@
-// Shell principal: sidebar (desktop) / bottom-nav (móvil), header con alertas y tema,
-// barra de modo demo y vistas con code-splitting (React.lazy).
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+// Shell principal: sidebar colapsable (desktop) / bottom-nav (móvil), header
+// con alertas y tema, barras de modo demo y de versión nueva, y vistas con
+// code-splitting tolerante a despliegues (lazyRetry + ErrorBoundary).
+import { Suspense, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { AppProvider, useApp, alertTargetView } from './ui/store';
 import type { ViewId } from './ui/store';
 import { ModalProvider, ModalHost } from './components/ModalHost';
-import { Logo, IconHome, IconPool, IconData, IconSnap, IconTask, IconDisk, IconGear, IconBell, IconMoon, IconSun, IconChev } from './components/icons';
+import { Logo, IconHome, IconPool, IconData, IconSnap, IconTask, IconDisk, IconGear, IconBell, IconMoon, IconSun, IconChev, IconFoldLeft, IconFoldRight, IconUser } from './components/icons';
 import { Spinner } from './components/ui';
+import ErrorBoundary from './components/ErrorBoundary';
 import { getProvider } from './data';
 import { subscribeEvents } from './data/events';
 import { timeAgo } from './ui/format';
 import { toggleTheme } from './ui/theme';
+import { lazyRetry } from './ui/lazyRetry';
+import { useUpdateAvailable } from './ui/updatecheck';
 import type { Alert } from './data/types';
 import Login from './views/Login';
 
-// Code-splitting por vista
-const Dashboard = lazy(() => import('./views/Dashboard'));
-const Pools = lazy(() => import('./views/Pools'));
-const Datasets = lazy(() => import('./views/Datasets'));
-const Snapshots = lazy(() => import('./views/Snapshots'));
-const Tasks = lazy(() => import('./views/Tasks'));
-const Disks = lazy(() => import('./views/Disks'));
-const Settings = lazy(() => import('./views/Settings'));
+// Code-splitting por vista (lazyRetry: si el chunk ya no existe tras un
+// despliegue, recarga una vez en vez de quedarse en pantalla negra)
+const Dashboard = lazyRetry(() => import('./views/Dashboard'));
+const Pools = lazyRetry(() => import('./views/Pools'));
+const Datasets = lazyRetry(() => import('./views/Datasets'));
+const Snapshots = lazyRetry(() => import('./views/Snapshots'));
+const Tasks = lazyRetry(() => import('./views/Tasks'));
+const Disks = lazyRetry(() => import('./views/Disks'));
+const Settings = lazyRetry(() => import('./views/Settings'));
 
-const NAV: { id: ViewId; icon: ComponentType<{ size?: number }>; adminOnly?: boolean }[] = [
+// Nav principal (Ajustes NO va aquí: vive al pie del sidebar, patrón
+// webapp-shell; en la bottom-nav móvil sí es un item más).
+const NAV: { id: ViewId; icon: ComponentType<{ size?: number }> }[] = [
   { id: 'dash', icon: IconHome },
   { id: 'pools', icon: IconPool },
   { id: 'data', icon: IconData },
   { id: 'snaps', icon: IconSnap },
   { id: 'tasks', icon: IconTask },
   { id: 'disks', icon: IconDisk },
-  { id: 'settings', icon: IconGear, adminOnly: true },
 ];
+
+const COLLAPSED_KEY = 'easyzfs-sidebar-collapsed';
 
 // Panel desplegable de alertas (campanita)
 function AlertsPanel({ onClose }: { onClose: () => void }) {
@@ -110,6 +118,17 @@ function Shell() {
   const { t, route, navigate, demo, exitDemo, user, isAdmin, themeEff, ready } = useApp();
   const [showAlerts, setShowAlerts] = useState(false);
   const [hasPending, setHasPending] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
+  const updateAvailable = useUpdateAvailable(ready && !!user && !demo);
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      if (next) localStorage.setItem(COLLAPSED_KEY, '1');
+      else localStorage.removeItem(COLLAPSED_KEY);
+      return next;
+    });
+  };
 
   // Punto indicador si hay alertas sin leer (espera a que el provider esté listo)
   useEffect(() => {
@@ -129,8 +148,7 @@ function Shell() {
   }
   if (!user) return <Login />;
 
-  const navItems = NAV.filter((n) => !n.adminOnly || isAdmin);
-  const active = navItems.some((n) => n.id === route) ? route : 'dash';
+  const active = route;
 
   const view = (() => {
     switch (active) {
@@ -147,28 +165,63 @@ function Shell() {
   return (
     <>
       <div className="app-shell">
-        <aside className="sidebar">
-          <a className="brand" href="#/dash" aria-label={t('brand_home')}>
+        <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+          <a className="brand" href="#/dash" aria-label={t('brand_home')} title={collapsed ? 'EasyZFS' : undefined}>
             <Logo size={30} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em' }}>EasyZFS</div>
-              <div style={{ fontSize: 11, color: 'var(--text2)' }}>{user.user} · {user.role}</div>
-            </div>
+            {!collapsed && (
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em' }}>EasyZFS</div>
+                <div style={{ fontSize: 11, color: 'var(--text2)' }}>{t('brand_sub')}</div>
+              </div>
+            )}
           </a>
           <nav>
-            {navItems.map((n) => {
+            {NAV.map((n) => {
               const Ico = n.icon;
               return (
                 <a key={n.id} href={`#/${n.id}`} className={n.id === active ? 'active' : ''}
-                  aria-current={n.id === active ? 'page' : undefined}>
-                  <Ico />{t(n.id as never)}
+                  aria-current={n.id === active ? 'page' : undefined}
+                  title={collapsed ? t(n.id as never) : undefined}>
+                  <Ico /><span className="nlbl">{t(n.id as never)}</span>
                 </a>
               );
             })}
           </nav>
+          <div className="sidefoot">
+            <button type="button" className={`userblock${active === 'settings' ? ' active' : ''}`}
+              onClick={() => navigate('settings')} title={collapsed ? `${user.user} · ${t('settings' as never)}` : undefined}>
+              <span className="avatar" aria-hidden="true"><IconUser size={16} /></span>
+              {!collapsed && (
+                <span className="ublbl">
+                  <b>{user.user}</b>
+                  <span>{isAdmin ? t('mu_r_admin') : t('mu_r_user')} · {t('s_account')}</span>
+                </span>
+              )}
+            </button>
+            <div className="sideactions">
+              <a href="#/settings" className={active === 'settings' ? 'active' : ''}
+                aria-current={active === 'settings' ? 'page' : undefined}
+                title={collapsed ? t('settings' as never) : undefined}>
+                <IconGear /><span className="nlbl">{t('settings' as never)}</span>
+              </a>
+              <button type="button" className="iconbtn fold" onClick={toggleCollapsed}
+                aria-label={collapsed ? t('a11y_expand') : t('a11y_collapse')}
+                title={collapsed ? t('a11y_expand') : t('a11y_collapse')}>
+                {collapsed ? <IconFoldRight /> : <IconFoldLeft />}
+              </button>
+            </div>
+          </div>
         </aside>
 
         <main className="main">
+          {updateAvailable && (
+            <div className="updatebar" role="status">
+              <span>{t('upd_banner')}</span>
+              <button className="btn sm primary" style={{ marginLeft: 'auto' }} onClick={() => location.reload()}>
+                {t('upd_btn')}
+              </button>
+            </div>
+          )}
           {demo && (
             <div className="demobar" role="status">
               <span className="dot" />
@@ -196,14 +249,16 @@ function Shell() {
             </div>
           </header>
 
-          <Suspense fallback={<Spinner label={t('loading')} />}>
-            {view}
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<Spinner label={t('loading')} />}>
+              {view}
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 
       <nav className="bottomnav" aria-label={t('a11y_mainnav')}>
-        {navItems.map((n) => {
+        {[...NAV, { id: 'settings' as ViewId, icon: IconGear }].map((n) => {
           const Ico = n.icon;
           return (
             <button key={n.id} className={n.id === active ? 'active' : ''} onClick={() => navigate(n.id)}>

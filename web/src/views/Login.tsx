@@ -21,6 +21,18 @@ export default function Login() {
     setBusy(true); setErr('');
     try {
       await login(user.trim(), pass);
+      // Ofrecer al gestor de contraseñas guardar la credencial (regla
+      // webapp-shell: el login SIEMPRE lo ofrece). En SPA el submit no
+      // recarga, así que se fuerza con la Credential Management API.
+      // (PasswordCredential no está en los tipos DOM de este TS → cast)
+      const nav = navigator as Navigator & {
+        credentials?: { store?: (c: unknown) => Promise<void> };
+      };
+      const PC = (window as unknown as { PasswordCredential?: new (d: { id: string; password: string; name: string }) => unknown }).PasswordCredential;
+      if (remember && nav.credentials?.store && PC) {
+        const cred = new PC({ id: user.trim(), password: pass, name: user.trim() });
+        nav.credentials.store(cred).catch(() => { /* el usuario canceló o no soporta */ });
+      }
     } catch (ex) {
       // 401 → credenciales incorrectas; cualquier otro fallo (red, 5xx…) → sin conexión
       setErr(ex instanceof ApiError && ex.status === 401 ? t('login_error') : t('login_no_conn'));

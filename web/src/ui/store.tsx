@@ -9,7 +9,7 @@ import { AUTH_EXPIRED_EVENT, connectSSE, disconnectSSE } from '../data/events';
 import { ApiError } from '../data/types';
 import { initLang, onLangChange, setLangMode, t as translate, getLangMode } from './i18n';
 import type { LangMode, I18nKey } from './i18n';
-import { applyTheme, applyDensity, onThemeChange, startThemeWatcher, effectiveTheme, setThemeMode, getThemeMode } from './theme';
+import { applyTheme, applyDensity, applyReduceMotion, onThemeChange, startThemeWatcher, effectiveTheme, setThemeMode, getThemeMode } from './theme';
 import type { ThemeMode } from './theme';
 
 export type ViewId = 'dash' | 'pools' | 'data' | 'snaps' | 'tasks' | 'disks' | 'settings';
@@ -61,6 +61,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     initLang();
     applyTheme(); // aplica también el acento guardado (depende del tema efectivo)
     applyDensity();
+    applyReduceMotion();
     startThemeWatcher();
     const offLang = onLangChange(() => setLangModeState(getLangMode()));
     const offTheme = onThemeChange(() => {
@@ -71,7 +72,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { demo: d } = await initProvider();
       setDemo(d);
       try {
-        setUser(await getProvider().me());
+        const me = await getProvider().me();
+        setUser(me);
+        // Idioma: la BD es la fuente de verdad (users.language); si difiere
+        // del modo guardado en este navegador (caché), manda la BD.
+        if (me.language && me.language !== getLangMode()) setLangMode(me.language);
         // Re-sincronización silenciosa de la suscripción push (idioma/origin
         // actuales; upsert por endpoint). Nunca en demo (sin push real).
         if (!d) void syncPushSubscription();
@@ -100,6 +105,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (u: string, p: string) => {
     const s = await getProvider().login(u, p);
     setUser(s);
+    // El idioma de la BD manda sobre el caché local del navegador
+    if (s.language && s.language !== getLangMode()) setLangMode(s.language);
     connectSSE(); // reabre el stream con la sesión recién creada
     void syncPushSubscription(); // re-sincroniza la suscripción push (silencioso)
   }, []);
@@ -150,7 +157,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [langMode],
   );
 
-  const setLang = useCallback((m: LangMode) => setLangMode(m), []);
+  const setLang = useCallback((m: LangMode) => {
+    setLangMode(m);
+    // Espejo en BD (fuente de verdad); silencioso si no hay sesión real
+    const s = stateRef.current;
+    if (s.user && !s.demo) getProvider().setMyLanguage(m).catch(() => {});
+  }, []);
   const setTheme = useCallback((m: ThemeMode) => setThemeMode(m), []);
   const refresh = useCallback(() => setDataVersion((v) => v + 1), []);
 

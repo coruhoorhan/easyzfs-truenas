@@ -18,6 +18,7 @@ import (
 type User struct {
 	Name      string     `json:"user"`
 	Role      string     `json:"role"` // "admin" | "user"
+	Language  string     `json:"language"` // "auto" | "es" | "en"
 	LastLogin *time.Time `json:"last_login"`
 	Sessions  int        `json:"sessions"`
 }
@@ -28,6 +29,7 @@ var (
 	ErrNotFound      = errors.New("usuario no encontrado")
 	ErrInvalidName   = errors.New("nombre de usuario inválido")
 	ErrInvalidRole   = errors.New("rol inválido (admin|user)")
+	ErrInvalidLang   = errors.New("idioma inválido (auto|es|en)")
 	ErrWeakPassword  = errors.New("la contraseña debe tener al menos 8 caracteres")
 	ErrBadCredential = errors.New("credenciales incorrectas")
 )
@@ -126,7 +128,7 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 // List devuelve todos los usuarios con su nº de sesiones activas.
 func (s *Store) List(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.user, u.role, u.last_login,
+		SELECT u.user, u.role, u.language, u.last_login,
 		       (SELECT COUNT(*) FROM sessions se WHERE se.user=u.user AND se.expires_at > datetime('now'))
 		FROM users u ORDER BY u.user`)
 	if err != nil {
@@ -137,7 +139,7 @@ func (s *Store) List(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var last sql.NullString
-		if err := rows.Scan(&u.Name, &u.Role, &last, &u.Sessions); err != nil {
+		if err := rows.Scan(&u.Name, &u.Role, &u.Language, &last, &u.Sessions); err != nil {
 			return nil, err
 		}
 		if last.Valid && last.String != "" {
@@ -154,8 +156,8 @@ func (s *Store) Get(ctx context.Context, name string) (*User, error) {
 	var u User
 	var last sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		"SELECT user, role, last_login FROM users WHERE user=?", name).
-		Scan(&u.Name, &u.Role, &last)
+		"SELECT user, role, language, last_login FROM users WHERE user=?", name).
+		Scan(&u.Name, &u.Role, &u.Language, &last)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -219,6 +221,23 @@ func (s *Store) RoleOf(ctx context.Context, name string) (string, error) {
 		return "", ErrNotFound
 	}
 	return role, err
+}
+
+// SetLanguage fija el idioma del usuario ('auto'|'es'|'en').
+func (s *Store) SetLanguage(ctx context.Context, name, lang string) error {
+	if lang != "auto" && lang != "es" && lang != "en" {
+		return ErrInvalidLang
+	}
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE users SET language=? WHERE user=?", lang, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // randomPassword genera una contraseña aleatoria legible (18 chars base64url).

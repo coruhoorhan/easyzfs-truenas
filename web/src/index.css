@@ -61,6 +61,54 @@ aside.sidebar nav a{
 }
 aside.sidebar nav a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
 aside.sidebar nav a:hover:not(.active){background:var(--surface2)}
+
+/* pie del sidebar (patrón webapp-shell): usuario clicable + ajustes + plegar */
+.sidefoot{margin-top:auto;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.userblock{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;width:100%;
+  border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;
+}
+.userblock:hover{background:var(--surface2)}
+.userblock.active{background:var(--accent-soft);color:var(--accent)}
+.userblock .avatar{
+  width:30px;height:30px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);
+}
+.userblock .ublbl{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.userblock .ublbl b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.userblock .ublbl span{font-size:11px;color:var(--text2)}
+.sideactions{display:flex;align-items:center;gap:6px}
+.sideactions a{
+  flex:1;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:10px;
+  color:var(--text2);text-decoration:none;font-size:14.5px;font-weight:500;
+}
+.sideactions a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.sideactions a:hover:not(.active){background:var(--surface2)}
+.iconbtn.fold{flex-shrink:0;border:1px solid var(--border)}
+
+/* sidebar colapsado a raíl de iconos (64px, manual; persiste en localStorage) */
+aside.sidebar.collapsed{width:64px;padding:22px 8px;align-items:center}
+aside.sidebar.collapsed .brand{padding:4px 4px 22px;justify-content:center}
+aside.sidebar.collapsed nav{width:100%}
+aside.sidebar.collapsed nav a{justify-content:center;padding:10px 0;gap:0}
+aside.sidebar.collapsed .nlbl{display:none}
+aside.sidebar.collapsed .sidefoot{width:100%;align-items:center}
+aside.sidebar.collapsed .userblock{justify-content:center;padding:8px 0}
+aside.sidebar.collapsed .sideactions{flex-direction:column;align-items:stretch;width:100%}
+aside.sidebar.collapsed .sideactions a{justify-content:center;padding:9px 0;flex:none}
+
+/* banner de versión nueva desplegada (updatecheck) */
+.updatebar{
+  display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;
+  background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);
+  border-radius:12px;font-size:13.5px;font-weight:600;flex-wrap:wrap;
+}
+
+/* cabecera de zona de administración (tinte sutil, sin banner agresivo) */
+.zonehead{
+  font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;
+  color:var(--warn);margin:26px 0 4px;padding-left:2px;
+}
 main.main{flex:1;padding:20px 18px calc(86px + env(safe-area-inset-bottom));min-width:0}
 
 /* ---------- bottom nav (móvil) ---------- */
@@ -87,7 +135,7 @@ main.main{flex:1;padding:20px 18px calc(86px + env(safe-area-inset-bottom));min-
 .bottomnav button.active{color:var(--accent)}
 .bottomnav svg{width:22px;height:22px}
 /* Desktop: sidebar visible, bottom-nav oculta (después de las reglas base por especificidad) */
-@media(min-width:860px){ aside.sidebar{display:block} main.main{padding:28px 34px 40px} .bottomnav{display:none} }
+@media(min-width:860px){ aside.sidebar{display:flex;flex-direction:column} main.main{padding:28px 34px 40px} .bottomnav{display:none} }
 
 /* ---------- header ---------- */
 header.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px}
@@ -417,7 +465,9 @@ svg{flex-shrink:0}
 .checklabel{display:flex;align-items:center;gap:9px;text-transform:none;font-size:13.5px;font-weight:500;color:var(--text)}
 .checklabel input{width:auto}
 
-/* movimiento reducido: desactiva TODAS las transiciones y animaciones */
+/* movimiento reducido: desactiva TODAS las transiciones y animaciones
+   (por media query del SO o por el switch de Ajustes → clase en <html>) */
 @media(prefers-reduced-motion:reduce){
   *{transition:none!important;animation:none!important}
 }
+html.reduce-motion *{transition:none!important;animation:none!important}
