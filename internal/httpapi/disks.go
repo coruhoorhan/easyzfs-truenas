@@ -69,7 +69,6 @@ func mountedDisks(ctx context.Context) map[string]bool {
 	return m
 }
 
-
 // powerOff — POST /api/disks/{dev}/poweroff → 202.
 // Solo discos libres: vetado si es miembro de un pool o tiene montajes activos.
 func (s *Server) powerOff(w http.ResponseWriter, r *http.Request) {

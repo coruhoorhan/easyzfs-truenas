@@ -444,4 +444,9 @@ export class MockProvider implements DataProvider {
     if (d.in_use) throw new ApiError(409, 'dev_mounted', 'el disco tiene particiones montadas o swap activo');
     this.history.unshift({ ts: iso(new Date()), tipo: 'poweroff', target: dev, ok: true, detail: 'disco apagado' });
   };
+
+  // ---- Notificaciones push (demo: simula OK SIN push real — regla demo) ----
+  getPushVapidKey = async () => { await delay(); return { publicKey: '' }; };
+  pushSubscribe = async () => { await delay(); };
+  pushUnsubscribe = async () => { await delay(); };
 }

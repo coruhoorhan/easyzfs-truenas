@@ -8,6 +8,8 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -15,6 +17,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
 
 	"easyzfs/internal/actions"
 	"easyzfs/internal/alerts"
@@ -24,6 +28,7 @@ import (
 	"easyzfs/internal/db"
 	"easyzfs/internal/httpapi"
 	"easyzfs/internal/hub"
+	"easyzfs/internal/push"
 	"easyzfs/internal/scheduler"
 	"easyzfs/internal/settings"
 	"easyzfs/internal/users"
@@ -39,6 +44,19 @@ var (
 var distFS embed.FS
 
 func main() {
+	// -generate-vapid: imprime un par de claves VAPID para /etc/easyzfs/env
+	// (lo usa deploy/install.sh) y sale 0. No toca BD ni configuración.
+	genVapid := flag.Bool("generate-vapid", false, "genera un par de claves VAPID (Web Push) y sale")
+	flag.Parse()
+	if *genVapid {
+		priv, pub, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			log.Fatalf("generate-vapid: %v", err)
+		}
+		fmt.Printf("VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n", pub, priv)
+		return
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -65,6 +83,10 @@ func main() {
 	h := hub.NewHub()
 	alerter := alerts.New(database, h, stStore)
 
+	// Sender Web Push: inerte si faltan claves VAPID; en demo nunca envía.
+	pushSender := push.New(cfg, database, h)
+	alerter.SetPush(pushSender)
+
 	// Colectores (reales o mock) + providers para los handlers.
 	providers, cols := collectors.Build(cfg, database, h, alerter)
 
@@ -84,7 +106,7 @@ func main() {
 		Cfg: cfg, DB: database, Auth: auth.NewManager(database, cfg.SessionSecret, cfg.CookieSecure),
 		Users: userStore, Alerter: alerter, Settings: stStore,
 		Pools: providers.Pools, Disks: providers.Disks, SysTimers: providers.SysTimers,
-		Actions: act, Sched: sched, Jobs: jobStore, Hub: h,
+		Actions: act, Sched: sched, Jobs: jobStore, Hub: h, Push: pushSender,
 		Version: version, Build: build, ZFSVersion: zfsVersion,
 	})
 

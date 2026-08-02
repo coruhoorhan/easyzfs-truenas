@@ -147,6 +147,29 @@ añade además `proxy_buffering off` para `/api/events`.
 - `MOCK=1` — mismos datos mock pero las mutaciones intentan ejecutar los comandos
   reales (fallarán si no hay ZFS). Para desarrollo del front sin host ZFS.
 
+## Notificaciones push
+
+EasyZFS puede enviar alertas **Web Push** al móvil/navegador **con la app
+cerrada** (capacidad de pools, pools DEGRADED/FAULTED, scrubs con errores,
+temperatura de discos y avisos SMART). Con la app abierta ya llegan en vivo por
+SSE — el push es solo para dispositivos con la app cerrada, salvo las alertas
+críticas, que avisan siempre.
+
+- **Claves VAPID**: el instalador las genera automáticamente en la primera
+  instalación (`easyzfs -generate-vapid`) y guarda `VAPID_PUBLIC_KEY`,
+  `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT` en `/etc/easyzfs/env`. Las
+  reinstalaciones conservan las claves existentes (regenerarlas invalidaría
+  todas las suscripciones). Sin claves el servidor arranca con el push
+  desactivado.
+- **HTTPS obligatorio**: Web Push solo funciona en contextos seguros.
+  `localhost` vale tal cual; para acceso remoto pon EasyZFS tras Nginx Proxy
+  Manager con SSL.
+- **iOS/iPadOS**: el push requiere la PWA instalada en la pantalla de inicio
+  (Compartir → «Añadir a pantalla de inicio») y activar después las alertas
+  en Ajustes.
+- Se activan por dispositivo en **Ajustes → Notificaciones push** (botón
+  «Activar alertas»; el permiso del navegador solo se pide tras ese clic).
+
 ## Configuración (env)
 
 | Var | Defecto | Descripción |
@@ -160,6 +183,9 @@ añade además `proxy_buffering off` para `/api/events`.
 | `COOKIE_SECURE` | — | `1` = cookie Secure (tras proxy TLS) |
 | `EASYZFS_SUDO` | auto | `1`/`0` fuerza o desactiva `sudo -n` en zpool/zfs/smartctl/lsblk/crontab |
 | `RETENTION_DAYS` | `30` | Retención de series (purga diaria 03:30) |
+| `VAPID_PUBLIC_KEY` | — | Clave pública Web Push (la genera el instalador) |
+| `VAPID_PRIVATE_KEY` | — | Clave privada Web Push (solo servidor; sin ella push desactivado) |
+| `VAPID_SUBJECT` | `mailto:easyzfs@localhost` | Contacto VAPID (`mailto:`, obligado por Safari) |
 
 ## Retención y mantenimiento
 

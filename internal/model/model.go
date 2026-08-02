@@ -18,8 +18,8 @@ type ScrubInfo struct {
 // Vdev — dispositivo de un pool (contrato: pools[].vdevs[]).
 type Vdev struct {
 	Dev       string  `json:"dev"`
-	Path      string  `json:"path,omitempty"`      // ruta real resuelta ('/dev/sda1'); "" si no resoluble (p.ej. disco retirado)
-	Role      string  `json:"role"`                // "stripe" | "mirror" | "raidz1" | "raidz2" | "raidz3" | "spare" | "log" | "cache"
+	Path      string  `json:"path,omitempty"` // ruta real resuelta ('/dev/sda1'); "" si no resoluble (p.ej. disco retirado)
+	Role      string  `json:"role"`           // "stripe" | "mirror" | "raidz1" | "raidz2" | "raidz3" | "spare" | "log" | "cache"
 	Status    string  `json:"status"`
 	TempC     float64 `json:"temp_c"`
 	Replacing bool    `json:"replacing,omitempty"` // hijo de un vdev 'replacing-N' (sustitución en curso)
@@ -77,9 +77,9 @@ type Disk struct {
 	SmartDetail string   `json:"smart_detail"`
 	// Contadores SMART estructurados (la UI los traduce a texto humano;
 	// SmartDetail queda como forma cruda de respaldo).
-	ReallocSectors int64 `json:"realloc_sectors,omitempty"`
-	PendingSectors int64 `json:"pending_sectors,omitempty"`
-	NvmeWarn       int   `json:"nvme_warn,omitempty"`
+	ReallocSectors int64  `json:"realloc_sectors,omitempty"`
+	PendingSectors int64  `json:"pending_sectors,omitempty"`
+	NvmeWarn       int    `json:"nvme_warn,omitempty"`
 	Pool           string `json:"pool"`
 	InUse          bool   `json:"in_use,omitempty"` // particiones montadas o swap activo (no elegible como "libre")
 	Hours          uint64 `json:"hours"`
@@ -89,13 +89,13 @@ type Disk struct {
 // en el sistema (systemd timers y cron), solo lectura. next_run/last_run son
 // cadenas de visualización ("" si el sistema no las conoce: cron no las tiene).
 type SysTimer struct {
-	Source   string `json:"source"`   // "systemd" | "cron"
-	Name     string `json:"name"`     // unidad .timer o nombre derivado del comando
-	Schedule string `json:"schedule"` // expr. cron ("0 2 * * *", "@daily") o "" si no se conoce
-	NextRun  string `json:"next_run"` // systemd: NEXT; cron: ""
-	LastRun  string `json:"last_run"` // systemd: LAST; cron: ""
-	Command  string `json:"command"`  // unidad activada (systemd) o comando (cron)
-	Origin   string `json:"origin"`   // "systemctl list-timers", "crontab", "/etc/crontab", "/etc/cron.d/<f>", "/etc/cron.daily"…
+	Source   string `json:"source"`             // "systemd" | "cron"
+	Name     string `json:"name"`               // unidad .timer o nombre derivado del comando
+	Schedule string `json:"schedule"`           // expr. cron ("0 2 * * *", "@daily") o "" si no se conoce
+	NextRun  string `json:"next_run"`           // systemd: NEXT; cron: ""
+	LastRun  string `json:"last_run"`           // systemd: LAST; cron: ""
+	Command  string `json:"command"`            // unidad activada (systemd) o comando (cron)
+	Origin   string `json:"origin"`             // "systemctl list-timers", "crontab", "/etc/crontab", "/etc/cron.d/<f>", "/etc/cron.daily"…
 	Line     int    `json:"line,omitempty"`     // cron: nº de línea (1-based) en el fichero origen
 	Editable bool   `json:"editable,omitempty"` // cron de fichero (/etc) o timer systemd → se puede editar/migrar
 }

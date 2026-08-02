@@ -19,6 +19,25 @@ var migrations = []string{
 	schemaV1,
 	// v2: alertas con objetivo navegable (la UI enlaza a la vista afectada).
 	`ALTER TABLE alerts ADD COLUMN target TEXT NOT NULL DEFAULT '';`,
+	// v3: suscripciones Web Push (una fila por dispositivo/navegador; el
+	// endpoint es una capability URL = secreto, UNIQUE para upsert).
+	// users tiene PK TEXT (user), de ahí el tipo de user_id.
+	`CREATE TABLE IF NOT EXISTS push_subscriptions (
+	  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	  user_id    TEXT NOT NULL REFERENCES users(user) ON DELETE CASCADE,
+	  endpoint   TEXT NOT NULL UNIQUE,
+	  p256dh     TEXT NOT NULL,
+	  auth       TEXT NOT NULL,
+	  lang       TEXT NOT NULL DEFAULT 'es',
+	  user_agent TEXT,
+	  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);`,
+	// v4: índice por usuario para los envíos y el borrado en cascada.
+	`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);`,
+	// v5: alertas con metadatos estructurados (JSON {"kind":"...","params":{...}})
+	// para el catálogo i18n del sender push; message sigue en español (compat UI).
+	`ALTER TABLE alerts ADD COLUMN meta TEXT NOT NULL DEFAULT '';`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

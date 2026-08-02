@@ -1,8 +1,8 @@
 // Interfaz DataProvider: abstrae el origen de datos (HTTP real o mock demo).
 import type {
   Alert, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
-  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, SessionUser, Settings, SnapshotGroup,
-  SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
+  Dataset, Disk, Job, JobHistoryItem, Overview, Pool, PushSubscriptionJSON, SessionUser, Settings,
+  SnapshotGroup, SystemTimer, UpdateJobReq, UserInfo, VersionInfo,
 } from './types';
 
 export interface DataProvider {
@@ -65,4 +65,9 @@ export interface DataProvider {
   getDisks(): Promise<Disk[]>;
   smartTest(dev: string, type: 'short' | 'long'): Promise<void>;
   poweroffDisk(dev: string): Promise<void>;
+
+  // Notificaciones push (Web Push; 503 push_not_configured sin claves VAPID)
+  getPushVapidKey(): Promise<{ publicKey: string }>;
+  pushSubscribe(sub: PushSubscriptionJSON, lang: 'es' | 'en'): Promise<void>;
+  pushUnsubscribe(endpoint: string): Promise<void>;
 }

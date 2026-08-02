@@ -19,6 +19,17 @@ type Config struct {
 	AdminPassword string // ADMIN_PASSWORD para bootstrap del primer admin
 	CookieSecure  bool   // COOKIE_SECURE=1 → atributo Secure (tras proxy TLS)
 	RetentionDays int    // RETENTION_DAYS series (def 30)
+
+	VAPIDPublicKey  string // VAPID_PUBLIC_KEY (Web Push; la genera el instalador)
+	VAPIDPrivateKey string // VAPID_PRIVATE_KEY (solo servidor; si falta, push desactivado)
+	VAPIDSubject    string // VAPID_SUBJECT (def "mailto:easyzfs@localhost"; siempre mailto:)
+}
+
+// PushEnabled — Web Push operativo: hacen falta AMBAS claves VAPID.
+// Sin ellas el servidor arranca igual (aviso en log) y los endpoints de push
+// devuelven 503 push_not_configured (el instalador las autoconfigura).
+func (c *Config) PushEnabled() bool {
+	return c.VAPIDPublicKey != "" && c.VAPIDPrivateKey != ""
 }
 
 // Load lee y valida la configuración. No falla: valores por defecto sensatos + avisos.
@@ -31,6 +42,10 @@ func Load() *Config {
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		CookieSecure:  envBool("COOKIE_SECURE"),
 		RetentionDays: envInt("RETENTION_DAYS", 30),
+
+		VAPIDPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
+		VAPIDPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
+		VAPIDSubject:    env("VAPID_SUBJECT", "mailto:easyzfs@localhost"),
 	}
 	if cfg.Demo {
 		cfg.Mock = true // demo implica colectores mock
@@ -46,6 +61,15 @@ func Load() *Config {
 	} else {
 		sum := sha256.Sum256([]byte(secret))
 		cfg.SessionSecret = sum[:]
+	}
+	// Push es opcional: sin clave privada NO se sale; se desactiva con aviso
+	// (deploy/install.sh la autoconfigura con `-generate-vapid`).
+	if cfg.VAPIDPrivateKey == "" {
+		if cfg.VAPIDPublicKey != "" {
+			log.Println("aviso: VAPID_PUBLIC_KEY sin VAPID_PRIVATE_KEY; notificaciones push desactivadas")
+		} else {
+			log.Println("aviso: claves VAPID no configuradas; notificaciones push desactivadas (deploy/install.sh las genera)")
+		}
 	}
 	return cfg
 }

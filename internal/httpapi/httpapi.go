@@ -18,6 +18,7 @@ import (
 	"easyzfs/internal/collectors"
 	"easyzfs/internal/config"
 	"easyzfs/internal/hub"
+	"easyzfs/internal/push"
 	"easyzfs/internal/scheduler"
 	"easyzfs/internal/settings"
 	"easyzfs/internal/users"
@@ -38,6 +39,7 @@ type Server struct {
 	sched      *scheduler.Scheduler
 	jstore     *scheduler.Store
 	h          *hub.Hub
+	push       *push.Sender
 	started    time.Time
 	version    string
 	build      string
@@ -61,6 +63,7 @@ type Deps struct {
 	Sched      *scheduler.Scheduler
 	Jobs       *scheduler.Store
 	Hub        *hub.Hub
+	Push       *push.Sender
 	Version    string
 	Build      string
 	ZFSVersion string
@@ -72,7 +75,7 @@ func NewServer(d Deps) *Server {
 		cfg: d.Cfg, db: d.DB, auth: d.Auth, users: d.Users,
 		alerter: d.Alerter, settings: d.Settings,
 		pools: d.Pools, disks: d.Disks, sysTimers: d.SysTimers,
-		act: d.Actions, sched: d.Sched, jstore: d.Jobs, h: d.Hub,
+		act: d.Actions, sched: d.Sched, jstore: d.Jobs, h: d.Hub, push: d.Push,
 		started: time.Now(), version: d.Version, build: d.Build, zfsVersion: d.ZFSVersion,
 		loginLimiter: newLoginLimiter(),
 	}
@@ -134,8 +137,14 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("GET /api/disks", s.listDisks)
 	a.HandleFunc("POST /api/disks/{dev}/smart-test", s.auth.RequireAdmin(s.smartTest))
 	a.HandleFunc("POST /api/disks/{dev}/poweroff", s.auth.RequireAdmin(s.powerOff))
-	// SSE
-	a.Handle("GET /api/events", s.h)
+	// notificaciones push (Web Push; 503 push_not_configured sin claves VAPID)
+	a.HandleFunc("GET /api/push/vapid-public-key", s.getPushVapidKey)
+	a.HandleFunc("POST /api/push/subscribe", s.postPushSubscribe)
+	a.HandleFunc("DELETE /api/push/unsubscribe", s.deletePushUnsubscribe)
+	// SSE (con el usuario de la sesión para la regla no-duplicar push/SSE)
+	a.Handle("GET /api/events", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.h.ServeSSE(w, r, actor(r))
+	}))
 
 	root.Handle("/api/", s.auth.Middleware(s.demoGuard(a)))
 	return root
