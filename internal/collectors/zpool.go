@@ -26,6 +26,8 @@ const (
 	zpoolInterval   = 30 * time.Second
 	zpoolMaxBackoff = 5 * time.Minute
 	seriesInterval  = 10 * time.Minute // persistir series con esta cadencia mínima
+	historyTTL      = 10 * time.Minute // re-leer 'zpool history' como máximo con esta cadencia
+	historyTimeout  = 90 * time.Second // historiales grandes (bigtank: ~20 s / 275 MB)
 )
 
 // ZpoolCollector — caché de pools, datasets y snapshots.
@@ -34,11 +36,12 @@ type ZpoolCollector struct {
 	h  *hub.Hub
 	al *alerts.Alerter
 
-	mu       sync.RWMutex
-	pools    []model.Pool
-	datasets []model.Dataset
-	snaps    []model.Snapshot
-	history  map[string][]model.HistoryEntry
+	mu        sync.RWMutex
+	pools     []model.Pool
+	datasets  []model.Dataset
+	snaps     []model.Snapshot
+	history   map[string][]model.HistoryEntry
+	historyAt map[string]time.Time
 
 	fails      int
 	stale      bool
@@ -57,6 +60,7 @@ func NewZpoolCollector(d *sql.DB, h *hub.Hub, al *alerts.Alerter) *ZpoolCollecto
 		prevPct:    map[string]int{},
 		lastSeries: map[string]time.Time{},
 		history:    map[string][]model.HistoryEntry{},
+		historyAt:  map[string]time.Time{},
 	}
 }
 
@@ -155,8 +159,15 @@ func (c *ZpoolCollector) collectOnce(ctx context.Context) error {
 	}
 	history := map[string][]model.HistoryEntry{}
 	for i := range pools {
+		// TTL por pool: el historial solo cambia cuando alguien ejecuta
+		// comandos, y en pools grandes la lectura cuesta segundos/cientos
+		// de MB de salida — no tiene sentido en cada tick de 30 s.
+		if time.Since(c.historyAt[pools[i].Name]) < historyTTL {
+			continue
+		}
 		if h := c.fetchHistory(ctx, pools[i].Name); h != nil {
 			history[pools[i].Name] = h
+			c.historyAt[pools[i].Name] = time.Now()
 		}
 	}
 	datasets, err := c.listDatasets(ctx)
@@ -250,14 +261,28 @@ func (c *ZpoolCollector) fillPoolProps(ctx context.Context, p *model.Pool) {
 	}
 }
 
-// fetchHistory — 'zpool history -i <pool>' parseado (nil si falla; se conserva
-// la caché anterior en ese caso).
+// fetchHistory — 'zpool history -i <pool>' parseado EN STREAMING (nil si
+// falla; se conserva la caché anterior). La salida puede ser enorme (275 MB
+// en bigtank): nunca se carga entera en memoria — pipe + ring buffer de
+// historyKeep entradas. Timeout generoso porque el kernel tarda ~20 s en
+// volcar historiales grandes; si expira, nil y se reintenta en otro tick.
 func (c *ZpoolCollector) fetchHistory(ctx context.Context, pool string) []model.HistoryEntry {
-	out, err := executil.Run(ctx, 10*time.Second, "zpool", "history", "-i", pool)
+	cctx, cancel := context.WithTimeout(ctx, historyTimeout)
+	defer cancel()
+	cmd := executil.NewCommand(cctx, "zpool", "history", "-i", pool)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil
 	}
-	return parseHistory(string(out))
+	if err := cmd.Start(); err != nil {
+		return nil
+	}
+	entries := parseHistoryStream(stdout)
+	_ = cmd.Wait()
+	if cctx.Err() != nil {
+		return nil
+	}
+	return entries
 }
 
 // History — caché del historial del pool (más reciente primero).

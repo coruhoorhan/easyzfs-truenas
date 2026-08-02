@@ -3,6 +3,8 @@
 package collectors
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -144,5 +146,30 @@ func TestParseHistory(t *testing.T) {
 	}
 	if entries[3].DurationSec != 14250.80 {
 		t.Errorf("duración scrub = %v", entries[3].DurationSec)
+	}
+}
+
+// Regresión 2-Ago-2026: 'zpool history -i' de un pool grande (bigtank:
+// 2,7 M líneas / 275 MB) disparaba OOM al parsear en memoria. El parser
+// streaming debe recortar a historyKeep sin importar el tamaño de entrada.
+func TestParseHistoryStreamGrande(t *testing.T) {
+	var sb strings.Builder
+	for i := 0; i < 300000; i++ {
+		fmt.Fprintf(&sb, "2026-07-01.03:%02d:%02d zpool scrub tank (10.0s)\n", i/60%60, i%60)
+	}
+	sb.WriteString("2026-08-02.22:00:00 zfs snapshot tank@final\n")
+	entries := parseHistoryStream(strings.NewReader(sb.String()))
+	if len(entries) != historyKeep {
+		t.Fatalf("entradas = %d, esperaba historyKeep=%d", len(entries), historyKeep)
+	}
+	last := entries[len(entries)-1]
+	if last.Command != "zfs snapshot tank@final" {
+		t.Errorf("última = %+v (debía ser la más reciente del stream)", last)
+	}
+	// Orden cronológico conservado tras el ring.
+	for i := 1; i < len(entries); i++ {
+		if entries[i].Ts.Before(entries[i-1].Ts) {
+			t.Fatalf("orden roto en %d: %v < %v", i, entries[i].Ts, entries[i-1].Ts)
+		}
 	}
 }
