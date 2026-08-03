@@ -56,6 +56,7 @@ export interface Settings {
   webhook: string;
   notify_scrub_errors: boolean;
   notify_smart_change: boolean;
+  demo_enabled: boolean;
   backup_enabled: boolean;
   backup_freq_hours: number;
   backup_retention_days: number;

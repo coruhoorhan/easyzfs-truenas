@@ -1,11 +1,14 @@
 // Pantalla de login. El formulario hace SIEMPRE login real (POST /api/login);
 // el modo demo es una sesión de entrada aparte (botón secundario, sin backend).
+// El botón demo solo aparece si el admin lo tiene habilitado
+// (GET /api/public/demo → settings.demo_enabled).
 // El form usa method="post" + name/autocomplete para que el navegador pueda
 // guardar las credenciales; el checkbox "Recordar contraseña" activa o
 // desactiva el autocompletado.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../ui/store';
 import { ApiError } from '../data/types';
+import { fetchDemoEnabled } from '../data/http';
 import { Logo } from '../components/icons';
 
 export default function Login() {
@@ -15,6 +18,13 @@ export default function Login() {
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [demoOk, setDemoOk] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchDemoEnabled().then((ok) => { if (alive) setDemoOk(ok); });
+    return () => { alive = false; };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); // el POST real lo hace la app vía fetch
@@ -82,11 +92,15 @@ export default function Login() {
               </button>
             </div>
           </form>
-          <div className="login-or" aria-hidden="true"><span>{t('login_or')}</span></div>
-          <button type="button" className="btn" style={{ width: '100%', justifyContent: 'center' }}
-            onClick={demo} disabled={busy}>
-            {t('login_demo_btn')}
-          </button>
+          {demoOk && (
+            <>
+              <div className="login-or" aria-hidden="true"><span>{t('login_or')}</span></div>
+              <button type="button" className="btn" style={{ width: '100%', justifyContent: 'center' }}
+                onClick={demo} disabled={busy}>
+                {t('login_demo_btn')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

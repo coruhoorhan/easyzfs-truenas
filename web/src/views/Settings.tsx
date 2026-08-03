@@ -1,11 +1,11 @@
-// Vista Ajustes (layout 2-Ago-2026, spec del usuario):
-//   Fila 1: Apariencia (60%) + Umbrales de salud (40%, admin)
-//   Fila 2: Mi perfil (idioma, nombre, email, contraseña inline) + Push
-//   Zona admin: Usuarios | Copia de seguridad | Notificaciones (horizontal)
-//   Acerca de: ancho completo (4 tiles + instalar PWA + sistema)
-// "Comprobar actualizaciones" NO es un botón: releasecheck.ts comprueba 1
-// vez al día en segundo plano y avisa con un ribbon superior (ver App.tsx);
-// aquí solo queda un icono de estado en la cabecera de la zona admin.
+// Vista Ajustes (layout 3-Ago-2026, spec del usuario):
+//   Fila 1: Datos y umbrales (50%, admin) + Apariencia (50%) — misma altura
+//   Fila 2: Mi sesión + Alertas push (preset todas/importante/ninguna)
+//   Zona admin fila 1: Modo demo | Copia de seguridad | Notificaciones
+//   Zona admin fila 2: Usuarios | Actividad (misma altura, "ver más")
+//   Acerca de: ancho completo (4 tiles + fila PWA/check-updates admin + sistema)
+// "Comprobar actualizaciones": botón manual (admin) + check pasivo semanal
+// (ver ui/releasecheck.ts); el ribbon superior lo muestra App.tsx.
 import { useEffect, useRef, useState } from 'react';
 import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
@@ -14,14 +14,17 @@ import { Seg, Select, Spinner, Switch, Badge } from '../components/ui';
 import { Logo, IconCode, IconList, IconHeart, IconShield, IconDownload, IconCheck, IconSun, IconMoon, IconMonitor, IconUpload } from '../components/icons';
 import { useModal } from '../components/Modal';
 import { usePush } from '../data/push';
-import { useReleaseCheck } from '../ui/releasecheck';
+import { checkReleaseNow, useReleaseCheck } from '../ui/releasecheck';
 import {
   ACCENTS, getAccent, setAccent, getDensity, setDensity,
   getReduceMotion, setReduceMotion,
 } from '../ui/theme';
 import type { AccentId, Density, ThemeMode } from '../ui/theme';
 import type { I18nKey } from '../ui/i18n';
-import type { BackupStatus, PushAlertTipo, PushPreference, Settings as SettingsData } from '../data/types';
+import type {
+  ActivityItem, BackupStatus, Lang, PushAlertTipo, PushPreference,
+  Settings as SettingsData,
+} from '../data/types';
 
 // Evento beforeinstallprompt (PWA), no tipado en lib.dom
 interface BeforeInstallPromptEvent extends Event {
@@ -215,8 +218,87 @@ function BackupCard({ settings, onSave }: {
   );
 }
 
-// Subsección de configuración de alertas (visible con push activado): switches
-// por tipo + horario silencioso. Las críticas siempre llegan (texto visible).
+// Tarjeta "Actividad" (zona admin): registro de auditoría en la misma fila
+// que Usuarios, misma altura. Muestra las primeras entradas y "Ver más"
+// (GET /api/activity con límite mayor) si hay más.
+function ActivityCard() {
+  const { t } = useApp();
+  const [items, setItems] = useState<ActivityItem[] | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    getProvider().getActivity(30)
+      .then((a) => alive && setItems(a)).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const show = items ?? [];
+  const visible = expanded ? show.slice(0, 30) : show.slice(0, 8);
+
+  const loadMore = () => {
+    setExpanded(true);
+    if (show.length >= 30) {
+      setLoading(true); setErr('');
+      getProvider().getActivity(200)
+        .then((a) => { setItems(a); setLoading(false); })
+        .catch((e) => { setErr(errorMessage(e, t)); setLoading(false); });
+    }
+  };
+
+  return (
+    <div className="card pad admin-card">
+      <h3 className="cardtitle">{t('s_activity')}</h3>
+      <p className="muted">{t('s_activity_d')}</p>
+      {items === null && <p className="muted">{t('loading')}</p>}
+      {items && items.length === 0 && <div className="empty">{t('empty')}</div>}
+      <div>
+        {visible.map((a, i) => (
+          <div className="rowitem" key={i}>
+            <div className="grow">
+              <div className="t1" style={{ fontSize: 13.5 }}>{a.text}</div>
+              <div className="t2">{a.detail}</div>
+            </div>
+            <span style={{ fontSize: 11.5, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{timeAgo(a.ts, t)}</span>
+          </div>
+        ))}
+      </div>
+      {show.length > 8 && (
+        <div style={{ marginTop: 10 }}>
+          <button className="btn sm" disabled={loading}
+            onClick={() => (expanded ? setExpanded(false) : loadMore())}>
+            {expanded ? t('s_activity_less') : (loading ? t('loading') : t('s_activity_more'))}
+          </button>
+        </div>
+      )}
+      {err && <p className="form-err" role="alert" style={{ marginTop: 8 }}>{err}</p>}
+    </div>
+  );
+}
+
+// Subsección de configuración de alertas (visible con push activado): preset
+// rápido (Todas / Solo importantes / Ninguna) + switches por tipo + horario
+// silencioso. Las críticas siempre llegan (texto visible).
+//
+// Semántica del preset (las crit atraviesan las preferencias en el backend):
+//   - Todas: todos los tipos activados.
+//   - Solo importantes: solo integridad de datos/salud de hardware
+//     (pool_status, scrub_errors, smart_status); se desactivan los avisos
+//     de capacidad y temperatura.
+//   - Ninguna: todo desactivado — solo llegan las críticas.
+const IMPORTANTES: PushAlertTipo[] = ['pool_status', 'scrub_errors', 'smart_status'];
+type PushLevel = 'all' | 'important' | 'none';
+
+function deriveLevel(prefs: PushPreference[]): PushLevel | 'custom' {
+  const on = new Set(prefs.filter((p) => p.enabled).map((p) => p.tipo));
+  if (on.size === prefs.length) return 'all';
+  if (on.size === 0) return 'none';
+  if (on.size === IMPORTANTES.length && IMPORTANTES.every((k) => on.has(k))) return 'important';
+  return 'custom';
+}
+
 function PushPrefs() {
   const { t } = useApp();
   const [prefs, setPrefs] = useState<PushPreference[] | null>(null);
@@ -241,6 +323,24 @@ function PushPrefs() {
     getProvider().putPushPreference(tipo, enabled).catch((e) => setErr(errorMessage(e, t)));
   };
 
+  // Aplica un preset: un PUT por cada tipo que cambie (optimista).
+  const applyLevel = (level: PushLevel) => {
+    if (!prefs) return;
+    setErr('');
+    const next = prefs.map((p) => ({
+      ...p,
+      enabled: level === 'all' ? true
+        : level === 'none' ? false
+        : IMPORTANTES.includes(p.tipo),
+    }));
+    setPrefs(next);
+    next.forEach((p, i) => {
+      if (p.enabled !== prefs[i].enabled) {
+        getProvider().putPushPreference(p.tipo, p.enabled).catch((e) => setErr(errorMessage(e, t)));
+      }
+    });
+  };
+
   const saveQuiet = (next: { enabled: boolean; start: number; end: number }) => {
     setQuiet(next);
     setErr('');
@@ -252,11 +352,22 @@ function PushPrefs() {
   };
 
   if (!prefs && !quiet) return null;
+  const level = prefs ? deriveLevel(prefs) : 'all';
   return (
     <div style={{ marginTop: 16 }}>
       {prefs && (
         <>
-          <label>{t('s_push_types')}</label>
+          {/* Preset rápido: todas / solo importantes / ninguna */}
+          <label>{t('s_push_level')}</label>
+          <p className="muted" style={{ marginTop: 0 }}>{t('s_push_level_d')}</p>
+          <Seg value={(level === 'custom' ? '' : level) as PushLevel} ariaLabel={t('s_push_level')}
+            onChange={(v) => applyLevel(v)}
+            options={[
+              { v: 'all', label: t('s_push_all') },
+              { v: 'important', label: t('s_push_important') },
+              { v: 'none', label: t('s_push_none') },
+            ]} />
+          <label style={{ marginTop: 14 }}>{t('s_push_types')}</label>
           <p className="muted" style={{ marginTop: 0 }}>{t('s_push_types_d')}</p>
           {prefs.map((p) => (
             <div key={p.tipo} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 0' }}>
@@ -501,8 +612,29 @@ export default function Settings() {
 
   return (
     <div className="view">
-      {/* ---- Fila 1: Apariencia (60%) + Umbrales de salud (40%, admin) ---- */}
-      <div className={`st-row${isAdmin ? ' st-top' : ''}`}>
+      {/* ---- Fila 1: Datos y umbrales (50%, admin) + Apariencia (50%) ---- */}
+      <div className={`st-row${isAdmin ? '' : ' st-single'}`}>
+      {isAdmin && (
+        <div className="card pad admin-card">
+          <h3 className="cardtitle">{t('s_data_thresh')}</h3>
+          <p className="muted">{t('s_data_thresh_d')}</p>
+          <label htmlFor="th-warn">{t('s_cap_warn')}</label>
+          <input id="th-warn" type="number" value={settings.cap_warn_pct}
+            onChange={(e) => setSettings({ ...settings, cap_warn_pct: +e.target.value })} />
+          <label htmlFor="th-crit">{t('s_cap_crit')}</label>
+          <input id="th-crit" type="number" value={settings.cap_crit_pct}
+            onChange={(e) => setSettings({ ...settings, cap_crit_pct: +e.target.value })} />
+          <label htmlFor="th-temp">{t('s_temp')}</label>
+          <input id="th-temp" type="number" value={settings.disk_temp_c}
+            onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
+          {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
+          <div className="m-actions">
+            <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Apariencia (mitad derecha; la primera con usuario no-admin) ---- */}
       <div className="card pad">
         <h3 className="cardtitle">{t('s_appear')}</h3>
         <label>{t('s_theme')}</label>
@@ -548,27 +680,6 @@ export default function Settings() {
             onChange={(v) => { setReduceMotion(v); setReduceMotionState(v); }} />
         </div>
       </div>
-
-      {/* ---- Umbrales de salud (admin; junto a Apariencia) ---- */}
-      {isAdmin && (
-        <div className="card pad admin-card">
-          <h3 className="cardtitle">{t('s_thresh')}</h3>
-          <p className="muted">{t('s_thresh_d')}</p>
-          <label htmlFor="th-warn">{t('s_cap_warn')}</label>
-          <input id="th-warn" type="number" value={settings.cap_warn_pct}
-            onChange={(e) => setSettings({ ...settings, cap_warn_pct: +e.target.value })} />
-          <label htmlFor="th-crit">{t('s_cap_crit')}</label>
-          <input id="th-crit" type="number" value={settings.cap_crit_pct}
-            onChange={(e) => setSettings({ ...settings, cap_crit_pct: +e.target.value })} />
-          <label htmlFor="th-temp">{t('s_temp')}</label>
-          <input id="th-temp" type="number" value={settings.disk_temp_c}
-            onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
-          {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
-          <div className="m-actions">
-            <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
-          </div>
-        </div>
-      )}
       </div>
 
       {/* ---- Fila 2: Mi perfil + Notificaciones push ---- */}
