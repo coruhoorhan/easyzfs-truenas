@@ -173,6 +173,7 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("POST /api/replication/test", s.auth.RequireAdmin(s.testReplication))
 	// discos
 	a.HandleFunc("GET /api/disks", s.listDisks)
+	a.HandleFunc("GET /api/recommendations", s.listRecommendations)
 	a.HandleFunc("POST /api/disks/{dev}/smart-test", s.auth.RequireAdmin(s.smartTest))
 	a.HandleFunc("POST /api/disks/{dev}/poweroff", s.auth.RequireAdmin(s.powerOff))
 	// notificaciones push (Web Push; 503 push_not_configured sin claves VAPID)

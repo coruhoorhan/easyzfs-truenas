@@ -3,6 +3,7 @@
 import type { DataProvider } from './provider';
 import { emitEvent } from './events';
 import { ApiError } from './types';
+import { computeRecommendations } from './recs';
 import type {
   Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, SessionUser, Settings, Snapshot,
@@ -772,6 +773,7 @@ export class MockProvider implements DataProvider {
 
   // ---- Discos ----
   getDisks = async () => { await delay(); return this.disks.map((d) => ({ ...d })); };
+  getRecommendations = async () => { await delay(); return computeRecommendations(this.disks, this.pools); };
   smartTest = async (dev: string, type: 'short' | 'long') => {    await delay(200);
     this.history.unshift({ ts: iso(new Date()), tipo: type === 'short' ? 'smart_short' : 'smart_long', target: dev, ok: true, detail: 'test iniciado' });
   };

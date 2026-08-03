@@ -2,7 +2,7 @@
 import type {
   Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON,
-  ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
+  Recommendation, ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UpdateReplicationReq, UserInfo, VersionInfo,
 } from './types';
 
@@ -98,6 +98,7 @@ export interface DataProvider {
 
   // Discos
   getDisks(): Promise<Disk[]>;
+  getRecommendations(): Promise<Recommendation[]>;
   smartTest(dev: string, type: 'short' | 'long'): Promise<void>;
   poweroffDisk(dev: string): Promise<void>;
 

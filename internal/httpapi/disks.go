@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"easyzfs/internal/executil"
+	"easyzfs/internal/recs"
 )
 
 // listDisks — GET /api/disks (caché; pool cruzado con vdevs conocidos y
@@ -98,6 +99,12 @@ func (s *Server) powerOff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// listRecommendations — GET /api/recommendations: motor de reglas sobre la
+// caché de discos + contexto de pools (guardas resilver/degradado/stripe).
+func (s *Server) listRecommendations(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, recs.Evaluate(s.disks.Disks(), s.pools.Pools()))
 }
 
 // smartTest — POST /api/disks/{dev}/smart-test {type:short|long} → 202.

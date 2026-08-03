@@ -6,6 +6,8 @@ import { useApp, alertTargetView } from '../ui/store';
 import { fmtBytes, fmtBytesPair, fmtInt, fmtPct, timeAgo } from '../ui/format';
 import { KpiCard, Spinner } from '../components/ui';
 import { PoolCard } from '../components/PoolCard';
+import { Donut } from '../components/Donut';
+import { RecLine } from '../components/RecLine';
 import { IconChev } from '../components/icons';
 import type { Alert } from '../data/types';
 
@@ -37,6 +39,8 @@ export default function Dashboard() {
   const ov = useData((p) => p.getOverview());
   const pools = useData((p) => p.getPools());
   const perf = useData((p) => p.getPerformance());
+  const disks = useData((p) => p.getDisks());
+  const recs = useData((p) => p.getRecommendations());
 
   // Suscripción a eventos en tiempo real: refresca KPIs y progreso de scrub
   useEffect(() => subscribeEvents((ev) => {
@@ -52,6 +56,8 @@ export default function Dashboard() {
         ...p, vdevs: p.vdevs.map((v) => v.dev === ev.dev ? { ...v, temp_c: ev.temp_c } : v),
       })) ?? cur);
     }
+    // Salud SMART cambia en vivo: refresca donut de discos y recomendaciones.
+    if (ev.type === 'disk.smart') { disks.reload(); recs.reload(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
@@ -76,6 +82,30 @@ export default function Dashboard() {
           <KpiCard label={t('kpi_scrub')} value={o.last_scrub.errors === 0 ? 'OK' : String(o.last_scrub.errors)}
             foot={`${o.last_scrub.pool} · ${o.last_scrub.errors} ${t('kpi_scrub_errors')} · ${timeAgo(o.last_scrub.ts, t)}`} />
         </div>
+
+        {/* Salud de discos: donut de distribución + recomendaciones del motor
+            (acción + disco + motivo + guardas de seguridad) */}
+        {disks.data && disks.data.length > 0 && (
+          <div className="sect">
+            <h2>{t('rec_title')}</h2>
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', gap: 26, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Donut
+                centerValue={String(disks.data.length)}
+                centerLabel={t('rec_disks_label')}
+                parts={[
+                  { value: disks.data.filter((d) => d.smart === 'ok').length, color: 'var(--ok)', label: t('rec_legend_ok') },
+                  { value: disks.data.filter((d) => d.smart === 'warn').length, color: 'var(--warn)', label: t('rec_legend_warn') },
+                  { value: disks.data.filter((d) => d.smart === 'crit').length, color: 'var(--err)', label: t('rec_legend_crit') },
+                  { value: disks.data.filter((d) => d.smart === 'unknown').length, color: 'var(--info)', label: t('rec_legend_unknown') },
+                ]} />
+              <div style={{ flex: 1, minWidth: 280 }}>
+                {(recs.data ?? []).length === 0
+                  ? <div className="empty">{t('rec_empty')}</div>
+                  : (recs.data ?? []).map((r) => <RecLine key={`${r.dev}:${r.kind}`} r={r} />)}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="sect">
           <h2>{t('dash_pools')}
