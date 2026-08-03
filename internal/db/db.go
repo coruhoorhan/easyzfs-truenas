@@ -105,6 +105,10 @@ var migrations = []string{
 	`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT '';`,
 	// v14: email opcional del usuario (perfil; no se usa para envíos).
 	`ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT '';`,
+	// v15: columna kind en alerts para deduplicar por (source, kind) y no por
+	// mensaje exacto — los contadores volátiles (p. ej. CRC que crece cada
+	// pasada) generaban una alerta+push nueva cada 10 min (bug 3-Ago-2026).
+	`ALTER TABLE alerts ADD COLUMN kind TEXT NOT NULL DEFAULT '';`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

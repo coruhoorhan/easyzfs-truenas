@@ -1,6 +1,7 @@
 // Package alerts — generación de alertas por umbrales (capacidad, temperatura,
 // SMART, scrub con errores) en la tabla alerts + evento SSE alert.new.
-// Dedupe: no repite una alerta idéntica (source+message) mientras siga sin reconocer.
+// Dedupe: por (source, kind) si hay kind (el mensaje con contadores volátiles
+// se refresca en la alerta activa); por (source, message) en alertas legado.
 package alerts
 
 import (
@@ -43,29 +44,53 @@ func (a *Alerter) Raise(ctx context.Context, level, source, target, message stri
 	a.RaiseKind(ctx, level, source, target, message, "", nil)
 }
 
-// RaiseKind inserta una alerta (si no hay otra idéntica sin reconocer) y la
-// emite por SSE. target es el destino navegable en la UI ("pools:tank",
-// "disks:nvme1n1", "tasks", "settings"; "" si no aplica). kind+params son los
-// metadatos estructurados (alerts.meta) que el sender push usa para componer
-// el texto i18n; message sigue en español (compat UI).
+// RaiseKind inserta una alerta y la emite por SSE. target es el destino
+// navegable en la UI ("pools:tank", "disks:nvme1n1", "tasks", "settings"; ""
+// si no aplica). kind+params son los metadatos estructurados (alerts.meta)
+// que el sender push usa para componer el texto i18n; message sigue en
+// español (compat UI).
+//
+// Dedupe: con kind != "" se deduplica por (source, kind) — NO por mensaje,
+// porque el mensaje lleva contadores volátiles (p. ej. UDMA CRC que crece
+// en cada pasada SMART): sin esto, un disco con tormenta CRC generaba una
+// alerta + push NUEVA cada 10 min. Si ya existe una alerta activa del mismo
+// (source, kind), se REFRESCA su mensaje/ts/meta (sin re-notificar push ni
+// SSE: no es un evento nuevo). Con kind "" (legado) se deduplica por
+// (source, message) como siempre.
 func (a *Alerter) RaiseKind(ctx context.Context, level, source, target, message, kind string, params map[string]any) {
-	var exists int
-	err := a.db.QueryRowContext(ctx,
-		"SELECT 1 FROM alerts WHERE source=? AND message=? AND acked_at IS NULL LIMIT 1",
-		source, message).Scan(&exists)
-	if err == nil {
-		return // ya hay una idéntica activa
-	}
 	meta := ""
 	if kind != "" {
 		if raw, err := json.Marshal(map[string]any{"kind": kind, "params": params}); err == nil {
 			meta = string(raw)
 		}
 	}
+	if kind != "" {
+		var id int64
+		err := a.db.QueryRowContext(ctx,
+			"SELECT id FROM alerts WHERE source=? AND kind=? AND acked_at IS NULL LIMIT 1",
+			source, kind).Scan(&id)
+		if err == nil {
+			// Ya activa: refresca mensaje con los contadores actuales.
+			if _, err := a.db.ExecContext(ctx,
+				"UPDATE alerts SET ts=?, level=?, message=?, meta=? WHERE id=?",
+				time.Now().UTC().Format(time.RFC3339), level, message, meta, id); err != nil {
+				log.Printf("alerts: refresh: %v", err)
+			}
+			return
+		}
+	} else {
+		var exists int
+		err := a.db.QueryRowContext(ctx,
+			"SELECT 1 FROM alerts WHERE source=? AND message=? AND acked_at IS NULL LIMIT 1",
+			source, message).Scan(&exists)
+		if err == nil {
+			return // ya hay una idéntica activa
+		}
+	}
 	now := time.Now().UTC()
 	res, err := a.db.ExecContext(ctx,
-		"INSERT INTO alerts(ts, level, source, target, message, meta) VALUES (?,?,?,?,?,?)",
-		now.Format(time.RFC3339), level, source, target, message, meta)
+		"INSERT INTO alerts(ts, level, source, target, message, meta, kind) VALUES (?,?,?,?,?,?,?)",
+		now.Format(time.RFC3339), level, source, target, message, meta, kind)
 	if err != nil {
 		log.Printf("alerts: insert: %v", err)
 		return

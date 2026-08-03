@@ -81,11 +81,11 @@ export default function Disks() {
       {loading && !data && <Spinner label={t('loading')} />}
       {msg && <p className="desc" style={{ marginBottom: 10, fontSize: 13, color: 'var(--info)', fontWeight: 600 }}>{msg}</p>}
       <div className="card tblwrap">
-        <table className="data">
+        <table className="data responsive">
           <thead>
             <tr>
-              <th>{t('dk_disk')}</th><th className="slack">{t('dk_model')}</th><th className="num">{t('dk_size')}</th>
-              <th className="num">{t('dk_temp')}</th><th>{t('dk_smart')}</th><th>{t('dk_pool')}</th><th />
+              <th>{t('dk_disk')}</th><th className="slack">{t('dk_model')}</th><th className="num hide-md">{t('dk_size')}</th>
+              <th className="num">{t('dk_temp')}</th><th>{t('dk_smart')}</th><th className="hide-md">{t('dk_pool')}</th><th />
             </tr>
           </thead>
           <tbody>
@@ -98,9 +98,9 @@ export default function Disks() {
                     {d.serial} · {fmtInt(d.hours)} {t('dk_hours')}
                   </div>
                 </td>
-                <td className="num">{fmtBytes(d.size_bytes)}</td>
-                <td className="num">{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
-                <td>
+                <td className="num hide-md" data-l={t('dk_size')}>{fmtBytes(d.size_bytes)}</td>
+                <td className="num" data-l={t('dk_temp')}>{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
+                <td className="smartcell">
                   <span title={d.smart_detail}>
                     <Badge tone={TIPO_SMART[d.smart] ?? 'info'} dot={d.smart !== 'unknown'}>{smartLabel(d, t)}</Badge>
                   </span>
@@ -113,11 +113,11 @@ export default function Disks() {
                     </div>
                   ))}
                 </td>
-                <td>
+                <td className="hide-md" data-l={t('dk_pool')}>
                   {d.pool}
                   {d.in_use && <Badge tone="warn" dot={false}> {t('dk_in_use')}</Badge>}
                 </td>
-                <td style={{ whiteSpace: 'nowrap' }}>
+                <td className="actions">
                   <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_short_hint')} onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
                   <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_long_hint')} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>{' '}
                   {(d.pool === '—' || d.pool === '') && !d.in_use && (
