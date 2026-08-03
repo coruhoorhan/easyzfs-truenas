@@ -228,6 +228,12 @@ func (s *Server) setAutotrim(w http.ResponseWriter, r *http.Request) {
 		actionErr(w, err)
 		return
 	}
+	// Refresco inmediato del colector: sin él la UI (y el SSE) verían el
+	// valor antiguo hasta el próximo tick de 30 s y el toggle "no cambiaría".
+	type refresher interface{ RefreshSoon() }
+	if rc, ok := s.pools.(refresher); ok {
+		rc.RefreshSoon()
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
