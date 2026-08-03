@@ -123,11 +123,12 @@ export function Spinner({ label }: { label: string }) {
   return <div className="empty" role="status">{label}</div>;
 }
 
-// InfoBubble — "?" con burbuja explicativa al pasar el ratón (tokens del tema).
-export function InfoBubble({ title, children }: { title?: string; children: React.ReactNode }) {
+// InfoBubble — burbuja explicativa al pasar el ratón (tokens del tema) y al
+// tocar en móvil (tabIndex → :focus). glyph: '?' por defecto, 'i' informativo.
+export function InfoBubble({ title, glyph = '?', children }: { title?: string; glyph?: '?' | 'i'; children: React.ReactNode }) {
   return (
     <span className="infobubble" tabIndex={0} aria-label={title}>
-      ?
+      {glyph}
       <span className="infobubble-pop" role="tooltip">
         {title && <b style={{ display: 'block', marginBottom: 6 }}>{title}</b>}
         {children}

@@ -5,7 +5,7 @@ import { subscribeEvents } from '../data/events';
 import { useData } from '../ui/useData';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtInt } from '../ui/format';
-import { Badge, Spinner } from '../components/ui';
+import { Badge, InfoBubble, Spinner } from '../components/ui';
 import type { Disk } from '../data/types';
 
 const TIPO_SMART: Record<string, 'ok' | 'warn' | 'err' | 'info'> = {
@@ -106,12 +106,19 @@ export default function Disks() {
                 <td className="num hide-md" data-l={t('dk_size')}>{fmtBytes(d.size_bytes)}</td>
                 <td className="num" data-l={t('dk_temp')}>{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
                 <td className="smartcell">
-                  <span title={d.smart_detail}>
-                    <Badge tone={TIPO_SMART[d.smart] ?? 'info'} dot={d.smart !== 'unknown'}>{smartBase(d, t)}</Badge>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span title={d.smart_detail}>
+                      <Badge tone={TIPO_SMART[d.smart] ?? 'info'} dot={d.smart !== 'unknown'}>{smartBase(d, t)}</Badge>
+                    </span>
+                    {/* Contadores en burbuja (i): compacto; hover en desktop, tap en móvil */}
+                    {smartParts(d, t).length > 0 && (
+                      <InfoBubble glyph="i" title={t('dk_smart')}>
+                        <ul>
+                          {smartParts(d, t).map((p) => <li key={p}>{p}</li>)}
+                        </ul>
+                      </InfoBubble>
+                    )}
                   </span>
-                  {smartParts(d, t).length > 0 && (
-                    <div className="smartcounters">{smartParts(d, t).join(' · ')}</div>
-                  )}
                   {/* Pista de acción del motor de recomendaciones (la más severa del disco) */}
                   {(recs.data ?? []).filter((r) => r.dev === d.dev).slice(0, 1).map((r) => (
                     <div key={r.kind} style={{ fontSize: 11.5, marginTop: 4, fontWeight: 600,
