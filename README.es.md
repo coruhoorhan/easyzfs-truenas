@@ -41,6 +41,45 @@ Gestionar ZFS a mano me enseñó los comandos, pero seguía echando de menos
 una UI web pequeña, amigable y minimalista para el día a día. No encontré
 ninguna que me convenciera, así que la construí.
 
+## EasyZFS vs TrueNAS CE vs OpenMediaVault
+
+El encuadre importa: TrueNAS y OMV son sistemas NAS completos (shares,
+apps, VMs). EasyZFS no intenta serlo. Responde a una pregunta más
+estrecha: ¿con qué gestionas tus pools ZFS? En esa categoría, este es el
+panorama (análisis completo en [docs/easyzfs-vs-plataformas.md](docs/easyzfs-vs-plataformas.md)):
+
+| | EasyZFS | TrueNAS CE | OMV 8 |
+|---|:---:|:---:|:---:|
+| RAM necesaria | **decenas de MB** | 8 GB (16 recomendados) | ~1 GB |
+| Corre en | cualquier Linux, VM, LXC de 256 MB | solo su appliance | una Debian dedicada |
+| ZFS es | el producto entero | el producto | un plugin de terceros |
+| `zfs rewrite` (el defrag real) con UI | ✅ | solo CLI | ❌ |
+| Checkpoint de pool con UI | ✅ | solo CLI | ❌ |
+| Expansión RAID-Z con progreso en vivo | ✅ | ✅ | ❌ |
+| Recomendaciones de sustitución de discos (qué disco, por qué, guardas) | ✅ | ❌ | ❌ |
+| Avisos push al móvil, cero terceros | ✅ (Web Push) | email/webhooks | email |
+| Eventos zed en vivo + progreso de operaciones (SSE) | ✅ | parcial | ❌ |
+| Shares SMB/NFS, apps, VMs | ❌ (por diseño) | ✅ | ✅ |
+
+Tres puntos cierran el caso:
+
+1. **Corre donde las otras no caben.** Un LXC de 256 MB con cualquier
+   distro ya es un servidor EasyZFS completo. TrueNAS exige 8 GB y la
+   máquina entera; OMV exige una Debian dedicada.
+2. **Avisos que llegan al bolsillo.** Web Push real al móvil con la app
+   cerrada: horas de silencio, severidades, ES/EN, sin ningún servicio de
+   terceros por medio. El aviso de "disco degradado" en 5 segundos vale
+   más que un informe histórico.
+3. **Cero riesgo de pivote.** EasyZFS hace una cosa y la seguirá haciendo.
+   TrueNAS ha cambiado de rumbo tres veces en tres años y abandonó CORE;
+   OMV mantiene ZFS vivo a través de un plugin de extras.
+
+La cara honesta: no hay shares SMB/NFS/iSCSI, ni apps ni VMs, y TrueNAS
+gana en RBAC granular, auditoría empresarial, madurez de la replicación y
+comunidad. Si necesitas un NAS completo, usa TrueNAS. Si necesitas
+controlar ZFS en cualquier Linux con 50 MB de RAM y un binario, EasyZFS es
+la única herramienta de su categoría.
+
 ## ¿Por qué este stack?
 
 - **Go, un único binario estático**: un daemon 24/7 en un LXC pequeño:

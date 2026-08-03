@@ -33,11 +33,12 @@ Versiones comparadas: **EasyZFS** (main, con lotes A–D) · **TrueNAS CE 25.10 
 | **Notificaciones push al móvil** (app cerrada, sin servicios de terceros) | ✅ (Web Push + VAPID) | ❌ (email/webhooks de terceros) | ❌ (email) |
 | Alertas configurables por tipo + horas de silencio | ✅ | Parcial | Parcial |
 | **Feature-gating por versión de OpenZFS** (la UI muestra solo lo que tu kernel soporta) | ✅ | No aplica (appliance cerrada) | ❌ |
+| **Recomendaciones de sustitución de disco** (qué disco, por qué, guardas: no retirar con resilver, degradado o sin redundancia; CRC alto = cable/puerto, no el disco) | ✅ | ❌ (alerta, no recomienda) | ❌ (semáforo, no recomienda) |
 | Modo demo sin tocar discos | ✅ | ❌ | ❌ |
 
 Lectura honesta de la matriz:
 
-- **En cobertura ZFS pura estamos a la par o por delante** en 15 de 18 filas. Las dos
+- **En cobertura ZFS pura estamos a la par o por delante** en 16 de 19 filas. Las dos
   "exclusivas" de TrueNAS que quedan (madurez de la replicación, reporting histórico
   general) son cuestión de rodaje, no de arquitectura.
 - **Tres funciones ni TrueNAS ni OMV exponen en UI** y EasyZFS sí: `zfs rewrite`,
