@@ -59,8 +59,11 @@ jobs:
 
       - name: Checksums
         run: |
-          sha256sum easyzfs-linux-${{ matrix.arch }} > checksums.txt
-          cat checksums.txt
+          # Un fichero POR arch: ambos jobs de la matrix publican en la misma
+          # release y un checksums.txt compartido llegaba pisado (carrera
+          # vista en v2.1.2: solo quedó la línea aarch64).
+          sha256sum easyzfs-linux-${{ matrix.arch }} > checksums-${{ matrix.arch }}.txt
+          cat checksums-${{ matrix.arch }}.txt
 
       - name: Publica en la release (solo tags)
         if: github.ref_type == 'tag'
@@ -68,7 +71,7 @@ jobs:
         with:
           files: |
             easyzfs-linux-${{ matrix.arch }}
-            checksums.txt
+            checksums-${{ matrix.arch }}.txt
 
       - name: Sube artifact de prueba (solo workflow_dispatch)
         if: github.ref_type != 'tag'
@@ -77,5 +80,5 @@ jobs:
           name: easyzfs-snapshot-linux-${{ matrix.arch }}
           path: |
             easyzfs-linux-${{ matrix.arch }}
-            checksums.txt
+            checksums-${{ matrix.arch }}.txt
           retention-days: 7
