@@ -30,6 +30,7 @@ function smartLabel(d: Disk, t: (k: string, v?: Record<string, string | number>)
 export default function Disks() {
   const { t, isAdmin } = useApp();
   const { data, loading, setData } = useData((p) => p.getDisks());
+  const recs = useData((p) => p.getRecommendations());
   const [msg, setMsg] = useState('');
   const [arm, setArm] = useState('');
 
@@ -45,6 +46,7 @@ export default function Disks() {
         realloc_sectors: ev.realloc_sectors, pending_sectors: ev.pending_sectors,
         offline_uncorr: ev.offline_uncorr, crc_errors: ev.crc_errors, nvme_warn: ev.nvme_warn,
       } : d) ?? cur);
+      recs.reload();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
@@ -102,6 +104,14 @@ export default function Disks() {
                   <span title={d.smart_detail}>
                     <Badge tone={TIPO_SMART[d.smart] ?? 'info'} dot={d.smart !== 'unknown'}>{smartLabel(d, t)}</Badge>
                   </span>
+                  {/* Pista de acción del motor de recomendaciones (la más severa del disco) */}
+                  {(recs.data ?? []).filter((r) => r.dev === d.dev).slice(0, 1).map((r) => (
+                    <div key={r.kind} style={{ fontSize: 11.5, marginTop: 4, fontWeight: 600,
+                      color: `var(--${r.level === 'crit' ? 'err' : r.level === 'warn' ? 'warn' : 'info'})` }}>
+                      {t('rec_' + r.kind)}
+                      {r.hold && r.hold_reason && <span style={{ color: 'var(--warn)' }}> · {t('rec_hold_' + r.hold_reason)}</span>}
+                    </div>
+                  ))}
                 </td>
                 <td>
                   {d.pool}

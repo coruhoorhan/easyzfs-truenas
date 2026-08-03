@@ -5,7 +5,7 @@ import { notifyAuthExpired } from './events';
 import type {
   Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON,
-  ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
+  Recommendation, ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UpdateReplicationReq, UserInfo, VersionInfo,
 } from './types';
 
@@ -155,6 +155,7 @@ export class HttpProvider implements DataProvider {
     post<void>('/system-timers/migrate', { source: t.source, name: t.name, origin: t.origin ?? '', line: t.line ?? 0, new_name: newName });
 
   getDisks = () => get<Disk[]>('/disks');
+  getRecommendations = () => get<Recommendation[]>('/recommendations');
   smartTest = (dev: string, type: 'short' | 'long') => post<void>(`/disks/${enc(dev)}/smart-test`, { type });
   poweroffDisk = (dev: string) => post<void>(`/disks/${enc(dev)}/poweroff`, {});
 

@@ -327,6 +327,24 @@ export interface CreateJobReq { tipo: JobType; target: string; schedule: string;
 export interface UpdateJobReq { enabled?: boolean; schedule?: string; retention?: string }
 export interface CreateUserReq { user: string; password: string; role: Role }
 
+// --- Recomendaciones de discos (motor de reglas del backend) ---
+export type RecKind = 'replace_now' | 'replace_soon' | 'watch' | 'check_cable';
+export type RecHoldReason = 'resilver' | 'pool_degraded' | 'no_redundancy';
+
+export interface Recommendation {
+  level: 'crit' | 'warn' | 'info';
+  kind: RecKind;
+  dev: string;
+  serial: string;
+  pool: string;
+  realloc_sectors?: number;
+  pending_sectors?: number;
+  offline_uncorr?: number;
+  crc_errors?: number;
+  hold?: boolean;
+  hold_reason?: RecHoldReason;
+}
+
 // --- Eventos SSE ---
 export type AppEvent =
   | { type: 'pool.status'; name: string; status: PoolStatus }

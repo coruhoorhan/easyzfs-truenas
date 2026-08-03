@@ -142,6 +142,39 @@ type Disk struct {
 	Hours          uint64 `json:"hours"`
 }
 
+// Kinds de Recommendation (constantes para que front y tests no usen strings).
+const (
+	RecReplaceNow  = "replace_now"  // sustituir cuanto antes (crit)
+	RecReplaceSoon = "replace_soon" // planificar sustitución (warn)
+	RecWatch       = "watch"        // vigilar evolución (info)
+	RecCheckCable  = "check_cable"  // revisar cable/puerto/backplane, NO el disco (warn)
+)
+
+// Razones de Hold (la acción sugerida debe esperar).
+const (
+	HoldResilver     = "resilver"      // resilver en curso: esperar a que termine
+	HoldPoolDegraded = "pool_degraded" // pool degradado: sin margen para retirar discos
+	HoldNoRedundancy = "no_redundancy" // pool stripe: sin redundancia
+)
+
+// Recommendation — contrato GET /api/recommendations. La UI traduce Kind y
+// HoldReason con i18n; los contadores van crudos para mostrar el motivo.
+type Recommendation struct {
+	Level  string `json:"level"` // "crit" | "warn" | "info"
+	Kind   string `json:"kind"`  // RecReplaceNow | RecReplaceSoon | RecWatch | RecCheckCable
+	Dev    string `json:"dev"`
+	Serial string `json:"serial"`
+	Pool   string `json:"pool"`
+	// Contadores que motivan la recomendación (0 si no aplican).
+	ReallocSectors int64 `json:"realloc_sectors,omitempty"`
+	PendingSectors int64 `json:"pending_sectors,omitempty"`
+	OfflineUncorr  int64 `json:"offline_uncorr,omitempty"`
+	CrcErrors      int64 `json:"crc_errors,omitempty"`
+	// Hold: la acción es correcta pero debe ESPERAR (ver HoldReason).
+	Hold       bool   `json:"hold,omitempty"`
+	HoldReason string `json:"hold_reason,omitempty"`
+}
+
 // SysTimer — contrato GET /api/system-timers: temporizadores que YA existen
 // en el sistema (systemd timers y cron), solo lectura. next_run/last_run son
 // cadenas de visualización ("" si el sistema no las conoce: cron no las tiene).
