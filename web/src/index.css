@@ -249,7 +249,7 @@ header.top .sub{font-size:13px;color:var(--text2);margin-top:2px}
 
 /* badges */
 .badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:99px}
-.badge .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 .badge.ok{background:var(--accent-soft);color:var(--ok)}
 .badge.warn{background:var(--warn-soft);color:var(--warn)}
 .badge.err{background:var(--err-soft);color:var(--err)}
@@ -307,6 +307,27 @@ table.data th.slack{width:100%}
 table.data th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
 table.data td{padding:11px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
 table.data tr:last-child td{border-bottom:none}
+/* Discos: la celda SMART rompe a 2 líneas en vez de ensanchar toda la tabla
+   (etiquetas largas tipo "Correcto · 2528 sectores reasignados · …"). */
+table.data td.smartcell{white-space:normal;min-width:170px;max-width:300px}
+table.data td.smartcell .badge{white-space:normal;text-align:left;line-height:1.35;padding-top:4px;padding-bottom:4px;border-radius:12px}
+table.data td.actions{white-space:normal}
+table.data td.actions .btn{margin:2px 4px 2px 0}
+/* Columnas prescindibles según ancho (evita el scroll horizontal en
+   pantallas medianas/pequeñas). */
+@media(max-width:1099px){ .hide-md{display:none} }
+/* Tabla responsive: en pantalla estrecha las filas pasan a bloques
+   apilados (sin scroll horizontal y sin perder columnas). */
+@media(max-width:699px){
+  table.data.responsive, table.data.responsive tbody, table.data.responsive tr, table.data.responsive td{display:block}
+  table.data.responsive thead{display:none}
+  table.data.responsive tr{padding:11px 14px}
+  table.data.responsive td{padding:2px 0;border-bottom:none;white-space:normal}
+  table.data.responsive td.num{text-align:left}
+  table.data.responsive td.smartcell{min-width:0;max-width:none}
+  table.data.responsive td.hide-md{display:block} /* apilado hay sitio: se muestran */
+  table.data.responsive td[data-l]::before{content:attr(data-l) ': ';color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+}
 tr.clickable{cursor:pointer} tr.clickable:hover td{background:var(--surface2)}
 table.data th.num,table.data td.num{text-align:right;font-variant-numeric:tabular-nums}
 table.data td.num{font-family:var(--font-mono);font-size:12.5px}
