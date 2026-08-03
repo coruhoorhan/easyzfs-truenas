@@ -309,8 +309,7 @@ table.data td{padding:11px 14px;border-bottom:1px solid var(--border);white-spac
 table.data tr:last-child td{border-bottom:none}
 /* Discos: la celda SMART rompe a 2 líneas en vez de ensanchar toda la tabla
    (etiquetas largas tipo "Correcto · 2528 sectores reasignados · …"). */
-table.data td.smartcell{white-space:normal;min-width:170px;max-width:300px}
-table.data td.smartcell .smartcounters{font-size:11.5px;color:var(--text2);margin-top:3px;line-height:1.4}
+table.data td.smartcell{white-space:normal;min-width:150px;max-width:300px}
 table.data td.actions{white-space:normal}
 table.data td.actions .btn{margin:2px 4px 2px 0}
 @media(min-width:1100px){ table.data td.actions{min-width:185px} }
@@ -417,7 +416,7 @@ table.data td.num{font-family:var(--font-mono);font-size:12.5px}
 }
 .infobubble-pop{
   position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) translateY(4px);
-  width:290px;padding:12px 14px;border-radius:10px;z-index:50;
+  width:min(290px,78vw);padding:12px 14px;border-radius:10px;z-index:50;
   background:var(--surface2);color:var(--text);border:1px solid var(--border);
   box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:12px;font-weight:400;line-height:1.5;
   opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;
