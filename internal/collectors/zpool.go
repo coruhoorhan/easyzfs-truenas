@@ -48,6 +48,11 @@ type ZpoolCollector struct {
 	prevStatus map[string]string
 	prevPct    map[string]int
 	lastSeries map[string]time.Time
+
+	// refreshCh despierta el bucle Run tras una mutación (autotrim, trim…):
+	// sin él la UI vería el valor antiguo hasta el próximo tick de 30 s.
+	// Buffer 1 = debounce: una ráfaga de mutaciones produce UNA recolecta.
+	refreshCh chan struct{}
 }
 
 // NewZpoolCollector crea el colector.
@@ -61,11 +66,23 @@ func NewZpoolCollector(d *sql.DB, h *hub.Hub, al *alerts.Alerter) *ZpoolCollecto
 		lastSeries: map[string]time.Time{},
 		history:    map[string][]model.HistoryEntry{},
 		historyAt:  map[string]time.Time{},
+		refreshCh:  make(chan struct{}, 1),
 	}
 }
 
 // Name implementa Collector.
 func (c *ZpoolCollector) Name() string { return "zpool" }
+
+// RefreshSoon pide una recolecta inmediata al bucle Run (tras una mutación
+// como autotrim). No bloquea; si ya hay una petición pendiente, se descarta
+// (debounce). La recolecta la ejecuta la propia goroutine de Run, así que no
+// hay concurrencia sobre la caché.
+func (c *ZpoolCollector) RefreshSoon() {
+	select {
+	case c.refreshCh <- struct{}{}:
+	default:
+	}
+}
 
 // Run — bucle con ticker, backoff tras 3 fallos seguidos (patrón del skill).
 func (c *ZpoolCollector) Run(ctx context.Context) {
@@ -80,6 +97,13 @@ func (c *ZpoolCollector) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-c.refreshCh:
+			// Refresco bajo demanda (mutación reciente): recolecta y
+			// reinicia el tick periódico desde este momento.
+			if err := c.collectOnce(ctx); err != nil {
+				log.Printf("zpool refresh: %v", err)
+			}
+			t.Reset(interval)
 		case <-t.C:
 			if err := c.collectOnce(ctx); err != nil {
 				log.Printf("zpool: %v", err)

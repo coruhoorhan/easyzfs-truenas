@@ -24,6 +24,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
   const { openModal } = useModal();
   const [err, setErr] = useState('');
   const [disks, setDisks] = useState<Disk[]>([]);
+  const [trimOverride, setTrimOverride] = useState<boolean | null>(null);
   const pct = pool.total_bytes > 0 ? (pool.used_bytes / pool.total_bytes) * 100 : 0;
   const cap = fmtBytesPair(pool.used_bytes, pool.total_bytes);
   const running = pool.scrub.state === 'running';
@@ -36,6 +37,11 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
     getProvider().getDisks().then((d) => { if (alive) setDisks(d); }).catch(() => {});
     return () => { alive = false; };
   }, [pool]);
+
+  // Cuando el dato real alcanza el valor pedido, suelta el override optimista.
+  useEffect(() => {
+    setTrimOverride((cur) => (cur !== null && cur === pool.autotrim ? null : cur));
+  }, [pool.autotrim]);
 
   const scrub = async (action: 'start' | 'pause' | 'stop') => {
     setErr('');
@@ -55,10 +61,16 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
 
   const toggleAutotrim = async () => {
     setErr('');
+    // Estado optimista: el Switch es controlado y la caché del backend puede
+    // tardar unos segundos en reflejar el cambio; sin override local el
+    // interruptor "vuelve solo" y parece que no hace nada. Se limpia cuando
+    // la prop pool.autotrim alcanza el valor pedido.
+    const next = !(trimOverride ?? pool.autotrim);
+    setTrimOverride(next);
     try {
-      await getProvider().setAutotrim(pool.name, !pool.autotrim);
+      await getProvider().setAutotrim(pool.name, next);
       onChanged();
-    } catch (e) { setErr(errorMessage(e, t)); }
+    } catch (e) { setTrimOverride(null); setErr(errorMessage(e, t)); }
   };
 
   const faulted = pool.vdevs.find((v) => v.status !== 'ONLINE' && !v.replacing);
@@ -99,7 +111,7 @@ export function PoolCard({ pool, onChanged }: { pool: Pool; onChanged: () => voi
           {' '}· <b>{pool.scrub.errors} {t('pool_errors')}</b>
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-          <Switch checked={pool.autotrim} onChange={() => { void toggleAutotrim(); }}
+          <Switch checked={trimOverride ?? pool.autotrim} onChange={() => { void toggleAutotrim(); }}
             disabled={!isAdmin} ariaLabel={t('pool_autotrim')} />
           <b>{t('pool_autotrim')}</b>
           <InfoBubble title={t('pool_autotrim')}>{t('pool_autotrim_hint')}</InfoBubble>
