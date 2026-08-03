@@ -90,6 +90,26 @@ func TestParseSmartJSON_TormentaCRC(t *testing.T) {
 	}
 }
 
+// Dispositivo sin SMART (eMMC de host-b): smartctl emite JSON de error
+// sin sección smart_status. Debe quedar "unknown", NO "crit" (regresión del
+// parseo tolerante: smart_status ausente se deserializaba como passed=false).
+func TestParseSmartJSON_SinSmart(t *testing.T) {
+	out, err := os.ReadFile("testdata/smart_mmcblk0_nosmart.json")
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	d := model.Disk{Dev: "mmcblk0", Smart: "unknown", SmartDetail: "no disponible"}
+	if err := parseSmartJSON(out, &d); err != nil {
+		t.Fatalf("parseSmartJSON: %v", err)
+	}
+	if d.Smart != "unknown" {
+		t.Errorf("Smart = %q, esperado unknown", d.Smart)
+	}
+	if d.SmartDetail != "no disponible" {
+		t.Errorf("SmartDetail = %q, esperado 'no disponible'", d.SmartDetail)
+	}
+}
+
 // Disco sano con un CRC histórico suelto: no debe avisar por CRC.
 func TestParseSmartJSON_SanoConCRCHistorico(t *testing.T) {
 	out := []byte(`{

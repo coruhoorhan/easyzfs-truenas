@@ -140,7 +140,7 @@ type smartJSON struct {
 	Temperature  struct {
 		Current float64 `json:"current"`
 	} `json:"temperature"`
-	SmartStatus struct {
+	SmartStatus *struct {
 		Passed bool `json:"passed"`
 	} `json:"smart_status"`
 	PowerOnTime struct {
@@ -279,11 +279,19 @@ func parseSmartJSON(out []byte, d *model.Disk) error {
 	if sj.UserCapacity.Bytes > 0 {
 		d.SizeBytes = sj.UserCapacity.Bytes
 	}
-	d.Smart = "ok"
-	d.SmartDetail = "PASSED"
-	if !sj.SmartStatus.Passed {
-		d.Smart = "crit"
-		d.SmartDetail = "FAILED"
+	if sj.SmartStatus == nil {
+		// Sin sección smart_status (eMMC, USB sin SAT: smartctl emite JSON de
+		// error "Unable to detect device type" con exit != 0): no es un FALLO
+		// del disco, es que el dispositivo no habla SMART.
+		d.Smart = "unknown"
+		d.SmartDetail = "no disponible"
+	} else {
+		d.Smart = "ok"
+		d.SmartDetail = "PASSED"
+		if !sj.SmartStatus.Passed {
+			d.Smart = "crit"
+			d.SmartDetail = "FAILED"
+		}
 	}
 	// Avisos ATA: sectores reasignados, pendientes, incorregibles offline
 	// y errores CRC de link SATA (firma de cable/puerto, no del disco).
