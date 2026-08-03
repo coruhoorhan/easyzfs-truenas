@@ -20,6 +20,8 @@ function smartLabel(d: Disk, t: (k: string, v?: Record<string, string | number>)
   const parts: string[] = [];
   if ((d.realloc_sectors ?? 0) > 0) parts.push(t('dk_realloc', { n: d.realloc_sectors! }));
   if ((d.pending_sectors ?? 0) > 0) parts.push(t('dk_pending', { n: d.pending_sectors! }));
+  if ((d.offline_uncorr ?? 0) > 0) parts.push(t('dk_offunc', { n: d.offline_uncorr! }));
+  if ((d.crc_errors ?? 0) >= 100) parts.push(t('dk_crc', { n: d.crc_errors! }));
   if ((d.nvme_warn ?? 0) > 0) parts.push(t('dk_nvme_warn', { n: d.nvme_warn! }));
   const base = t('dk_smart_ok');
   return parts.length ? `${base} · ${parts.join(' · ')}` : base;

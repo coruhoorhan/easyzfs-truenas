@@ -88,6 +88,35 @@ func Run(ctx context.Context, timeout time.Duration, name string, args ...string
 	return out, nil
 }
 
+// RunTolerant ejecuta como Run pero, si el comando sale con código != 0,
+// devuelve IGUALMENTE el stdout capturado junto al error. Pensado para
+// smartctl, que usa el exit status como bitfield de avisos del disco
+// (p. ej. 192 = self-test log con errores) y aun así emite JSON válido:
+// descartar la salida convertiría un disco ENFERMO en "sin datos", que es
+// exactamente lo contrario de lo que debe hacer un monitor.
+func RunTolerant(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	orig := name
+	if useSudo {
+		args = append([]string{"-n", name}, args...)
+		name = "sudo"
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(cctx, name, args...)
+	out, err := cmd.Output()
+	if cctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("%s: %w tras %s", orig, ErrTimeout, timeout)
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return out, err // stdout válido pese al exit != 0
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", orig, err)
+	}
+	return out, nil
+}
+
 // RunStdin ejecuta name con args pasando stdin al proceso (p. ej. la
 // passphrase de 'zfs load-key'/'zfs create -o keyformat=passphrase': NUNCA
 // por argv, que es visible en ps / audit logs). El buffer NO se copia; el

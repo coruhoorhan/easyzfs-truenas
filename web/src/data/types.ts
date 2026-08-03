@@ -268,6 +268,8 @@ export interface Disk {
   smart_detail: string;
   realloc_sectors?: number;
   pending_sectors?: number;
+  offline_uncorr?: number; // attr 198: sectores incorregibles offline
+  crc_errors?: number; // attr 199: errores UDMA CRC (cable/puerto SATA)
   nvme_warn?: number;
   pool: string;
   in_use?: boolean; // particiones montadas o swap activo (no elegible como libre)
