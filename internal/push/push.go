@@ -155,7 +155,10 @@ func (s *Sender) Notify(ctx context.Context, a Alert) {
 	for _, sub := range subs {
 		d, ok := decisiones[sub.userID]
 		if !ok {
-			if !s.prefEnabled(ctx, sub.userID, a.Kind) {
+			// Las críticas (level=crit) atraviesan SIEMPRE las preferencias
+			// por tipo: el preset "Ninguna" no puede silenciar un pool
+			// FAULTED o errores de datos.
+			if a.Level != "crit" && !s.prefEnabled(ctx, sub.userID, a.Kind) {
 				d.omitir = true
 			} else if a.Level != "crit" && s.inQuietHours(ctx, sub.userID, time.Now()) {
 				if err := s.enqueue(ctx, sub.userID, a); err != nil {
