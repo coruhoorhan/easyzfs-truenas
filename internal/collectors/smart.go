@@ -202,18 +202,25 @@ func (c *SmartCollector) collectOnce(ctx context.Context) error {
 
 // fillSmart rellena estado SMART de un disco; tolerante ante fallos.
 func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
-	out, err := executil.Run(ctx, 60*time.Second, "smartctl", "-j", "-a", "/dev/"+d.Dev)
-	if err != nil {
-		// smartctl devuelve !=0 si el disco tiene avisos: intentamos parsear igual.
-		if len(out) == 0 {
-			d.SmartDetail = "smartctl no disponible"
-			return
-		}
+	// RunTolerant: smartctl devuelve !=0 como bitfield de avisos (p. ej.
+	// self-test log con errores en un disco muriendo) pero su JSON es válido.
+	out, err := executil.RunTolerant(ctx, 60*time.Second, "smartctl", "-j", "-a", "/dev/"+d.Dev)
+	if err != nil && len(out) == 0 {
+		d.SmartDetail = "smartctl no disponible"
+		return
 	}
-	var sj smartJSON
-	if err := json.Unmarshal(out, &sj); err != nil {
+	if err := parseSmartJSON(out, d); err != nil {
 		d.SmartDetail = "salida smartctl no parseable"
 		return
+	}
+}
+
+// parseSmartJSON aplica la salida JSON de 'smartctl -j -a' sobre d.
+// Función pura (testeable con fixtures reales).
+func parseSmartJSON(out []byte, d *model.Disk) error {
+	var sj smartJSON
+	if err := json.Unmarshal(out, &sj); err != nil {
+		return err
 	}
 	if sj.ModelName != "" {
 		d.Model = sj.ModelName
@@ -237,24 +244,39 @@ func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
 		d.Smart = "crit"
 		d.SmartDetail = "FAILED"
 	}
-	// Avisos ATA: sectores reasignados o pendientes.
+	// Avisos ATA: sectores reasignados, pendientes, incorregibles offline
+	// y errores CRC de link SATA (firma de cable/puerto, no del disco).
 	if sj.AtaAttrs != nil {
-		var realloc, pending int64
+		var realloc, pending, offunc, crc int64
 		for _, a := range sj.AtaAttrs.Table {
 			switch a.Name {
 			case "Reallocated_Sector_Ct":
 				realloc = a.Raw.Value
 			case "Current_Pending_Sector":
 				pending = a.Raw.Value
+			case "Offline_Uncorrectable":
+				offunc = a.Raw.Value
+			case "UDMA_CRC_Error_Count":
+				crc = a.Raw.Value
 			}
 		}
-		if realloc > 0 || pending > 0 {
+		d.ReallocSectors = realloc
+		d.PendingSectors = pending
+		d.OfflineUncorr = offunc
+		d.CrcErrors = crc
+		if realloc > 0 || pending > 0 || offunc > 0 {
 			if d.Smart == "ok" {
 				d.Smart = "warn"
 			}
-			d.ReallocSectors = realloc
-			d.PendingSectors = pending
-			d.SmartDetail = fmt.Sprintf("%s (realloc=%d pending=%d)", d.SmartDetail, realloc, pending)
+			d.SmartDetail = fmt.Sprintf("%s (realloc=%d pending=%d offunc=%d)", d.SmartDetail, realloc, pending, offunc)
+		}
+		// CRC aislado no es sector defectuoso: solo avisa si es claramente
+		// anómalo (tormenta de link), no por errores históricos sueltos.
+		if crc >= 100 {
+			if d.Smart == "ok" {
+				d.Smart = "warn"
+			}
+			d.SmartDetail = fmt.Sprintf("%s (crc=%d)", d.SmartDetail, crc)
 		}
 	}
 	// NVMe: temperatura y avisos críticos viven en otro log.
@@ -271,6 +293,7 @@ func (c *SmartCollector) fillSmart(ctx context.Context, d *model.Disk) {
 			d.SmartDetail = fmt.Sprintf("%s (nvme warning=%d)", d.SmartDetail, sj.NVMeSmartHealthLog.CriticalWarning)
 		}
 	}
+	return nil
 }
 
 // persistSeries guarda disk.<dev>.temp cada seriesInterval (con retención).

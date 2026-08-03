@@ -134,6 +134,8 @@ type Disk struct {
 	// SmartDetail queda como forma cruda de respaldo).
 	ReallocSectors int64  `json:"realloc_sectors,omitempty"`
 	PendingSectors int64  `json:"pending_sectors,omitempty"`
+	OfflineUncorr  int64  `json:"offline_uncorr,omitempty"` // attr 198: sectores incorregibles offline
+	CrcErrors      int64  `json:"crc_errors,omitempty"`     // attr 199: errores UDMA CRC (cable/puerto SATA)
 	NvmeWarn       int    `json:"nvme_warn,omitempty"`
 	Pool           string `json:"pool"`
 	InUse          bool   `json:"in_use,omitempty"` // particiones montadas o swap activo (no elegible como "libre")
