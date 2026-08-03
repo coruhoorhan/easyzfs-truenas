@@ -9,12 +9,21 @@ import (
 	"time"
 
 	"easyzfs/internal/executil"
+	"easyzfs/internal/model"
 	"easyzfs/internal/recs"
 )
 
 // listDisks — GET /api/disks (caché; pool cruzado con vdevs conocidos y
 // "en uso" cruzado con puntos de montaje activos).
 func (s *Server) listDisks(w http.ResponseWriter, r *http.Request) {
+	disks := s.disksEnriched(r.Context())
+	writeJSON(w, http.StatusOK, disks)
+}
+
+// disksEnriched — caché de discos con el pool cruzado por vdevs y el flag
+// "en uso". Lo comparten /api/disks y /api/recommendations (el motor de
+// reglas necesita el pool para las guardas de seguridad).
+func (s *Server) disksEnriched(ctx context.Context) []model.Disk {
 	disks := s.disks.Disks()
 	pools := s.pools.Pools()
 	names := make([]string, 0, len(pools))
@@ -28,14 +37,14 @@ func (s *Server) listDisks(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	inUse := mountedDisks(r.Context())
+	inUse := mountedDisks(ctx)
 	for i := range disks {
 		if disks[i].Pool == "" {
 			disks[i].Pool = poolForDisk(names, vdevs, disks[i].Dev)
 		}
 		disks[i].InUse = inUse[disks[i].Dev]
 	}
-	writeJSON(w, http.StatusOK, disks)
+	return disks
 }
 
 // --- discos "en uso": alguna partición montada o swap activo ---
@@ -102,9 +111,10 @@ func (s *Server) powerOff(w http.ResponseWriter, r *http.Request) {
 }
 
 // listRecommendations — GET /api/recommendations: motor de reglas sobre la
-// caché de discos + contexto de pools (guardas resilver/degradado/stripe).
+// caché de discos enriquecida (con pool) + contexto de pools (guardas
+// resilver/degradado/stripe).
 func (s *Server) listRecommendations(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, recs.Evaluate(s.disks.Disks(), s.pools.Pools()))
+	writeJSON(w, http.StatusOK, recs.Evaluate(s.disksEnriched(r.Context()), s.pools.Pools()))
 }
 
 // smartTest — POST /api/disks/{dev}/smart-test {type:short|long} → 202.
