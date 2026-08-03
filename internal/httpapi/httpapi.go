@@ -156,6 +156,8 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("POST /api/snapshots", s.auth.RequireAdmin(s.createSnapshot))
 	a.HandleFunc("DELETE /api/snapshots/{full}", s.auth.RequireAdmin(s.deleteSnapshot))
 	a.HandleFunc("POST /api/snapshots/{full}/rollback", s.auth.RequireAdmin(s.rollbackSnapshot))
+	a.HandleFunc("GET /api/snapshots/{full}/files", s.auth.RequireAdmin(s.listSnapshotFiles))
+	a.HandleFunc("GET /api/snapshots/{full}/download", s.auth.RequireAdmin(s.downloadSnapshotFile))
 	// jobs
 	a.HandleFunc("GET /api/jobs", s.listJobs)
 	a.HandleFunc("POST /api/jobs", s.auth.RequireAdmin(s.createJob))

@@ -65,6 +65,8 @@ export default function Snapshots() {
                     {fmtBytes(s.used_bytes)} · {timeAgo(s.ts, t)}
                   </span>
                   <span className="actions" style={{ marginLeft: 'auto' }}>
+                    <button className="btn sm"
+                      onClick={() => openModal('browseFiles', { full: s.full })}>Browse Files</button>
                     <button className="btn sm" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}
                       onClick={() => openModal('rollback', { full: s.full })}>{t('snap_restore')}</button>
                     <button className="btn sm danger" disabled={!isAdmin} title={!isAdmin ? t('no_permission') : undefined}

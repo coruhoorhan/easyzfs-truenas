@@ -73,6 +73,7 @@ export function ModalHost() {
     case 'deluser': return <DeleteUserModal user={p.user as string} onClose={closeModal} />;
     case 'rollback': return <RollbackModal full={p.full as string} onClose={closeModal} />;
     case 'delsnap': return <DeleteSnapModal full={p.full as string} onClose={closeModal} />;
+    case 'browseFiles': return <BrowseFilesModal full={p.full as string} onClose={closeModal} />;
     default: return null;
   }
 }
@@ -1633,6 +1634,59 @@ function DeleteUserModal({ user, onClose }: { user: string; onClose: () => void 
           <SubmitBtn label={t('delete')} busy={busy} danger disabled={confirm.trim() !== user} />
         </div>
       </form>
+    </ModalBox>
+  );
+}
+
+// ---------- DOSYALARA GOZAT (VEEAM) ----------
+function BrowseFilesModal({ full, onClose }: { full: string; onClose: () => void }) {
+  const { t } = useApp();
+  const [files, setFiles] = useState<{name: string, size: number, is_dir: boolean}[] | null>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    fetch('/api/snapshots/' + encodeURIComponent(full) + '/files')
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) setErr(d.message || d.error);
+        else setFiles(d);
+      })
+      .catch(e => setErr(e.message));
+  }, [full]);
+
+  return (
+    <ModalBox onClose={onClose} wide label="Browse Files">
+      <h3>Files in <span className="mono">{full}</span></h3>
+      {err && <p className="form-err" role="alert">{err}</p>}
+      {!files && !err && <div className="empty">Loading...</div>}
+      {files && files.length === 0 && <div className="empty">No files found in this snapshot.</div>}
+      {files && files.length > 0 && (
+        <div className="tblwrap" style={{ maxHeight: 'min(55vh, 420px)', overflowY: 'auto' }}>
+          <table className="data">
+            <thead>
+              <tr><th>Name</th><th className="num">Size</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
+            </thead>
+            <tbody>
+              {files.map(f => (
+                <tr key={f.name}>
+                  <td className="mono" style={{ wordBreak: 'break-all', whiteSpace: 'normal', maxWidth: '400px' }}>{f.name}</td>
+                  <td className="num">{fmtBytes(f.size)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {!f.is_dir && (
+                      <a href={`/api/snapshots/${encodeURIComponent(full)}/download?file=${encodeURIComponent(f.name)}`}
+                         download
+                         className="btn sm primary">Download</a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="m-actions">
+        <button type="button" className="btn" onClick={onClose}>{t('close')}</button>
+      </div>
     </ModalBox>
   );
 }
