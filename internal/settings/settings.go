@@ -17,6 +17,9 @@ type Settings struct {
 	Webhook           string `json:"webhook"`
 	NotifyScrubErrors bool   `json:"notify_scrub_errors"`
 	NotifySmartChange bool   `json:"notify_smart_change"`
+	// Modo demo (regla webapp-stack): permite o no entrar como demo desde el
+	// login. El admin lo gestiona en Ajustes → Administración.
+	DemoEnabled bool `json:"demo_enabled"`
 	// Copia de seguridad automática de la BD (VACUUM INTO en <datadir>/backups)
 	BackupEnabled       bool `json:"backup_enabled"`
 	BackupFreqHours     int  `json:"backup_freq_hours"`     // 1/6/12/24/48/72
@@ -33,6 +36,7 @@ func Defaults() Settings {
 		Webhook:           "",
 		NotifyScrubErrors: true,
 		NotifySmartChange: true,
+		DemoEnabled:       true,
 		BackupEnabled:       true,
 		BackupFreqHours:     24,
 		BackupRetentionDays: 3,

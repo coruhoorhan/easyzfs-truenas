@@ -46,6 +46,17 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
+// publicDemo — GET /api/public/demo (sin auth): el login lo consulta para
+// mostrar u ocultar el botón "Entrar como demo" según el ajuste del admin.
+func (s *Server) publicDemo(w http.ResponseWriter, r *http.Request) {
+	st, err := s.settings.Load(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"demo_enabled": st.DemoEnabled})
+}
+
 // putSettings — PUT /api/settings (admin) → 204. 400 si los rangos no valen.
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var st settingsBody
@@ -68,6 +79,10 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	cur.Webhook = st.Webhook
 	cur.NotifyScrubErrors = st.NotifyScrubErrors
 	cur.NotifySmartChange = st.NotifySmartChange
+	cur.DemoEnabled = st.DemoEnabled
+	cur.BackupEnabled = st.BackupEnabled
+	cur.BackupFreqHours = st.BackupFreqHours
+	cur.BackupRetentionDays = st.BackupRetentionDays
 	if err := s.settings.Save(r.Context(), cur); err != nil {
 		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
 		return
@@ -104,6 +119,10 @@ type settingsBody struct {
 	Webhook           string `json:"webhook"`
 	NotifyScrubErrors bool   `json:"notify_scrub_errors"`
 	NotifySmartChange bool   `json:"notify_smart_change"`
+	DemoEnabled       bool   `json:"demo_enabled"`
+	BackupEnabled       bool `json:"backup_enabled"`
+	BackupFreqHours     int  `json:"backup_freq_hours"`
+	BackupRetentionDays int  `json:"backup_retention_days"`
 }
 
 // listAlerts — GET /api/alerts → últimas 100.
@@ -298,6 +317,23 @@ type activityEntry struct {
 	Ts     string `json:"ts"`
 	Text   string `json:"text"`
 	Detail string `json:"detail"`
+}
+
+// listActivity — GET /api/activity?limit=N → historial auditado completo
+// (con paginación simple por límite). Para el "Ver más" de Ajustes → Admin.
+func (s *Server) listActivity(w http.ResponseWriter, r *http.Request) {
+	limit := 30
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	out, err := s.recentActivity(r, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // recentActivity — últimas acciones auditadas como actividad del dashboard.

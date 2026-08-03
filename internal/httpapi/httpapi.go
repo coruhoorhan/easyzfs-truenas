@@ -101,6 +101,8 @@ func NewServer(d Deps) *Server {
 func (s *Server) Handler() http.Handler {
 	root := http.NewServeMux()
 	root.HandleFunc("POST /api/login", s.login)
+	// Público (sin sesión): el login consulta si el modo demo está habilitado.
+	root.HandleFunc("GET /api/public/demo", s.publicDemo)
 
 	a := http.NewServeMux()
 	// sesión
@@ -119,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	a.HandleFunc("GET /api/version", s.getVersion)
 	a.HandleFunc("GET /api/settings", s.getSettings)
 	a.HandleFunc("PUT /api/settings", s.auth.RequireAdmin(s.putSettings))
+	a.HandleFunc("GET /api/activity", s.listActivity)
 	a.HandleFunc("GET /api/alerts", s.listAlerts)
 	a.HandleFunc("POST /api/alerts/{id}/ack", s.ackAlert)
 	a.HandleFunc("GET /api/overview", s.getOverview)
