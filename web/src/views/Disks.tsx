@@ -12,19 +12,24 @@ const TIPO_SMART: Record<string, 'ok' | 'warn' | 'err' | 'info'> = {
   ok: 'ok', warn: 'warn', crit: 'err', unknown: 'info',
 };
 
-// smartLabel — estado SMART en lenguaje humano (los contadores crudos
-// quedan en el title como respaldo).
-function smartLabel(d: Disk, t: (k: string, v?: Record<string, string | number>) => string): string {
+// smartBase — palabra de estado del badge (Correcto/FALLO/no disponible).
+function smartBase(d: Disk, t: (k: string) => string): string {
   if (d.smart === 'unknown') return t('dk_smart_na');
   if (d.smart === 'crit') return t('dk_smart_failed');
+  return t('dk_smart_ok');
+}
+
+// smartParts — contadores como línea aparte bajo el badge (así la píldora
+// queda en una línea y los contadores "bajan a dos líneas" según el ancho).
+function smartParts(d: Disk, t: (k: string, v?: Record<string, string | number>) => string): string[] {
+  if (d.smart === 'unknown' || d.smart === 'crit') return [];
   const parts: string[] = [];
   if ((d.realloc_sectors ?? 0) > 0) parts.push(t('dk_realloc', { n: d.realloc_sectors! }));
   if ((d.pending_sectors ?? 0) > 0) parts.push(t('dk_pending', { n: d.pending_sectors! }));
   if ((d.offline_uncorr ?? 0) > 0) parts.push(t('dk_offunc', { n: d.offline_uncorr! }));
   if ((d.crc_errors ?? 0) >= 100) parts.push(t('dk_crc', { n: d.crc_errors! }));
   if ((d.nvme_warn ?? 0) > 0) parts.push(t('dk_nvme_warn', { n: d.nvme_warn! }));
-  const base = t('dk_smart_ok');
-  return parts.length ? `${base} · ${parts.join(' · ')}` : base;
+  return parts;
 }
 
 export default function Disks() {
@@ -102,8 +107,11 @@ export default function Disks() {
                 <td className="num" data-l={t('dk_temp')}>{d.temp_c === null ? '—' : `${d.temp_c}°C`}</td>
                 <td className="smartcell">
                   <span title={d.smart_detail}>
-                    <Badge tone={TIPO_SMART[d.smart] ?? 'info'} dot={d.smart !== 'unknown'}>{smartLabel(d, t)}</Badge>
+                    <Badge tone={TIPO_SMART[d.smart] ?? 'info'} dot={d.smart !== 'unknown'}>{smartBase(d, t)}</Badge>
                   </span>
+                  {smartParts(d, t).length > 0 && (
+                    <div className="smartcounters">{smartParts(d, t).join(' · ')}</div>
+                  )}
                   {/* Pista de acción del motor de recomendaciones (la más severa del disco) */}
                   {(recs.data ?? []).filter((r) => r.dev === d.dev).slice(0, 1).map((r) => (
                     <div key={r.kind} style={{ fontSize: 11.5, marginTop: 4, fontWeight: 600,
