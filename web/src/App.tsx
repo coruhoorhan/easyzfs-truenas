@@ -35,9 +35,9 @@ const NAV: { id: ViewId; icon: ComponentType<{ size?: number }> }[] = [
   { id: 'dash', icon: IconHome },
   { id: 'pools', icon: IconPool },
   { id: 'data', icon: IconData },
-  { id: 'snaps', icon: IconSnap },
-  { id: 'tasks', icon: IconTask },
   { id: 'disks', icon: IconDisk },
+  { id: 'tasks', icon: IconTask },
+  { id: 'snaps', icon: IconSnap },
 ];
 
 const COLLAPSED_KEY = 'easyzfs-sidebar-collapsed';

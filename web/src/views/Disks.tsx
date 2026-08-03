@@ -33,10 +33,18 @@ export default function Disks() {
   const [msg, setMsg] = useState('');
   const [arm, setArm] = useState('');
 
-  // Temperaturas en tiempo real vía eventos
+  // Temperaturas y salud SMART en tiempo real vía eventos (sin disk.smart
+  // una pestaña abierta mostraba el SMART obsoleto hasta recargar a mano).
   useEffect(() => subscribeEvents((ev) => {
     if (ev.type === 'disk.temp') {
       setData((cur) => cur?.map((d) => d.dev === ev.dev ? { ...d, temp_c: ev.temp_c } : d) ?? cur);
+    }
+    if (ev.type === 'disk.smart') {
+      setData((cur) => cur?.map((d) => d.dev === ev.dev ? {
+        ...d, smart: ev.smart, smart_detail: ev.smart_detail,
+        realloc_sectors: ev.realloc_sectors, pending_sectors: ev.pending_sectors,
+        offline_uncorr: ev.offline_uncorr, crc_errors: ev.crc_errors, nvme_warn: ev.nvme_warn,
+      } : d) ?? cur);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
