@@ -59,6 +59,11 @@ type SmartCollector struct {
 	// disk.smart solo en cambios (las pestañas abiertas se actualizan por
 	// SSE; sin esto una pestaña vieja mostraba SMART obsoleto hasta recargar).
 	prevSmart map[string]string
+	// prevCRC recuerda el UDMA CRC de la pasada anterior POR SERIAL (el
+	// sdX puede cambiar al mover bahías). El delta es lo accionable: el
+	// acumulado de por vida no se resetea y persigue al disco equivocado
+	// tras un cambio de bahías (caso real bigtank 4-Ago-2026).
+	prevCRC map[string]int64
 }
 
 // NewSmartCollector crea el colector SMART.
@@ -70,6 +75,7 @@ func NewSmartCollector(d *sql.DB, h *hub.Hub, al *alerts.Alerter, sensors *Senso
 		sensors:    sensors,
 		lastSeries: map[string]time.Time{},
 		prevSmart:  map[string]string{},
+		prevCRC:    map[string]int64{},
 	}
 }
 
@@ -177,6 +183,7 @@ func (c *SmartCollector) collectOnce(ctx context.Context) error {
 		return fmt.Errorf("lsblk JSON: %w", err)
 	}
 	disks := []model.Disk{}
+	crcSeen := map[string]bool{}
 	for _, bd := range inv.BlockDevices {
 		if bd.Type != "disk" || !isPhysicalDisk(bd.Name) {
 			continue
@@ -192,10 +199,25 @@ func (c *SmartCollector) collectOnce(ctx context.Context) error {
 			SmartDetail: "no disponible",
 		}
 		c.fillSmart(ctx, &d)
+		// Delta CRC por serial (sobrevive a cambios de bahía/sdX).
+		key := d.Serial
+		if key == "" {
+			key = d.Dev
+		}
+		prev, ok := c.prevCRC[key]
+		applyCrcDelta(&d, prev, ok)
+		c.prevCRC[key] = d.CrcErrors
+		crcSeen[key] = true
 		if t, ok := c.sensors.Temp(bd.Name); ok && t > 0 {
 			d.TempC = &t // sensores (30 s) tienen preferencia sobre smartctl (10 min)
 		}
 		disks = append(disks, d)
+	}
+	// Podar seriales de discos retirados.
+	for key := range c.prevCRC {
+		if !crcSeen[key] {
+			delete(c.prevCRC, key)
+		}
 	}
 	c.mu.Lock()
 	c.disks = disks
@@ -230,6 +252,7 @@ func (c *SmartCollector) publishSmartChanges(disks []model.Disk) {
 			"pending_sectors": d.PendingSectors,
 			"offline_uncorr":  d.OfflineUncorr,
 			"crc_errors":      d.CrcErrors,
+			"crc_recent":      d.CrcRecent,
 			"nvme_warn":       d.NvmeWarn,
 		})
 	}
@@ -319,14 +342,9 @@ func parseSmartJSON(out []byte, d *model.Disk) error {
 			}
 			d.SmartDetail = fmt.Sprintf("%s (realloc=%d pending=%d offunc=%d)", d.SmartDetail, realloc, pending, offunc)
 		}
-		// CRC aislado no es sector defectuoso: solo avisa si es claramente
-		// anómalo (tormenta de link), no por errores históricos sueltos.
-		if crc >= 100 {
-			if d.Smart == "ok" {
-				d.Smart = "warn"
-			}
-			d.SmartDetail = fmt.Sprintf("%s (crc=%d)", d.SmartDetail, crc)
-		}
+		// CRC aislado NO eleva a warn aquí: es contador de por vida (no se
+		// resetea) y lo accionable es su crecimiento — lo evalúa
+		// applyCrcDelta en collectOnce con el valor de la pasada anterior.
 	}
 	// NVMe: temperatura y avisos críticos viven en otro log.
 	if sj.NVMeSmartHealthLog != nil {
@@ -343,6 +361,33 @@ func parseSmartJSON(out []byte, d *model.Disk) error {
 		}
 	}
 	return nil
+}
+
+// crcHistoryWarn — acumulado de por vida a partir del cual el CRC se menciona
+// como contexto ("histórico, estable") aunque no esté creciendo.
+const crcHistoryWarn = 100
+
+// applyCrcDelta calcula el crecimiento de UDMA CRC desde la pasada anterior
+// (prev/ok = valor previo) y ajusta estado/detalle. Lo que importa es el
+// CRECIMIENTO (link roto AHORA): el acumulado de por vida no se resetea y
+// perseguiría al disco equivocado tras un cambio de bahías (caso real
+// bigtank 4-Ago-2026: disco absuelto marcado "cable malo" por su histórico
+// mientras el puerto roto azotaba a otro disco).
+func applyCrcDelta(d *model.Disk, prev int64, ok bool) {
+	d.CrcRecent = 0
+	if ok && d.CrcErrors > prev {
+		d.CrcRecent = d.CrcErrors - prev
+	}
+	switch {
+	case d.CrcRecent > 0:
+		if d.Smart == "ok" {
+			d.Smart = "warn"
+		}
+		d.SmartDetail = fmt.Sprintf("%s (crc=%d, +%d nuevos)", d.SmartDetail, d.CrcErrors, d.CrcRecent)
+	case d.CrcErrors >= crcHistoryWarn:
+		// Histórico estable: contexto, no alarma (el estado no cambia).
+		d.SmartDetail = fmt.Sprintf("%s (crc=%d histórico, estable)", d.SmartDetail, d.CrcErrors)
+	}
 }
 
 // persistSeries guarda disk.<dev>.temp cada seriesInterval (con retención).

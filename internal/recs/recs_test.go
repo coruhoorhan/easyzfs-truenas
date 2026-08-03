@@ -33,32 +33,53 @@ func TestEvaluate_DiscoMuriendo(t *testing.T) {
 	}
 }
 
-// Caso real sdc (TEST0002): 48 realloc (vigilar) + 1,19M CRC (cable) →
-// info watch + warn check_cable. Jamás debe sugerir cambiar el disco por CRC.
-func TestEvaluate_TormentaCRC(t *testing.T) {
+// Caso real sdc (TEST0002) ABSUELTO: 48 realloc (vigilar) + 1,19M CRC de por
+// vida PERO congelado (CrcRecent=0, crecía cuando ocupaba la bahía rota) →
+// info watch + info crc_history. Jamás warn check_cable ni sustitución por CRC.
+func TestEvaluate_TormentaCRCEstable(t *testing.T) {
 	disks := []model.Disk{{
 		Dev: "sdc", Serial: "TEST0002", Pool: "bigtank", Smart: "warn",
-		ReallocSectors: 48, CrcErrors: 1194458,
+		ReallocSectors: 48, CrcErrors: 1194458, CrcRecent: 0,
 	}}
 	pools := []model.Pool{pool("bigtank", "ONLINE", "raidz1")}
 	rs := Evaluate(disks, pools)
 	if len(rs) != 2 {
 		t.Fatalf("recs = %d, esperadas 2: %+v", len(rs), rs)
 	}
-	var cable, watch bool
+	var history, watch bool
 	for _, r := range rs {
-		if r.Kind == model.RecCheckCable && r.Level == "warn" {
-			cable = true
+		if r.Kind == model.RecCrcHistory && r.Level == "info" {
+			history = true
 		}
 		if r.Kind == model.RecWatch && r.Level == "info" {
 			watch = true
+		}
+		if r.Kind == model.RecCheckCable {
+			t.Errorf("check_cable NO debe saltar con CRC congelado: %+v", r)
 		}
 		if r.Kind == model.RecReplaceNow || r.Kind == model.RecReplaceSoon {
 			t.Errorf("NUNCA sugerir sustitución por CRC: %+v", r)
 		}
 	}
-	if !cable || !watch {
-		t.Errorf("esperadas check_cable(warn) + watch(info): %+v", rs)
+	if !history || !watch {
+		t.Errorf("esperadas crc_history(info) + watch(info): %+v", rs)
+	}
+}
+
+// Tormenta ACTIVA (caso real 4-Ago-2026: TEST0003 en la bahía 3 rota, +133
+// CRC/150s): el delta >0 es lo accionable → warn check_cable.
+func TestEvaluate_TormentaCRCActiva(t *testing.T) {
+	disks := []model.Disk{{
+		Dev: "sdc", Serial: "TEST0003", Pool: "bigtank", Smart: "warn",
+		CrcErrors: 417, CrcRecent: 133,
+	}}
+	pools := []model.Pool{pool("bigtank", "ONLINE", "raidz1")}
+	rs := Evaluate(disks, pools)
+	if len(rs) != 1 || rs[0].Kind != model.RecCheckCable || rs[0].Level != "warn" {
+		t.Fatalf("esperado warn/check_cable: %+v", rs)
+	}
+	if rs[0].CrcRecent != 133 {
+		t.Errorf("CrcRecent no propagado: %+v", rs[0])
 	}
 }
 

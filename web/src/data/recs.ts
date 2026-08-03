@@ -13,6 +13,7 @@ export function computeRecommendations(disks: Disk[], pools: Pool[]): Recommenda
       dev: d.dev, serial: d.serial, pool: d.pool,
       realloc_sectors: d.realloc_sectors ?? 0, pending_sectors: d.pending_sectors ?? 0,
       offline_uncorr: d.offline_uncorr ?? 0, crc_errors: d.crc_errors ?? 0,
+      crc_recent: d.crc_recent ?? 0,
     };
     const add = (level: Recommendation['level'], kind: Recommendation['kind']) => {
       const r: Recommendation = { ...base, level, kind };
@@ -30,7 +31,11 @@ export function computeRecommendations(disks: Disk[], pools: Pool[]): Recommenda
     else if ((d.pending_sectors ?? 0) > 0 || (d.offline_uncorr ?? 0) > 0) add('crit', 'replace_now');
     else if ((d.realloc_sectors ?? 0) >= REALLOC_SOON) add('warn', 'replace_soon');
     else if ((d.realloc_sectors ?? 0) > 0 || (d.nvme_warn ?? 0) > 0) add('info', 'watch');
-    if ((d.crc_errors ?? 0) >= CRC_WARN) add('warn', 'check_cable');
+    // CRC: lo accionable es el CRECIMIENTO (link roto ahora); el acumulado de
+    // por vida no se resetea y perseguiría al disco equivocado tras un cambio
+    // de bahías (caso real bigtank 4-Ago-2026). Réplica de internal/recs.
+    if ((d.crc_recent ?? 0) > 0) add('warn', 'check_cable');
+    else if ((d.crc_errors ?? 0) >= CRC_WARN) add('info', 'crc_history');
   }
   const rank = (l: string) => (l === 'crit' ? 0 : l === 'warn' ? 1 : 2);
   return out.sort((a, b) => rank(a.level) - rank(b.level));

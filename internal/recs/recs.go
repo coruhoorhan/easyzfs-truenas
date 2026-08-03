@@ -35,6 +35,7 @@ func Evaluate(disks []model.Disk, pools []model.Pool) []model.Recommendation {
 			Dev: d.Dev, Serial: d.Serial, Pool: d.Pool,
 			ReallocSectors: d.ReallocSectors, PendingSectors: d.PendingSectors,
 			OfflineUncorr: d.OfflineUncorr, CrcErrors: d.CrcErrors,
+			CrcRecent: d.CrcRecent,
 		}
 		add := func(level, kind string) {
 			r := base
@@ -58,9 +59,16 @@ func Evaluate(disks []model.Disk, pools []model.Pool) []model.Recommendation {
 			add("info", model.RecWatch)
 		}
 		// CRC va APARTE: no es salud del medio, es el link SATA (cable/
-		// puerto/backplane). Sustituir el disco por CRC no arregla nada.
-		if d.CrcErrors >= CrcWarn {
+		// puerto/backplane). Lo accionable es el CRECIMIENTO entre pasadas
+		// (link roto AHORA). El acumulado de por vida no se resetea y
+		// perseguiría al disco equivocado tras un cambio de bahías (caso
+		// real bigtank 4-Ago-2026: disco absuelto marcado como "cable malo"
+		// por su histórico mientras el puerto roto azotaba a otro).
+		switch {
+		case d.CrcRecent > 0:
 			add("warn", model.RecCheckCable)
+		case d.CrcErrors >= CrcWarn:
+			add("info", model.RecCrcHistory)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return rank(out[i].Level) < rank(out[j].Level) })

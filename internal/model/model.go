@@ -136,6 +136,11 @@ type Disk struct {
 	PendingSectors int64  `json:"pending_sectors,omitempty"`
 	OfflineUncorr  int64  `json:"offline_uncorr,omitempty"` // attr 198: sectores incorregibles offline
 	CrcErrors      int64  `json:"crc_errors,omitempty"`     // attr 199: errores UDMA CRC (cable/puerto SATA)
+	// CrcRecent — crecimiento de CrcErrors desde la pasada anterior del
+	// colector (mismo disco, por serial). Lo accionable es ESTE delta: el
+	// acumulado de por vida no se resetea y persigue al disco equivocado
+	// tras un cambio de bahías (caso real bigtank, 4-Ago-2026).
+	CrcRecent      int64  `json:"crc_recent,omitempty"`
 	NvmeWarn       int    `json:"nvme_warn,omitempty"`
 	Pool           string `json:"pool"`
 	InUse          bool   `json:"in_use,omitempty"` // particiones montadas o swap activo (no elegible como "libre")
@@ -147,7 +152,8 @@ const (
 	RecReplaceNow  = "replace_now"  // sustituir cuanto antes (crit)
 	RecReplaceSoon = "replace_soon" // planificar sustitución (warn)
 	RecWatch       = "watch"        // vigilar evolución (info)
-	RecCheckCable  = "check_cable"  // revisar cable/puerto/backplane, NO el disco (warn)
+	RecCheckCable  = "check_cable"  // revisar cable/puerto/backplane, NO el disco (warn, CRC creciendo)
+	RecCrcHistory  = "crc_history"  // CRC alto pero ESTABLE: contexto histórico, sin acción (info)
 )
 
 // Razones de Hold (la acción sugerida debe esperar).
@@ -170,6 +176,7 @@ type Recommendation struct {
 	PendingSectors int64 `json:"pending_sectors,omitempty"`
 	OfflineUncorr  int64 `json:"offline_uncorr,omitempty"`
 	CrcErrors      int64 `json:"crc_errors,omitempty"`
+	CrcRecent      int64 `json:"crc_recent,omitempty"`
 	// Hold: la acción es correcta pero debe ESPERAR (ver HoldReason).
 	Hold       bool   `json:"hold,omitempty"`
 	HoldReason string `json:"hold_reason,omitempty"`
