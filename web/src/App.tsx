@@ -239,8 +239,10 @@ function Shell() {
           {rel.kind === 'available' && relDismissed !== rel.version && (
             <div className="relbar" role="status">
               <span>{t('upd_rel_banner', { v: rel.version })}</span>
-              <a href={rel.url} target="_blank" rel="noreferrer">{t('ab_viewrel')}</a>
-              <button className="btn sm" style={{ marginLeft: 'auto' }}
+              <a href={rel.url} target="_blank" rel="noreferrer">{t('ab_upd_new')}</a>
+              <a className="btn sm primary" href={rel.url} target="_blank" rel="noreferrer"
+                style={{ marginLeft: 'auto' }}>{t('upd_rel_upd')}</a>
+              <button className="btn sm"
                 onClick={() => { dismissRelease(rel.version); setRelDismissed(rel.version); }}>
                 {t('upd_rel_dismiss')}
               </button>

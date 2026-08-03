@@ -106,6 +106,51 @@ function ReleaseIcon({ version }: { version: string | undefined }) {
   return null;
 }
 
+// Fila "Comprobar actualizaciones" (Acerca de, solo admin): botón manual que
+// fuerza la consulta a GitHub al momento (además del check pasivo semanal de
+// releasecheck.ts). Muestra el resultado inline: al día, nueva versión
+// (enlace a las novedades) o error con reintento.
+function UpdateCheckRow({ version }: { version: string | undefined }) {
+  const { t } = useApp();
+  const rel = useReleaseCheck(version, true);
+  const [checking, setChecking] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const check = async () => {
+    setChecking(true); setFailed(false);
+    try {
+      await checkReleaseNow(version);
+    } catch {
+      setFailed(true);
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div className="installstrip">
+      <span className="t-ico" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+        <IconUpload size={16} />
+      </span>
+      <div className="grow">
+        <b>{t('ab_checkupd')}</b>
+        <div className="d">
+          {checking ? t('ab_checking')
+            : failed ? t('ab_upderr')
+            : rel.kind === 'available' ? t('ab_newver', { v: rel.version })
+            : rel.kind === 'uptodate' ? t('ab_uptodate', { v: version ?? '' })
+            : t('s_about_d')}
+        </div>
+      </div>
+      {rel.kind === 'available' && !failed && (
+        <a className="btn sm" href={rel.url} target="_blank" rel="noreferrer">{t('ab_viewrel')}</a>
+      )}
+      <button className="btn sm primary" disabled={checking} onClick={() => { void check(); }}>
+        {checking ? t('ab_checking') : failed ? t('ab_retry') : t('ab_checkupd')}
+      </button>
+    </div>
+  );
+}
+
 // Tarjeta "Copia de seguridad" (zona admin): patrón ajuste-proceso — estado
 // (último + próximo), configuración (switch + frecuencia + retención) y
 // acciones (Forzar ahora / Exportar / Importar) en la misma tarjeta.
@@ -691,8 +736,48 @@ export default function Settings() {
       {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
       {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}<ReleaseIcon version={version?.version} /></h2>}
       {isAdmin && (
-      <div className="st-row st-admin">
+      <>
+      {/* Fila admin 1: Modo demo | Copia de seguridad | Notificaciones */}
+      <div className="st-row st-admin3">
 
+      {/* ---- Modo demo ---- */}
+      <div className="card pad admin-card">
+        <h3 className="cardtitle">{t('s_demo')}</h3>
+        <p className="muted">{t('s_demo_d')}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 10 }}>
+          <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{t('s_demo_enable')}</span>
+          <Switch checked={settings.demo_enabled} ariaLabel={t('s_demo_enable')}
+            onChange={(v) => { void saveSettings({ demo_enabled: v }); }} />
+        </div>
+      </div>
+
+      {/* ---- Copia de seguridad de la BD ---- */}
+      <BackupCard settings={settings} onSave={saveSettings} />
+
+      {/* ---- Notificaciones webhook ---- */}
+      <div className="card pad admin-card">
+        <h3 className="cardtitle">{t('s_notif')}</h3>
+        <label htmlFor="nf-hook">{t('s_webhook')}</label>
+        <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}
+          onChange={(e) => setSettings({ ...settings, webhook: e.target.value })} />
+        <label className="checklabel" style={{ marginTop: 16 }}>
+          <input type="checkbox" checked={settings.notify_scrub_errors}
+            onChange={(e) => setSettings({ ...settings, notify_scrub_errors: e.target.checked })} />
+          {t('s_n_scrub')}
+        </label>
+        <label className="checklabel">
+          <input type="checkbox" checked={settings.notify_smart_change}
+            onChange={(e) => setSettings({ ...settings, notify_smart_change: e.target.checked })} />
+          {t('s_n_smart')}
+        </label>
+        <div className="m-actions">
+          <button className="btn primary" onClick={() => saveSettings({})}>{t('save')}</button>
+        </div>
+      </div>
+      </div>
+
+      {/* Fila admin 2: Usuarios | Actividad — misma altura */}
+      <div className="st-row st-users">
 
       {/* ---- Usuarios ---- */}
       <div className="card pad admin-card">
@@ -733,30 +818,10 @@ export default function Settings() {
         <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('s_roles_d')}</p>
       </div>
 
-      {/* ---- Copia de seguridad de la BD ---- */}
-      <BackupCard settings={settings} onSave={saveSettings} />
-
-      {/* ---- Notificaciones webhook ---- */}
-      <div className="card pad admin-card">
-        <h3 className="cardtitle">{t('s_notif')}</h3>
-        <label htmlFor="nf-hook">{t('s_webhook')}</label>
-        <input id="nf-hook" placeholder={t('s_webhook_ph')} value={settings.webhook}
-          onChange={(e) => setSettings({ ...settings, webhook: e.target.value })} />
-        <label className="checklabel" style={{ marginTop: 16 }}>
-          <input type="checkbox" checked={settings.notify_scrub_errors}
-            onChange={(e) => setSettings({ ...settings, notify_scrub_errors: e.target.checked })} />
-          {t('s_n_scrub')}
-        </label>
-        <label className="checklabel">
-          <input type="checkbox" checked={settings.notify_smart_change}
-            onChange={(e) => setSettings({ ...settings, notify_smart_change: e.target.checked })} />
-          {t('s_n_smart')}
-        </label>
-        <div className="m-actions">
-          <button className="btn primary" onClick={() => saveSettings({})}>{t('save')}</button>
-        </div>
+      {/* ---- Actividad (audit log, "ver más") ---- */}
+      <ActivityCard />
       </div>
-      </div>
+      </>
       )}
 
       {/* ---- Acerca de (ancho completo: 4 tiles + instalar PWA + sistema) ---- */}
@@ -799,29 +864,33 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Instalación PWA: SOLO visible si el navegador lo soporta
+          {/* Instalación PWA + Comprobar actualizaciones (admin) en la misma
+              fila. La tira PWA SOLO se renderiza si el navegador lo soporta
               (evento capturado, iOS con instrucciones o ya instalada);
               sin soporte no se renderiza nada (regla webapp-shell) */}
-          {(installed || installEvt || isIOS()) && (
-            <div className="installstrip">
-              <span className="t-ico" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                <IconDownload size={16} />
-              </span>
-              <div className="grow">
-                <b>{t('ab_install')}</b>
-                <div className="d">
-                  {installed ? t('ab_installed_d')
-                    : isIOS() ? t('ab_install_ios')
-                    : t('ab_install_d')}
+          <div className="aboutrow">
+            {(installed || installEvt || isIOS()) && (
+              <div className="installstrip">
+                <span className="t-ico" style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <IconDownload size={16} />
+                </span>
+                <div className="grow">
+                  <b>{t('ab_install')}</b>
+                  <div className="d">
+                    {installed ? t('ab_installed_d')
+                      : isIOS() ? t('ab_install_ios')
+                      : t('ab_install_d')}
+                  </div>
                 </div>
+                {installed
+                  ? <Badge tone="ok" dot={false}>{t('ab_installed')}</Badge>
+                  : installEvt
+                    ? <button className="btn sm primary" onClick={() => { void installEvt.prompt(); }}>{t('ab_install_btn')}</button>
+                    : null}
               </div>
-              {installed
-                ? <Badge tone="ok" dot={false}>{t('ab_installed')}</Badge>
-                : installEvt
-                  ? <button className="btn sm primary" onClick={() => { void installEvt.prompt(); }}>{t('ab_install_btn')}</button>
-                  : null}
-            </div>
-          )}
+            )}
+            {isAdmin && <UpdateCheckRow version={version?.version} />}
+          </div>
 
           {/* Sistema (datos del servidor, integrados en Acerca de) */}
           <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
