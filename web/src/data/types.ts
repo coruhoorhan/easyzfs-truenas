@@ -332,6 +332,7 @@ export type AppEvent =
   | { type: 'pool.status'; name: string; status: PoolStatus }
   | { type: 'scrub.progress'; pool: string; pct: number; eta_sec: number; kind?: 'scrub' | 'resilver' | 'trim' | 'expand' | '' }
   | { type: 'disk.temp'; dev: string; temp_c: number }
+  | { type: 'disk.smart'; dev: string; smart: Disk['smart']; smart_detail: string; realloc_sectors?: number; pending_sectors?: number; offline_uncorr?: number; crc_errors?: number; nvme_warn?: number }
   | { type: 'alert.new'; alert: Alert }
   | { type: 'job.finished'; id: number; ok: boolean; detail: string }
   | { type: 'replication.finished'; id: number; ok: boolean; detail: string }

@@ -55,6 +55,10 @@ type SmartCollector struct {
 	fails      int
 	stale      bool
 	lastSeries map[string]time.Time
+	// prevSmart recuerda el último estado publicado por disco para emitir
+	// disk.smart solo en cambios (las pestañas abiertas se actualizan por
+	// SSE; sin esto una pestaña vieja mostraba SMART obsoleto hasta recargar).
+	prevSmart map[string]string
 }
 
 // NewSmartCollector crea el colector SMART.
@@ -65,6 +69,7 @@ func NewSmartCollector(d *sql.DB, h *hub.Hub, al *alerts.Alerter, sensors *Senso
 		al:         al,
 		sensors:    sensors,
 		lastSeries: map[string]time.Time{},
+		prevSmart:  map[string]string{},
 	}
 }
 
@@ -196,8 +201,44 @@ func (c *SmartCollector) collectOnce(ctx context.Context) error {
 	c.disks = disks
 	c.mu.Unlock()
 	c.al.EvaluateDisks(ctx, disks)
+	c.publishSmartChanges(disks)
 	c.persistSeries(ctx, disks)
 	return nil
+}
+
+// publishSmartChanges emite disk.smart por SSE cuando cambia el estado o el
+// detalle SMART de un disco (p. ej. un disco pasa a warn entre dos pasadas
+// de 10 min). La primera pasada solo siembra el mapa (sin tormenta de
+// eventos al arrancar; las pestañas nuevas ya traen el dato fresco del GET).
+func (c *SmartCollector) publishSmartChanges(disks []model.Disk) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	seen := map[string]bool{}
+	for _, d := range disks {
+		seen[d.Dev] = true
+		key := d.Smart + "|" + d.SmartDetail
+		prev, ok := c.prevSmart[d.Dev]
+		c.prevSmart[d.Dev] = key
+		if !ok || prev == key {
+			continue
+		}
+		c.h.Publish("disk.smart", map[string]any{
+			"dev":             d.Dev,
+			"smart":           d.Smart,
+			"smart_detail":    d.SmartDetail,
+			"realloc_sectors": d.ReallocSectors,
+			"pending_sectors": d.PendingSectors,
+			"offline_uncorr":  d.OfflineUncorr,
+			"crc_errors":      d.CrcErrors,
+			"nvme_warn":       d.NvmeWarn,
+		})
+	}
+	// Podar discos que ya no existen (extraídos) para no filtrar memoria.
+	for dev := range c.prevSmart {
+		if !seen[dev] {
+			delete(c.prevSmart, dev)
+		}
+	}
 }
 
 // fillSmart rellena estado SMART de un disco; tolerante ante fallos.
