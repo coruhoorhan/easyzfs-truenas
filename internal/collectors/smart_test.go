@@ -39,7 +39,7 @@ func TestIsPhysicalDisk(t *testing.T) {
 // smartctl sale con exit 192 (self-test log con errores) pero emite JSON
 // válido; antes se descartaba la salida y el disco quedaba "unknown".
 // Fixture = salida real de /dev/sdb (TEST0001, 2528 realloc + 184 pending)
-// de host-a el 3-Ago-2026.
+// de un host de producción (anonimizado).
 func TestParseSmartJSON_DiscoMuriendoExit192(t *testing.T) {
 	out, err := os.ReadFile("testdata/smart_sdb_exit192.json")
 	if err != nil {
@@ -126,7 +126,7 @@ func TestApplyCrcDelta(t *testing.T) {
 	}
 }
 
-// Dispositivo sin SMART (eMMC de host-b): smartctl emite JSON de error
+// Dispositivo sin SMART (eMMC sin SAT de un host real): smartctl emite JSON de error
 // sin sección smart_status. Debe quedar "unknown", NO "crit" (regresión del
 // parseo tolerante: smart_status ausente se deserializaba como passed=false).
 func TestParseSmartJSON_SinSmart(t *testing.T) {
