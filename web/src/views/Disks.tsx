@@ -97,7 +97,7 @@ export default function Disks() {
             {(data ?? []).map((d) => (
               <tr key={d.dev}>
                 <td className="mono" style={{ fontWeight: 650 }}>{d.dev}</td>
-                <td>
+                <td className="modelcell">
                   <div style={{ fontSize: 13 }}>{d.model}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--text2)' }} className="mono">
                     {d.serial} · {fmtInt(d.hours)} {t('dk_hours')}
@@ -133,8 +133,10 @@ export default function Disks() {
                   {d.in_use && <Badge tone="warn" dot={false}> {t('dk_in_use')}</Badge>}
                 </td>
                 <td className="actions">
-                  <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_short_hint')} onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
-                  <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_long_hint')} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>{' '}
+                  <span className="testbtns">
+                    <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_short_hint')} onClick={() => test(d.dev, 'short')}>{t('dk_test_short')}</button>{' '}
+                    <button className="btn sm" disabled={d.smart === 'unknown'} title={t('dk_test_long_hint')} onClick={() => test(d.dev, 'long')}>{t('dk_test_long')}</button>
+                  </span>{' '}
                   {(d.pool === '—' || d.pool === '') && !d.in_use && (
                     <button className={`btn sm ${arm === d.dev ? 'danger' : ''}`} disabled={!isAdmin}
                       title={!isAdmin ? t('no_permission') : t('dk_poweroff_hint')}
