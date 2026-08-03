@@ -618,17 +618,23 @@ install_binary() {
         local tmp="" bin=""
         tmp="$(mktemp -d)"
         curl -fsSL "$url" -o "${tmp}/asset" || die "La descarga falló: ${url}"
-        # Verificación sha256 contra el checksums.txt de la misma release.
-        local sums_url="${url%/*}/checksums.txt"
-        if curl -fsSL "$sums_url" -o "${tmp}/checksums.txt" 2>/dev/null; then
+        # Verificación sha256 contra el checksums de la misma release.
+        # Desde v2.1.3 hay un fichero por arch (checksums-<arch>.txt); las
+        # releases anteriores publicaban un checksums.txt único.
+        local sums_url="${url%/*}/checksums-${ARCH}.txt"
+        if ! curl -fsSL "$sums_url" -o "${tmp}/checksums.txt" 2>/dev/null; then
+          sums_url="${url%/*}/checksums.txt"
+          curl -fsSL "$sums_url" -o "${tmp}/checksums.txt" 2>/dev/null || rm -f "${tmp}/checksums.txt"
+        fi
+        if [ -s "${tmp}/checksums.txt" ]; then
           local want="" got=""
           want="$(grep "easyzfs-linux-${ARCH}\$" "${tmp}/checksums.txt" | awk '{print $1}' | head -1)"
           got="$(sha256sum "${tmp}/asset" | awk '{print $1}')"
-          [ -n "$want" ] || die "checksums.txt no lista easyzfs-linux-${ARCH} (¿release sin asset para esta arch?)."
+          [ -n "$want" ] || die "checksums no lista easyzfs-linux-${ARCH} (¿release sin asset para esta arch?)."
           [ "$want" = "$got" ] || die "sha256 NO COINCIDE para easyzfs-linux-${ARCH} — descarga corrupta o manipulada."
-          ok "sha256 verificado contra checksums.txt."
+          ok "sha256 verificado contra $(basename "$sums_url")."
         else
-          warn "La release no publica checksums.txt (${sums_url}): descarga SIN verificar."
+          warn "La release no publica checksums (${sums_url}): descarga SIN verificar."
           confirm "¿Continuar sin verificación de integridad?" 1 || die "Instalación cancelada por seguridad."
         fi
         bin="${tmp}/asset"
