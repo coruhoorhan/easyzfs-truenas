@@ -19,6 +19,11 @@ import (
 
 var dateRe = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})T(\d{2})(\d{2})(\d{2})`)
 
+// gapThresholdDays — si entre dos respaldos consecutivos de una cadena pasan
+// más de estos días, se marca la cadena con un hueco (datos de esos días no
+// restaurables desde esta cadena). El patrón Veeam normal es diario (1 día).
+const gapThresholdDays = 2
+
 // File — un archivo de respaldo (VBK/VIB/VBM) localizado en vivo o en un
 // snapshot ZFS.
 type File struct {
@@ -34,18 +39,24 @@ type File struct {
 
 // Chain — cadena de respaldo: un VBK (tam yedek) y sus VIB incrementales.
 // Sin VBK la cadena está rota (is_broken) y los VIB no sirven para restaurar.
+// has_gap indica huecos de ≥ gapThresholdDays entre respaldos consecutivos.
 type Chain struct {
 	VBK      *File  `json:"vbk"`
 	VIBs     []*File `json:"vibs"`
 	IsBroken bool   `json:"is_broken"`
+	HasGap   bool   `json:"has_gap"`
+	GapDays  int    `json:"gap_days"`
 }
 
-// Machine — máquina con todos sus archivos y cadenas.
+// Machine — máquina con todos sus archivos y cadenas. LastBackup es la fecha
+// del respaldo más reciente (de cualquier cadena) en formato "YYYY-MM-DD HH:MM".
 type Machine struct {
-	Name      string   `json:"name"`
-	TotalSize int64    `json:"total_size"`
-	Files     []*File  `json:"files"`
-	Chains    []*Chain `json:"chains"`
+	Name         string   `json:"name"`
+	TotalSize    int64    `json:"total_size"`
+	Files        []*File  `json:"files"`
+	Chains       []*Chain `json:"chains"`
+	LastBackup   string   `json:"last_backup"`
+	LastBackupTS int64    `json:"last_backup_ts"`
 }
 
 // Result — respuesta de un escaneo completo de un dataset.
@@ -88,6 +99,7 @@ func parseName(filename string) (machine, dateStr, timeStr, ftype string) {
 
 // BuildChains ordena los archivos de una máquina por fecha y los agrupa en
 // cadenas VBK+VIB. Un VIB sin VBK previo en la lista abre una cadena rota.
+// También calcula huecos (gap) dentro de cada cadena.
 func BuildChains(files []*File) []*Chain {
 	sorted := make([]*File, len(files))
 	copy(sorted, files)
@@ -116,7 +128,37 @@ func BuildChains(files []*File) []*Chain {
 			}
 		}
 	}
+	for _, c := range chains {
+		c.HasGap, c.GapDays = chainGap(c)
+	}
 	return chains
+}
+
+// chainGap devuelve si hay un hueco ≥ gapThresholdDays entre INCREMENTOS
+// consecutivos (VIB) de una cadena y el mayor hueco. El tramo VBK→primer VIB
+// NO se considera hueco: el VBK es una copia completa y cubre ese intervalo
+// (restaurar al VBK no pierde nada).
+func chainGap(c *Chain) (bool, int) {
+	dates := make([]time.Time, 0, len(c.VIBs))
+	for _, f := range c.VIBs {
+		if f.DateStr == "" {
+			continue
+		}
+		if d, err := time.Parse("2006-01-02", f.DateStr); err == nil {
+			dates = append(dates, d)
+		}
+	}
+	hasGap, maxGap := false, 0
+	for i := 1; i < len(dates); i++ {
+		days := int(dates[i].Sub(dates[i-1]).Hours() / 24)
+		if days > gapThresholdDays {
+			hasGap = true
+			if days > maxGap {
+				maxGap = days
+			}
+		}
+	}
+	return hasGap, maxGap
 }
 
 // Scan explora un dataset: primero sus snapshots (.zfs/snapshot/*), después
@@ -192,6 +234,7 @@ func Scan(ctx context.Context, dataset string) (*Result, error) {
 	machines := make([]*Machine, 0, len(machineMap))
 	for _, m := range machineMap {
 		m.Chains = BuildChains(m.Files)
+		m.LastBackup, m.LastBackupTS = machineLastBackup(m.Files)
 		machines = append(machines, m)
 	}
 	sort.Slice(machines, func(i, j int) bool {
@@ -213,6 +256,25 @@ func Scan(ctx context.Context, dataset string) (*Result, error) {
 		}
 	}
 	return res, nil
+}
+
+// machineLastBackup devuelve el respaldo más reciente de la máquina como
+// "YYYY-MM-DD HH:MM:SS" (para mostrar) y como epoch (para calcular edad).
+func machineLastBackup(files []*File) (string, int64) {
+	best, ts := "", int64(0)
+	for _, f := range files {
+		if f.DateStr == "" {
+			continue
+		}
+		key := f.DateStr + " " + f.TimeStr
+		if key > best {
+			best = key
+			if t, err := time.Parse("2006-01-02 15:04:05", key); err == nil {
+				ts = t.Unix()
+			}
+		}
+	}
+	return best, ts
 }
 
 // BrokenChains devuelve las cadenas rotas de un resultado, por máquina.

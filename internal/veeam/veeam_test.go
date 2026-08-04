@@ -59,3 +59,46 @@ func TestBrokenChains(t *testing.T) {
 		t.Fatalf("esperada 1 cadena rota (B, cadena 1), got %+v", broken)
 	}
 }
+
+func TestChainGap(t *testing.T) {
+	// VIBs diarios consecutivos → sin hueco.
+	ok := &Chain{VBK: &File{DateStr: "2026-07-17"},
+		VIBs: []*File{{DateStr: "2026-07-18"}, {DateStr: "2026-07-19"}}}
+	hasGap, maxGap := chainGap(ok)
+	if hasGap || maxGap != 0 {
+		t.Fatalf("cadena diaria no debería tener hueco, got hasGap=%v maxGap=%d", hasGap, maxGap)
+	}
+	// VBK→primer VIB separado 3 días NO es hueco (el VBK cubre ese intervalo).
+	noGap := &Chain{VBK: &File{DateStr: "2026-07-17"},
+		VIBs: []*File{{DateStr: "2026-07-20"}, {DateStr: "2026-07-21"}}}
+	if h, _ := chainGap(noGap); h {
+		t.Fatalf("VBK→primer VIB no debería marcar hueco")
+	}
+	// Falta un incremento en medio (20 → 23) → hueco de 3 días.
+	gap := &Chain{VBK: &File{DateStr: "2026-07-17"},
+		VIBs: []*File{{DateStr: "2026-07-20"}, {DateStr: "2026-07-23"}, {DateStr: "2026-07-24"}}}
+	hasGap, maxGap = chainGap(gap)
+	if !hasGap || maxGap != 3 {
+		t.Fatalf("esperado hueco de 3 días, got hasGap=%v maxGap=%d", hasGap, maxGap)
+	}
+	// Sin fechas → nunca hueco.
+	empty := &Chain{VBK: &File{}, VIBs: []*File{{}}}
+	if h, _ := chainGap(empty); h {
+		t.Fatalf("cadena sin fechas no debería marcar hueco")
+	}
+}
+
+func TestMachineLastBackup(t *testing.T) {
+	files := []*File{
+		{DateStr: "2026-07-17", TimeStr: "13:52:45"},
+		{DateStr: "2026-07-25", TimeStr: "18:37:08"},
+		{DateStr: "2026-07-21", TimeStr: "00:00:01"},
+	}
+	str, ts := machineLastBackup(files)
+	if str != "2026-07-25 18:37:08" {
+		t.Fatalf("esperado 2026-07-25 18:37:08, got %q", str)
+	}
+	if ts != 1785004628 { // 2026-07-25T18:37:08 epoch
+		t.Fatalf("epoch inesperado: %d", ts)
+	}
+}

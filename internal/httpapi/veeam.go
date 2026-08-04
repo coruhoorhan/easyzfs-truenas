@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,12 +17,16 @@ import (
 )
 
 // veeamExplorer — GET /api/veeam/explorer?dataset={dataset}.
-// Escaneo bajo demanda para la vista; las alertas de cadenas rotas las
-// levanta VeeamCollector en segundo plano, no este handler.
+// Escaneo bajo demanda para la vista con caché de 60 s por dataset; las
+// alertas de cadenas rotas las levanta VeeamCollector en segundo plano.
 func (s *Server) veeamExplorer(w http.ResponseWriter, r *http.Request) {
 	dataset := r.URL.Query().Get("dataset")
 	if dataset == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "Dataset parameter is required")
+		return
+	}
+	if res := s.veeamCacheGet(dataset); res != nil {
+		writeJSON(w, http.StatusOK, res)
 		return
 	}
 	res, err := veeam.Scan(r.Context(), dataset)
@@ -28,7 +34,79 @@ func (s *Server) veeamExplorer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "scan_error", err.Error())
 		return
 	}
+	s.veeamCacheSet(dataset, res)
 	writeJSON(w, http.StatusOK, res)
+}
+
+// veeamCacheTTL — ventana de validez del escaneo en memoria.
+const veeamCacheTTL = 60 * time.Second
+
+type veeamCacheEntry struct {
+	res *veeam.Result
+	ts  time.Time
+}
+
+func (s *Server) veeamCacheGet(dataset string) *veeam.Result {
+	v, ok := s.veeamCache.Load(dataset)
+	if !ok {
+		return nil
+	}
+	e, ok := v.(veeamCacheEntry)
+	if !ok || time.Since(e.ts) > veeamCacheTTL {
+		s.veeamCache.Delete(dataset)
+		return nil
+	}
+	return e.res
+}
+
+func (s *Server) veeamCacheSet(dataset string, res *veeam.Result) {
+	s.veeamCache.Store(dataset, veeamCacheEntry{res: res, ts: time.Now()})
+}
+
+// veeamMounts — GET /api/veeam/mounts (admin).
+// Lista los montajes activos leyendo el estado REAL de TrueNAS (shares
+// VeeamClone + sus clones): no depende del localStorage del navegador.
+func (s *Server) veeamMounts(w http.ResponseWriter, r *http.Request) {
+	type mountInfo struct {
+		ShareName string `json:"share_name"`
+		CloneDS   string `json:"clone_ds"`
+		Path      string `json:"path"`
+		ReadOnly  bool   `json:"read_only"`
+		CreatedTS int64  `json:"created_ts"`
+	}
+	out, err := executil.Run(r.Context(), 15*time.Second, "midclt", "call", "sharing.smb.query")
+	if err != nil {
+		writeJSON(w, http.StatusOK, []mountInfo{}) // sin middleware → sin montajes
+		return
+	}
+	var shares []map[string]interface{}
+	if err := json.Unmarshal(out, &shares); err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_error", err.Error())
+		return
+	}
+	var mounts []mountInfo
+	for _, sh := range shares {
+		name, _ := sh["name"].(string)
+		if !strings.HasPrefix(name, "VeeamClone_") {
+			continue
+		}
+		path, _ := sh["path"].(string)
+		ro, _ := sh["readonly"].(bool)
+		cloneDS := strings.TrimPrefix(path, "/mnt/")
+		createdTS := int64(0)
+		if idx := strings.LastIndex(name, "_"); idx > 0 {
+			createdTS, _ = strconv.ParseInt(name[idx+1:], 10, 64)
+		}
+		mounts = append(mounts, mountInfo{
+			ShareName: name, CloneDS: cloneDS, Path: path,
+			ReadOnly: ro, CreatedTS: createdTS,
+		})
+	}
+	if mounts == nil {
+		mounts = []mountInfo{}
+	}
+	sort.Slice(mounts, func(i, j int) bool { return mounts[i].CreatedTS < mounts[j].CreatedTS })
+	writeJSON(w, http.StatusOK, mounts)
 }
 
 // veeamMountClone — POST /api/veeam/mount-clone.

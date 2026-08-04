@@ -60,6 +60,7 @@ export interface Settings {
   backup_freq_hours: number;
   backup_retention_days: number;
   veeam_datasets?: string; // datasets Veeam monitorizados por el collector (coma separados)
+  veeam_stale_days?: number; // días sin respaldo antes de marcar una máquina como obsoleta
 }
 
 // Copia de seguridad de la BD (GET /api/backup/status)
@@ -329,7 +330,15 @@ export interface CreateJobReq { tipo: JobType; target: string; schedule: string;
 export interface UpdateJobReq { enabled?: boolean; schedule?: string; retention?: string; threshold_mb?: number; }
 export interface CreateUserReq { user: string; password: string; role: Role }
 
-// --- Recomendaciones de discos (motor de reglas del backend) ---
+export interface VeeamMount {
+  share_name: string;
+  clone_ds: string;
+  path: string;
+  read_only: boolean;
+  created_ts: number;
+}
+
+// Recomendaciones de discos (motor de reglas del backend) ---
 export type RecKind = 'replace_now' | 'replace_soon' | 'watch' | 'check_cable';
 export type RecHoldReason = 'resilver' | 'pool_degraded' | 'no_redundancy';
 

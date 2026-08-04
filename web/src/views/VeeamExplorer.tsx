@@ -21,6 +21,8 @@ interface VeeamChain {
   vbk: VeeamFile | null;
   vibs: VeeamFile[];
   is_broken: boolean;
+  has_gap?: boolean;
+  gap_days?: number;
 }
 
 interface VeeamMachine {
@@ -28,6 +30,16 @@ interface VeeamMachine {
   total_size: number;
   files: VeeamFile[];
   chains: VeeamChain[];
+  last_backup?: string;
+  last_backup_ts?: number;
+}
+
+interface VeeamMount {
+  share_name: string;
+  clone_ds: string;
+  path: string;
+  read_only: boolean;
+  created_ts: number;
 }
 
 interface VeeamExplorerResp {
@@ -160,24 +172,48 @@ function MountSMBButton({ snapshot, dataset, mountKey }: { snapshot: string, dat
   );
 }
 
-function MachineRow({ m, dataset }: { m: VeeamMachine; dataset: string }) {
+function MachineRow({ m, dataset, staleDays }: { m: VeeamMachine; dataset: string; staleDays: number }) {
   const { t } = useApp();
   const [open, setOpen] = useState(false);
+  const [protecting, setProtecting] = useState(false);
+  const [protMsg, setProtMsg] = useState('');
 
-  const scriptLines = m.chains.map((chain, i) => {
-      let script = `# ${t('veeam_chain', { i: i + 1 })}\n`;
-      if (chain.vbk && chain.vbk.is_zfs_archive && chain.vbk.snapshot_name) {
-         const snap = dataset + "@" + chain.vbk.snapshot_name;
-         script += `wget -O "${chain.vbk.name}" "http://<server-ip>/api/snapshots/${snap}/download?file=${chain.vbk.name}"\n`;
+  const ageDays = m.last_backup_ts ? Math.max(0, Math.floor((Date.now() / 1000 - m.last_backup_ts) / 86400)) : null;
+  const stale = ageDays !== null && ageDays >= staleDays;
+
+  // Script de recuperación con el host real y cookie de sesión (el endpoint
+  // de descarga exige autenticación).
+  const scriptLines = [
+    '#!/bin/bash',
+    `# ${t('veeam_chain_tree')}: ${m.name}`,
+    `HOST="${window.location.hostname}"`,
+    `# ${t('veeam_script_cookie_hint')}`,
+    'COOKIE="easyzfs_session=PASTE_AQUI"',
+    'dl() { curl -sS -b "$COOKIE" -o "$1" "http://$HOST$2"; }',
+    '',
+  ].concat(m.chains.flatMap((chain, i) => {
+    const lines = [`# ${t('veeam_chain', { i: i + 1 })}`];
+    const push = (f: VeeamFile) => {
+      if (f.is_zfs_archive && f.snapshot_name) {
+        const full = `${dataset}@${f.snapshot_name}`;
+        lines.push(`dl "${f.name}" "/api/snapshots/${encodeURIComponent(full)}/download?file=${encodeURIComponent(f.name)}"`);
       }
-      for (const vib of chain.vibs) {
-          if (vib.is_zfs_archive && vib.snapshot_name) {
-              const snap = dataset + "@" + vib.snapshot_name;
-              script += `wget -O "${vib.name}" "http://<server-ip>/api/snapshots/${snap}/download?file=${vib.name}"\n`;
-          }
-      }
-      return script;
-  }).join('\n');
+    };
+    if (chain.vbk) push(chain.vbk);
+    chain.vibs.forEach(push);
+    return lines;
+  })).join('\n');
+
+  const protect = async () => {
+    setProtecting(true); setProtMsg('');
+    try {
+      const safe = m.name.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 40);
+      const name = `ezv-${safe}-${new Date().toISOString().slice(0, 10)}-${Math.floor(Date.now() / 1000) % 100000}`;
+      await getProvider().createSnapshot({ dataset, name, recursive: false });
+      setProtMsg(t('veeam_protect_ok'));
+    } catch (e: any) { setProtMsg(e?.message ?? t('error')); }
+    setProtecting(false);
+  };
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '16px', overflow: 'hidden' }}>
@@ -190,8 +226,22 @@ function MachineRow({ m, dataset }: { m: VeeamMachine; dataset: string }) {
           <div style={{ fontWeight: 'bold', fontSize: '1.2em', color: 'var(--text)' }}>{m.name}</div>
           <div style={{ fontSize: '0.85em', color: 'var(--text2)', marginTop: 4 }}>
             {t('veeam_files_chains', { n: m.files.length, c: m.chains.length })}
+            {m.last_backup && (
+              <span style={{ marginLeft: 10, color: stale ? '#b45309' : undefined, fontWeight: stale ? 600 : undefined }}>
+                · {t('veeam_last_backup', { d: m.last_backup, n: ageDays ?? 0 })}
+                {stale && (
+                  <span style={{ marginLeft: 6, padding: '1px 7px', borderRadius: '9px', backgroundColor: '#fef3c7', color: '#92400e', fontSize: '0.72rem', fontWeight: 700 }}>
+                    {t('veeam_stale_tag')}
+                  </span>
+                )}
+              </span>
+            )}
           </div>
+          {protMsg && <div style={{ fontSize: '0.75em', color: 'var(--text2)', marginTop: 4 }}>{protMsg}</div>}
         </div>
+        <button className="btn sm" onClick={(e) => { e.stopPropagation(); void protect(); }} disabled={protecting}>
+          {protecting ? '…' : t('veeam_protect')}
+        </button>
         <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>{fmtBytes(m.total_size)}</div>
       </div>
 
@@ -213,30 +263,46 @@ function MachineRow({ m, dataset }: { m: VeeamMachine; dataset: string }) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {m.chains.map((chain, i) => (
-              <div key={i} style={{ borderLeft: chain.is_broken ? '4px solid #dc3545' : '4px solid #28a745', paddingLeft: '16px', marginBottom: '16px' }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '8px', color: chain.is_broken ? '#dc3545' : 'var(--text)', display: 'flex', alignItems: 'center' }}>
-                  <span>{t('veeam_chain', { i: i + 1 })} {chain.is_broken && t('veeam_broken_chain')}</span>
-                  {chain.vbk && chain.vbk.is_zfs_archive && chain.vbk.snapshot_name && (
-                      <MountSMBButton snapshot={chain.vbk.snapshot_name} dataset={dataset} mountKey={`${m.name}_${i + 1}`} />
-                  )}
-                </div>
+            {m.chains.map((chain, i) => {
+              const snap = chain.vbk?.snapshot_name;
+              const mounted = !!snap && !!localStorage.getItem(`veeam_mount_${m.name}_${i + 1}_${snap}`);
+              const border = chain.is_broken ? '#dc3545' : mounted ? '#1a7f37' : 'var(--border)';
+              return (
+                <div key={i} style={{ borderLeft: `4px solid ${border}`, paddingLeft: '16px', marginBottom: '16px' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', color: chain.is_broken ? '#dc3545' : mounted ? '#1a7f37' : 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{t('veeam_chain', { i: i + 1 })}</span>
+                    {chain.is_broken && <span style={{ color: '#dc3545' }}>{t('veeam_broken_chain')}</span>}
+                    {chain.has_gap && (
+                      <span style={{ padding: '2px 9px', borderRadius: '10px', backgroundColor: '#fef3c7', color: '#92400e', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {t('veeam_gap', { n: chain.gap_days ?? 1 })}
+                      </span>
+                    )}
+                    {mounted && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '2px 9px', borderRadius: '10px', backgroundColor: '#e6f4ea', color: '#1a7f37', fontSize: '0.72rem', fontWeight: 700 }}>
+                        ● {t('veeam_mounted')}
+                      </span>
+                    )}
+                    {chain.vbk && chain.vbk.is_zfs_archive && chain.vbk.snapshot_name && (
+                        <MountSMBButton snapshot={chain.vbk.snapshot_name} dataset={dataset} mountKey={`${m.name}_${i + 1}`} />
+                    )}
+                  </div>
 
-                <div className="tblwrap" style={{ overflowX: 'auto' }}>
-                  <table className="data" style={{ margin: 0 }}>
-                    <thead>
-                      <tr><th>{t('veeam_file')}</th><th>{t('veeam_date')}</th><th>{t('veeam_type')}</th><th className="num">{t('veeam_size')}</th><th style={{ textAlign: 'right' }}>{t('veeam_action')}</th></tr>
-                    </thead>
-                    <tbody>
-                      {chain.vbk && <VeeamFileRow f={chain.vbk} dataset={dataset} />}
-                      {chain.vibs.map(vib => (
-                        <VeeamFileRow key={vib.path} f={vib} dataset={dataset} />
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="tblwrap" style={{ overflowX: 'auto' }}>
+                    <table className="data" style={{ margin: 0 }}>
+                      <thead>
+                        <tr><th>{t('veeam_file')}</th><th>{t('veeam_date')}</th><th>{t('veeam_type')}</th><th className="num">{t('veeam_size')}</th><th style={{ textAlign: 'right' }}>{t('veeam_action')}</th></tr>
+                      </thead>
+                      <tbody>
+                        {chain.vbk && <VeeamFileRow f={chain.vbk} dataset={dataset} />}
+                        {chain.vibs.map(vib => (
+                          <VeeamFileRow key={vib.path} f={vib} dataset={dataset} />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
         </div>
@@ -251,6 +317,52 @@ export default function VeeamExplorer() {
   const [error, setError] = useState<string>('');
   const [dataset, setDataset] = useState('tank/vmware');
   const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
+  const [flt, setFlt] = useState<'all' | 'broken' | 'mounted' | 'archive'>('all');
+  const [mounts, setMounts] = useState<VeeamMount[] | null>(null);
+  const [staleDays, setStaleDays] = useState(2);
+
+  // Montajes activos (estado real del servidor, no localStorage).
+  const loadMounts = () => {
+    fetch('/api/veeam/mounts')
+      .then(r => r.json())
+      .then(d => { if (!d?.error) setMounts(Array.isArray(d) ? d : []); })
+      .catch(() => {});
+  };
+
+  const unmountFromPanel = async (m: VeeamMount) => {
+    try {
+      await fetch('/api/veeam/unmount-clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ share_name: m.share_name, clone_ds: m.clone_ds })
+      });
+      // Limpia el estado local de la cadena para que los badges se actualicen.
+      const snap = m.share_name.replace(/^VeeamClone_/, '').replace(/_\d+$/, '');
+      try {
+        for (const k of Object.keys(localStorage)) {
+          if (k.startsWith('veeam_mount_') && k.endsWith(`_${snap}`)) localStorage.removeItem(k);
+        }
+      } catch { /* ignore */ }
+      loadMounts();
+      load(dataset);
+    } catch { /* ignore */ }
+  };
+
+  // ¿Está montada alguna cadena de esta máquina? (estado por máquina+cadena)
+  const machineMounted = (m: VeeamMachine) =>
+    m.chains.some((c, i) => !!c.vbk?.snapshot_name &&
+      !!localStorage.getItem(`veeam_mount_${m.name}_${i + 1}_${c.vbk.snapshot_name}`));
+
+  const shownMachines = (data?.machines ?? []).filter(m => {
+    if (q && !m.name.toLowerCase().includes(q.toLowerCase())) return false;
+    switch (flt) {
+      case 'broken': return m.chains.some(c => c.is_broken);
+      case 'mounted': return machineMounted(m);
+      case 'archive': return m.chains.some(c => !!c.vbk?.is_zfs_archive);
+      default: return true;
+    }
+  });
 
   // El escaneo se dispara solo con el botón "Tara" o el montaje inicial;
   // antes se disparaba en cada pulsación de teclado (escaneaba el árbol de
@@ -280,6 +392,8 @@ export default function VeeamExplorer() {
 
   useEffect(() => {
     load(dataset);
+    getProvider().getSettings().then(s => setStaleDays(s.veeam_stale_days ?? 2)).catch(() => {});
+    loadMounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -298,6 +412,31 @@ export default function VeeamExplorer() {
             {t('veeam_scan')}
         </button>
       </div>
+
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input className="inp" style={{ flex: 1, minWidth: 220 }} value={q}
+          onChange={e => setQ(e.target.value)} placeholder={t('veeam_search')} />
+        <select className="inp" style={{ width: 'auto' }} value={flt}
+          onChange={e => setFlt(e.target.value as 'all' | 'broken' | 'mounted' | 'archive')}>
+          <option value="all">{t('veeam_filter_all')}</option>
+          <option value="broken">{t('veeam_filter_broken')}</option>
+          <option value="mounted">{t('veeam_filter_mounted')}</option>
+          <option value="archive">{t('veeam_filter_archive')}</option>
+        </select>
+      </div>
+
+      {mounts && mounts.length > 0 && (
+        <div style={{ marginBottom: '24px', padding: '14px 16px', backgroundColor: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+          <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.95em' }}>{t('veeam_mounts')} ({mounts.length})</div>
+          {mounts.map(m => (
+            <div key={m.share_name} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '7px 0', borderTop: '1px solid var(--border)' }}>
+              <span style={{ color: '#1a7f37', fontWeight: 700 }}>●</span>
+              <span className="mono" style={{ fontSize: '0.85em', flex: 1, wordBreak: 'break-all' }}>{m.path}</span>
+              <button className="btn sm danger" onClick={() => unmountFromPanel(m)}>{t('veeam_unmount')}</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {loading && <Spinner label={t('veeam_scanning')} />}
       {error && <div className="alert err">{error}</div>}
@@ -331,11 +470,11 @@ export default function VeeamExplorer() {
           </div>
 
           <div>
-            {data.machines.map(m => (
-              <MachineRow key={m.name} m={m} dataset={dataset} />
+            {shownMachines.map(m => (
+              <MachineRow key={m.name} m={m} dataset={dataset} staleDays={staleDays} />
             ))}
-            {data.machines.length === 0 && (
-                <div className="empty">{t('veeam_empty')}</div>
+            {shownMachines.length === 0 && (
+                <div className="empty">{data.machines.length === 0 ? t('veeam_empty') : t('veeam_nomatch')}</div>
             )}
           </div>
         </>

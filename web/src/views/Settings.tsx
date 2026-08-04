@@ -568,6 +568,11 @@ export default function Settings() {
             placeholder="tank/vmware, tank/backups"
             onChange={(e) => setSettings({ ...settings, veeam_datasets: e.target.value })} />
           <p className="muted" style={{ marginTop: 4 }}>{t('veeam_monitored_d')}</p>
+          <label htmlFor="th-veeam-stale">{t('veeam_stale_days_lbl')}</label>
+          <input id="th-veeam-stale" type="number" min={1} max={30}
+            value={settings.veeam_stale_days ?? 2}
+            onChange={(e) => setSettings({ ...settings, veeam_stale_days: +e.target.value })} />
+          <p className="muted" style={{ marginTop: 4 }}>{t('veeam_stale_days_d')}</p>
           {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
           <div className="m-actions">
             <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>

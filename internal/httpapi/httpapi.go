@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"easyzfs/internal/actions"
@@ -54,6 +55,7 @@ type Server struct {
 	zfsVersion string
 
 	loginLimiter *loginLimiter // rate limit de /api/login (IP+usuario)
+	veeamCache   sync.Map      // dataset → veeamCacheEntry (TTL 60s, capa cache)
 }
 
 // Deps — parámetros del constructor.
@@ -161,6 +163,7 @@ func (s *Server) Handler() http.Handler {
 	
 	// veeam
 	a.HandleFunc("GET /api/veeam/explorer", s.auth.RequireAdmin(s.veeamExplorer))
+	a.HandleFunc("GET /api/veeam/mounts", s.auth.RequireAdmin(s.veeamMounts))
 	a.HandleFunc("POST /api/veeam/mount-clone", s.auth.RequireAdmin(s.veeamMountClone))
 	a.HandleFunc("POST /api/veeam/unmount-clone", s.auth.RequireAdmin(s.veeamUnmountClone))
 	

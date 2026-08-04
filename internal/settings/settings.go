@@ -29,6 +29,8 @@ type Settings struct {
 	// Datasets Veeam que monitoriza el collector (cadenas rotas), separados
 	// por coma. 'tank/vmware,tank/backups'
 	VeeamDatasets string `json:"veeam_datasets"`
+	// Días sin respaldo de una máquina antes de considerar su yedek bayat.
+	VeeamStaleDays int `json:"veeam_stale_days"`
 }
 
 // Defaults — ajustes de fábrica.
@@ -44,6 +46,7 @@ func Defaults() Settings {
 		BackupEnabled:       true,
 		BackupFreqHours:     24,
 		BackupRetentionDays: 3,
+		VeeamStaleDays:      2,
 	}
 }
 
@@ -104,6 +107,9 @@ func (s *Store) Save(ctx context.Context, st Settings) error {
 	}
 	if st.BackupRetentionDays < 1 || st.BackupRetentionDays > 30 {
 		st.BackupRetentionDays = 3
+	}
+	if st.VeeamStaleDays < 1 || st.VeeamStaleDays > 30 {
+		st.VeeamStaleDays = 2
 	}
 	// VeeamDatasets: separados por coma, valida cada uno (mismo whitelist de
 	// dataset) y descarta entradas inválidas.
