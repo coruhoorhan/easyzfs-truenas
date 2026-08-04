@@ -1071,7 +1071,7 @@ function DeleteSnapModal({ full, onClose }: { full: string; onClose: () => void 
     e.preventDefault();
     setBusy(true); setErr('');
     try {
-      await getProvider().deleteSnapshot(full, confirm.trim());
+      await getProvider().deleteSnapshot(full, confirm.trim() === snap ? full : confirm.trim());
       refresh(); onClose();
     } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
   };
