@@ -2,7 +2,7 @@
 // Se cachea en el tick del colector zpool (los handlers nunca ejecutan CLI).
 //
 // OJO (incidente 2-Ago-2026): la salida de 'zpool history -i' puede ser
-// ENORME (TheZBox: 2,7 M líneas / 275 MB). Parsearla en memoria con
+// ENORME (bigtank: 2,7 M líneas / 275 MB). Parsearla en memoria con
 // strings.Split disparó un OOM-loop (MemoryMax=256M y luego 1G). Por eso el
 // parseo es en STREAMING línea a línea con un ring buffer de historyKeep:
 // la memoria usada no depende del tamaño del historial.

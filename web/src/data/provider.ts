@@ -1,6 +1,6 @@
 // Interfaz DataProvider: abstrae el origen de datos (HTTP real o mock demo).
 import type {
-  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
+ActivityItem, Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON,
   Recommendation, ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UpdateReplicationReq, UserInfo, VersionInfo,
@@ -16,6 +16,13 @@ export interface DataProvider {
   getAlerts(): Promise<Alert[]>;
   ackAlert(id: number): Promise<void>;
   getOverview(): Promise<Overview>;
+  // Actividad (audit_log) con límite opcional — para el "Ver más" de Ajustes
+  getActivity(limit?: number): Promise<ActivityItem[]>;
+
+  // Copia de seguridad de la BD (admin; la descarga es enlace directo con cookie)
+  getBackupStatus(): Promise<BackupStatus>;
+  runBackup(): Promise<BackupFile>;
+  importBackup(file: File): Promise<void>;
 
   // Copia de seguridad de la BD (admin; la descarga es enlace directo con cookie)
   getBackupStatus(): Promise<BackupStatus>;
@@ -104,7 +111,7 @@ export interface DataProvider {
 
   // Notificaciones push (Web Push; 503 push_not_configured sin claves VAPID)
   getPushVapidKey(): Promise<{ publicKey: string }>;
-  pushSubscribe(sub: PushSubscriptionJSON, lang: 'es' | 'en' | 'tr'): Promise<void>;
+pushSubscribe(sub: PushSubscriptionJSON, lang: 'es' | 'en' | 'tr'): Promise<void>;
   pushUnsubscribe(endpoint: string): Promise<void>;
 
   // Preferencias de notificación y horario silencioso (del propio usuario)

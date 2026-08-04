@@ -1299,6 +1299,9 @@ function EditScheduleModal({ job, onClose }: { job: Job; onClose: () => void }) 
         <ScheduleFields s={sched} set={setSched} showRetention={job.tipo === 'snapshot'}
           retention={retention} setRetention={setRetention} 
           thresholdMB={threshold} setThresholdMB={setThreshold} t={t as never} />
+        <label className="checklabel" style={{ marginTop: 16 }}>
+          <input type="checkbox" defaultChecked /> {t('et_notify')}
+        </label>
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
           {isAdmin && <button type="button" className="btn danger" style={{ marginRight: 'auto' }} onClick={remove} disabled={busy}>{t('et_delete')}</button>}

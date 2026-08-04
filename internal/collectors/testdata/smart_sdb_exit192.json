@@ -35,11 +35,11 @@
   },
   "model_family": "Seagate Enterprise Capacity 3.5 HDD v7 SED",
   "model_name": "ST12000NM0127",
-  "serial_number": "ZJV3K043",
+  "serial_number": "TEST0001",
   "wwn": {
     "naa": 5,
     "oui": 3152,
-    "id": 3023972325
+    "id": 1234567890
   },
   "firmware_version": "G004",
   "user_capacity": {

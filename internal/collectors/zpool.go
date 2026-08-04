@@ -27,7 +27,7 @@ const (
 	zpoolMaxBackoff = 5 * time.Minute
 	seriesInterval  = 10 * time.Minute // persistir series con esta cadencia mínima
 	historyTTL      = 10 * time.Minute // re-leer 'zpool history' como máximo con esta cadencia
-	historyTimeout  = 90 * time.Second // historiales grandes (TheZBox: ~20 s / 275 MB)
+	historyTimeout  = 90 * time.Second // historiales grandes (bigtank: ~20 s / 275 MB)
 )
 
 // ZpoolCollector — caché de pools, datasets y snapshots.
@@ -287,7 +287,7 @@ func (c *ZpoolCollector) fillPoolProps(ctx context.Context, p *model.Pool) {
 
 // fetchHistory — 'zpool history -i <pool>' parseado EN STREAMING (nil si
 // falla; se conserva la caché anterior). La salida puede ser enorme (275 MB
-// en TheZBox): nunca se carga entera en memoria — pipe + ring buffer de
+// en bigtank): nunca se carga entera en memoria — pipe + ring buffer de
 // historyKeep entradas. Timeout generoso porque el kernel tarda ~20 s en
 // volcar historiales grandes; si expira, nil y se reintenta en otro tick.
 func (c *ZpoolCollector) fetchHistory(ctx context.Context, pool string) []model.HistoryEntry {

@@ -14,7 +14,7 @@ func TestParseStatusJSONVdevs(t *testing.T) {
 		"tank":{"name":"tank","vdev_type":"root","state":"DEGRADED","vdevs":{
 			"raidz1-0":{"name":"raidz1-0","vdev_type":"raidz1","state":"DEGRADED","vdevs":{
 				"sdb1":{"name":"sdb1","vdev_type":"disk","state":"ONLINE"},
-				"8ab95469-2ae7-411a-af39-47b1d4f39d3c":{"name":"8ab95469-2ae7-411a-af39-47b1d4f39d3c","vdev_type":"disk","state":"FAULTED"}
+				"11111111-2222-3333-4444-555555555555":{"name":"11111111-2222-3333-4444-555555555555","vdev_type":"disk","state":"FAULTED"}
 			}}
 		}}
 	}}}}`)
@@ -39,7 +39,7 @@ func TestResolveVdevPaths(t *testing.T) {
 	p := &model.Pool{Name: "tank", Vdevs: []model.Vdev{
 		{Dev: "sdb1", Status: "ONLINE"},
 		{Dev: "nvme0n1p2", Status: "ONLINE"},
-		{Dev: "8ab95469-2ae7-411a-af39-47b1d4f39d3c", Status: "FAULTED"},
+		{Dev: "11111111-2222-3333-4444-555555555555", Status: "FAULTED"},
 		{Dev: "nvme-ORICO_FAKE_123", Status: "ONLINE"},
 	}}
 	c.resolveVdevPaths(context.Background(), p)
@@ -97,7 +97,7 @@ func TestParseHumanSize(t *testing.T) {
 }
 
 func TestReUUID(t *testing.T) {
-	if !reUUID.MatchString("8ab95469-2ae7-411a-af39-47b1d4f39d3c") {
+	if !reUUID.MatchString("11111111-2222-3333-4444-555555555555") {
 		t.Fatal("UUID no reconocido")
 	}
 	for _, no := range []string{"sdb1", "ata-ST12000-part1", "gptid/abcd"} {

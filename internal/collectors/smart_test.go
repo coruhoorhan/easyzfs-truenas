@@ -38,8 +38,8 @@ func TestIsPhysicalDisk(t *testing.T) {
 // Regresión del bug "disco muriendo aparece como SMART no disponible":
 // smartctl sale con exit 192 (self-test log con errores) pero emite JSON
 // válido; antes se descartaba la salida y el disco quedaba "unknown".
-// Fixture = salida real de /dev/sdb (ZJV3K043, 2528 realloc + 184 pending)
-// de citadel-01 el 3-Ago-2026.
+// Fixture = salida real de /dev/sdb (TEST0001, 2528 realloc + 184 pending)
+// de un host de producción (anonimizado).
 func TestParseSmartJSON_DiscoMuriendoExit192(t *testing.T) {
 	out, err := os.ReadFile("testdata/smart_sdb_exit192.json")
 	if err != nil {
@@ -61,11 +61,13 @@ func TestParseSmartJSON_DiscoMuriendoExit192(t *testing.T) {
 	}
 }
 
-// Tormenta de link SATA (caso real sdc ZJV47B0J: >1,1M UDMA CRC): el disco
-// tiene pocos realloc pero el CRC disparado debe elevar a warn.
+// Tormenta de link SATA (caso real sdc TEST0002: >1,1M UDMA CRC): el parser
+// rellena CrcErrors pero NO decide por el acumulado (es de por vida y no se
+// resetea); el warn llega por los realloc=48. El juicio del CRC es del delta
+// (applyCrcDelta, testeado aparte).
 func TestParseSmartJSON_TormentaCRC(t *testing.T) {
 	out := []byte(`{
-		"model_name": "ST12000NM0127", "serial_number": "ZJV47B0J",
+		"model_name": "ST12000NM0127", "serial_number": "TEST0002",
 		"smart_status": {"passed": true},
 		"power_on_time": {"hours": 9194},
 		"ata_smart_attributes": {"table": [
@@ -80,17 +82,51 @@ func TestParseSmartJSON_TormentaCRC(t *testing.T) {
 		t.Fatalf("parseSmartJSON: %v", err)
 	}
 	if d.Smart != "warn" {
-		t.Errorf("Smart = %q, esperado warn", d.Smart)
+		t.Errorf("Smart = %q, esperado warn (por realloc=48)", d.Smart)
 	}
 	if d.CrcErrors != 1184752 {
 		t.Errorf("CrcErrors = %d, esperado 1184752", d.CrcErrors)
 	}
-	if !strings.Contains(d.SmartDetail, "crc=") {
-		t.Errorf("SmartDetail %q sin detalle crc", d.SmartDetail)
+	if strings.Contains(d.SmartDetail, "crc=") {
+		t.Errorf("SmartDetail %q no debe juzgar el CRC absoluto (eso es el delta)", d.SmartDetail)
 	}
 }
 
-// Dispositivo sin SMART (eMMC de citadel-02): smartctl emite JSON de error
+// applyCrcDelta — la regla del 4-Ago-2026: lo accionable es el CRECIMIENTO.
+// Tormenta activa → warn + "+N nuevos"; histórico alto congelado → contexto
+// "estable" sin elevar warn; primera pasada (sin previo) → delta 0.
+func TestApplyCrcDelta(t *testing.T) {
+	casos := []struct {
+		nombre     string
+		crc, prev  int64
+		ok         bool
+		smart      string
+		wantSmart  string
+		wantRecent int64
+		wantDetail string
+	}{
+		{"tormenta activa", 417, 284, true, "ok", "warn", 133, "+133 nuevos"},
+		{"histórico congelado", 1196981, 1196981, true, "ok", "ok", 0, "histórico, estable"},
+		{"primera pasada", 417, 0, false, "ok", "ok", 0, "histórico, estable"},
+		{"sano", 2, 2, true, "ok", "ok", 0, "PASSED"},
+		{"contador no crece", 500, 600, true, "ok", "ok", 0, "histórico, estable"},
+	}
+	for _, c := range casos {
+		d := model.Disk{Dev: "sdx", Smart: c.smart, SmartDetail: "PASSED", CrcErrors: c.crc}
+		applyCrcDelta(&d, c.prev, c.ok)
+		if d.Smart != c.wantSmart {
+			t.Errorf("%s: Smart = %q, esperado %q", c.nombre, d.Smart, c.wantSmart)
+		}
+		if d.CrcRecent != c.wantRecent {
+			t.Errorf("%s: CrcRecent = %d, esperado %d", c.nombre, d.CrcRecent, c.wantRecent)
+		}
+		if !strings.Contains(d.SmartDetail, c.wantDetail) {
+			t.Errorf("%s: SmartDetail %q sin %q", c.nombre, d.SmartDetail, c.wantDetail)
+		}
+	}
+}
+
+// Dispositivo sin SMART (eMMC sin SAT de un host real): smartctl emite JSON de error
 // sin sección smart_status. Debe quedar "unknown", NO "crit" (regresión del
 // parseo tolerante: smart_status ausente se deserializaba como passed=false).
 func TestParseSmartJSON_SinSmart(t *testing.T) {
@@ -113,7 +149,7 @@ func TestParseSmartJSON_SinSmart(t *testing.T) {
 // Disco sano con un CRC histórico suelto: no debe avisar por CRC.
 func TestParseSmartJSON_SanoConCRCHistorico(t *testing.T) {
 	out := []byte(`{
-		"model_name": "ST12000NM0127", "serial_number": "ZJV28A7R",
+		"model_name": "ST12000NM0127", "serial_number": "TEST0004",
 		"smart_status": {"passed": true},
 		"power_on_time": {"hours": 9519},
 		"ata_smart_attributes": {"table": [

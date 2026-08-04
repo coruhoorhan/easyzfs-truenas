@@ -15,7 +15,7 @@ func TestStripPart(t *testing.T) {
 		"mmcblk0p1":                            "mmcblk0",
 		"loop0p1":                              "loop0",
 		"nvme-eui.002538839107fd40-part3":      "nvme-eui.002538839107fd40-part3",
-		"8ab95469-2ae7-411a-af39-47b1d4f39d3c": "8ab95469-2ae7-411a-af39-47b1d4f39d3c",
+		"11111111-2222-3333-4444-555555555555": "11111111-2222-3333-4444-555555555555",
 	}
 	for in, want := range cases {
 		if got := stripPart(in); got != want {
@@ -25,14 +25,14 @@ func TestStripPart(t *testing.T) {
 }
 
 func TestPoolForDisk(t *testing.T) {
-	pools := []string{"TheZBox", "rpool"}
+	pools := []string{"bigtank", "rpool"}
 	vdevs := map[string][]string{
-		"TheZBox": {"8ab95469-2ae7-411a-af39-47b1d4f39d3c", "/dev/sda1", "/dev/sdb1"},
+		"bigtank": {"11111111-2222-3333-4444-555555555555", "/dev/sda1", "/dev/sdb1"},
 		"rpool":   {"nvme-eui.002538839107fd40-part3", "/dev/nvme0n1p3"},
 	}
 	cases := map[string]string{
-		"sda":     "TheZBox",
-		"sdb":     "TheZBox",
+		"sda":     "bigtank",
+		"sdb":     "bigtank",
 		"nvme0n1": "rpool",
 		"nvme1n1": "",
 		"sdd":     "",

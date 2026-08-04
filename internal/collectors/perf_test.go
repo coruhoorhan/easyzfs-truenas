@@ -149,7 +149,7 @@ func TestParseHistory(t *testing.T) {
 	}
 }
 
-// Regresión 2-Ago-2026: 'zpool history -i' de un pool grande (TheZBox:
+// Regresión 2-Ago-2026: 'zpool history -i' de un pool grande (bigtank:
 // 2,7 M líneas / 275 MB) disparaba OOM al parsear en memoria. El parser
 // streaming debe recortar a historyKeep sin importar el tamaño de entrada.
 func TestParseHistoryStreamGrande(t *testing.T) {

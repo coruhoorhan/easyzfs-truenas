@@ -73,7 +73,7 @@ func Build(cfg *config.Config, d *sql.DB, h *hub.Hub, al *alerts.Alerter, st *se
 	// Eventos ZFS en tiempo real ('zpool events -f'); si no está disponible se
 	// desactiva solo tras el log y el polling queda como red de seguridad.
 	ec := NewEventsCollector(al)
-	// Cadenas Veeam rotas en segundo plano (vigila sin abrir la vista).
+// Cadenas Veeam rotas en segundo plano (vigila sin abrir la vista).
 	vc := NewVeeamCollector(st, al)
 	return &Providers{Pools: zc, Disks: smc, SysTimers: ssc, Perf: pc, Caps: cc},
 		[]Collector{zc, sc, smc, ssc, pc, cc, ec, vc, mant}

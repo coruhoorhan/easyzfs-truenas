@@ -62,6 +62,7 @@ export class MockProvider implements DataProvider {
   private settings: Settings = {
     lang: 'auto', cap_warn_pct: 80, cap_crit_pct: 90, disk_temp_c: 45,
     webhook: '', notify_scrub_errors: true, notify_smart_change: true,
+demo_enabled: true,
     backup_enabled: true, backup_freq_hours: 24, backup_retention_days: 3,
   };
 
@@ -83,7 +84,7 @@ export class MockProvider implements DataProvider {
       vdevs: [
         { dev: 'nvme0n1', path: '/dev/nvme0n1', role: 'raidz2', status: 'ONLINE', temp_c: 48 },
         { dev: 'nvme1n1', path: '/dev/nvme1n1', role: 'raidz2', status: 'ONLINE', temp_c: 48 },
-        { dev: '8ab95469-2ae7-411a-af39-47b1d4f39d3c', role: 'raidz2', status: 'FAULTED', temp_c: 0 },
+{ dev: '11111111-2222-3333-4444-555555555555', role: 'raidz2', status: 'FAULTED', temp_c: 0 },
       ],
       autotrim: false, checkpoint: true,
       raidz_vdevs: ['raidz2-0'], // objetivo del botón Expandir (RAID-Z expansion)
@@ -166,7 +167,24 @@ export class MockProvider implements DataProvider {
   private activity = [
     { ts: iso(daysAgo(0, 6)), text: 'Snapshot automático creado', detail: 'tank/documentos@auto' },
     { ts: iso(daysAgo(0, 5)), text: 'Scrub iniciado en ssd', detail: 'programación quincenal' },
+    { ts: iso(daysAgo(0, 2)), text: 'Inicio de sesión', detail: 'admin' },
+    { ts: iso(daysAgo(1, 21)), text: 'Inicio de sesión', detail: 'maria' },
     { ts: iso(daysAgo(1, 19)), text: 'Cuota modificada', detail: 'tank/backups → 1 TiB' },
+    { ts: iso(daysAgo(1, 9)), text: 'Respaldos automáticos', detail: 'cada 24 h · retención 3 días' },
+    { ts: iso(daysAgo(2, 14)), text: 'Snapshot automático creado', detail: 'tank/documentos@auto' },
+    { ts: iso(daysAgo(2, 8)), text: 'Scrub completado en tank', detail: '0 errores' },
+    { ts: iso(daysAgo(3, 17)), text: 'Usuario creado', detail: 'maria · rol usuario' },
+    { ts: iso(daysAgo(3, 11)), text: 'Contraseña cambiada', detail: 'admin' },
+    { ts: iso(daysAgo(4, 3)), text: 'Alerta reconocida', detail: 'smartd/nvme1n1' },
+    { ts: iso(daysAgo(5, 22)), text: 'Snapshot automático creado', detail: 'tank/documentos@auto' },
+    { ts: iso(daysAgo(6, 15)), text: 'Inicio de sesión', detail: 'admin' },
+    { ts: iso(daysAgo(7, 4)), text: 'Respaldo manual de la base de datos', detail: 'app-20260727-040000.db' },
+    { ts: iso(daysAgo(8, 12)), text: 'Dataset creado', detail: 'tank/proyectos' },
+    { ts: iso(daysAgo(9, 6)), text: 'Scrub completado en tank', detail: '0 errores' },
+    { ts: iso(daysAgo(10, 18)), text: 'Inicio de sesión', detail: 'maria' },
+    { ts: iso(daysAgo(11, 9)), text: 'Snapshot automático creado', detail: 'tank/documentos@auto' },
+    { ts: iso(daysAgo(12, 2)), text: 'Cuota modificada', detail: 'tank/media → 4 TiB' },
+    { ts: iso(daysAgo(13, 20)), text: 'Respaldo automático de la base de datos', detail: 'app-20260721-030000.db' },
   ];
 
   constructor() {
@@ -225,6 +243,10 @@ export class MockProvider implements DataProvider {
   getVersion = async () => { await delay(); return { ...this.version }; };
   getSettings = async () => { await delay(); return { ...this.settings }; };
   putSettings = async (s: Settings) => { await delay(); this.settings = { ...s }; };
+getActivity = async (limit?: number) => {
+    await delay();
+    return this.activity.slice(0, limit ?? 30).map((a) => ({ ...a }));
+  };
 
   getBackupStatus = async (): Promise<BackupStatus> => {
     await delay();

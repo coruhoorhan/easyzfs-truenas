@@ -68,7 +68,7 @@ export function ModalBox({ children, onClose, wide, maxWidth, label }: {
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" role="dialog" aria-modal="true" ref={ref} tabIndex={-1}
-        style={maxWidth ? { maxWidth } : wide ? { maxWidth: 620 } : undefined}
+style={maxWidth ? { maxWidth } : wide ? { maxWidth: 620 } : undefined}
         aria-label={label}>
         {children}
       </div>

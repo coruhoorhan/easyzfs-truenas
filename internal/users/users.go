@@ -31,7 +31,7 @@ var (
 	ErrNotFound      = errors.New("usuario no encontrado")
 	ErrInvalidName   = errors.New("nombre de usuario inválido")
 	ErrInvalidRole   = errors.New("rol inválido (admin|user)")
-	ErrInvalidLang   = errors.New("idioma inválido (auto|es|en|tr)")
+ErrInvalidLang   = errors.New("idioma inválido (auto|es|en|tr)")
 	ErrInvalidEmail  = errors.New("email inválido")
 	ErrWeakPassword  = errors.New("la contraseña debe tener al menos 8 caracteres")
 	ErrBadCredential = errors.New("credenciales incorrectas")

@@ -27,7 +27,8 @@ function smartParts(d: Disk, t: (k: string, v?: Record<string, string | number>)
   if ((d.realloc_sectors ?? 0) > 0) parts.push(t('dk_realloc', { n: d.realloc_sectors! }));
   if ((d.pending_sectors ?? 0) > 0) parts.push(t('dk_pending', { n: d.pending_sectors! }));
   if ((d.offline_uncorr ?? 0) > 0) parts.push(t('dk_offunc', { n: d.offline_uncorr! }));
-  if ((d.crc_errors ?? 0) >= 100) parts.push(t('dk_crc', { n: d.crc_errors! }));
+if ((d.crc_recent ?? 0) > 0) parts.push(t('dk_crc_recent', { n: d.crc_recent!, total: d.crc_errors ?? 0 }));
+  else if ((d.crc_errors ?? 0) >= 100) parts.push(t('dk_crc_stable', { n: d.crc_errors! }));
   if ((d.nvme_warn ?? 0) > 0) parts.push(t('dk_nvme_warn', { n: d.nvme_warn! }));
   return parts;
 }
@@ -49,7 +50,8 @@ export default function Disks() {
       setData((cur) => cur?.map((d) => d.dev === ev.dev ? {
         ...d, smart: ev.smart, smart_detail: ev.smart_detail,
         realloc_sectors: ev.realloc_sectors, pending_sectors: ev.pending_sectors,
-        offline_uncorr: ev.offline_uncorr, crc_errors: ev.crc_errors, nvme_warn: ev.nvme_warn,
+offline_uncorr: ev.offline_uncorr, crc_errors: ev.crc_errors,
+        crc_recent: ev.crc_recent, nvme_warn: ev.nvme_warn,
       } : d) ?? cur);
       recs.reload();
     }

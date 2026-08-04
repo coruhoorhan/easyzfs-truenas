@@ -372,7 +372,7 @@ func (m *Mock) build() {
 				{Dev: "sdd", Role: "raidz2", Status: "ONLINE", TempC: 36},
 				// Caso real (pool heredado): vdev nombrado por PARTUUID y
 				// FAULTED; sin Path porque el disco ya no responde.
-				{Dev: "8ab95469-2ae7-411a-af39-47b1d4f39d3c", Role: "raidz2", Status: "FAULTED"},
+				{Dev: "11111111-2222-3333-4444-555555555555", Role: "raidz2", Status: "FAULTED"},
 			},
 		},
 		{

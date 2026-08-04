@@ -199,7 +199,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const reloadUser = useCallback(() => {
     getProvider().me().then(setUser).catch(() => {});
   }, []);
-
   const notify = useCallback((msg: string, kind: ToastKind = 'info') => {
     const id = nextToastId++;
     setToasts((cur) => [...cur, { id, msg, kind }]);

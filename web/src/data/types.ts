@@ -56,9 +56,10 @@ export interface Settings {
   webhook: string;
   notify_scrub_errors: boolean;
   notify_smart_change: boolean;
-  backup_enabled: boolean;
+backup_enabled: boolean;
   backup_freq_hours: number;
   backup_retention_days: number;
+  demo_enabled: boolean;
   veeam_datasets?: string; // datasets Veeam monitorizados por el collector (coma separados)
   veeam_stale_days?: number; // días sin respaldo antes de marcar una máquina como obsoleta
   veeam_ignore?: string; // máquinas excluidas del aviso de respaldo obsoleto (coma separadas)
@@ -274,6 +275,7 @@ export interface Disk {
   pending_sectors?: number;
   offline_uncorr?: number; // attr 198: sectores incorregibles offline
   crc_errors?: number; // attr 199: errores UDMA CRC (cable/puerto SATA)
+crc_recent?: number; // crecimiento de crc_errors desde la pasada anterior (lo accionable; el acumulado es de por vida)
   nvme_warn?: number;
   pool: string;
   in_use?: boolean; // particiones montadas o swap activo (no elegible como libre)
@@ -339,8 +341,8 @@ export interface VeeamMount {
   created_ts: number;
 }
 
-// Recomendaciones de discos (motor de reglas del backend) ---
-export type RecKind = 'replace_now' | 'replace_soon' | 'watch' | 'check_cable';
+// --- Recomendaciones de discos (motor de reglas del backend) ---
+export type RecKind = 'replace_now' | 'replace_soon' | 'watch' | 'check_cable' | 'crc_history';
 export type RecHoldReason = 'resilver' | 'pool_degraded' | 'no_redundancy';
 
 export interface Recommendation {
@@ -353,6 +355,7 @@ export interface Recommendation {
   pending_sectors?: number;
   offline_uncorr?: number;
   crc_errors?: number;
+crc_recent?: number;
   hold?: boolean;
   hold_reason?: RecHoldReason;
 }
@@ -362,7 +365,7 @@ export type AppEvent =
   | { type: 'pool.status'; name: string; status: PoolStatus }
   | { type: 'scrub.progress'; pool: string; pct: number; eta_sec: number; kind?: 'scrub' | 'resilver' | 'trim' | 'expand' | '' }
   | { type: 'disk.temp'; dev: string; temp_c: number }
-  | { type: 'disk.smart'; dev: string; smart: Disk['smart']; smart_detail: string; realloc_sectors?: number; pending_sectors?: number; offline_uncorr?: number; crc_errors?: number; nvme_warn?: number }
+| { type: 'disk.smart'; dev: string; smart: Disk['smart']; smart_detail: string; realloc_sectors?: number; pending_sectors?: number; offline_uncorr?: number; crc_errors?: number; crc_recent?: number; nvme_warn?: number }
   | { type: 'alert.new'; alert: Alert }
   | { type: 'job.finished'; id: number; ok: boolean; detail: string }
   | { type: 'replication.finished'; id: number; ok: boolean; detail: string }
