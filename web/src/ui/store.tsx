@@ -15,6 +15,11 @@ import type { ThemeMode } from './theme';
 export type ViewId = 'dash' | 'pools' | 'data' | 'snaps' | 'tasks' | 'disks' | 'veeam' | 'settings';
 export const VIEWS: ViewId[] = ['dash', 'pools', 'data', 'snaps', 'tasks', 'disks', 'veeam', 'settings'];
 
+// --- Toasts (notificaciones ligeras) -------------------------------
+export type ToastKind = 'ok' | 'err' | 'warn' | 'info';
+export interface Toast { id: number; msg: string; kind: ToastKind }
+let nextToastId = 1;
+
 function parseHash(): ViewId {
   const h = location.hash.replace(/^#\/?/, '') as ViewId;
   return VIEWS.includes(h) ? h : 'dash';
@@ -46,6 +51,10 @@ interface AppCtx {
   dataVersion: number;
   // Re-lee /api/me (tras guardar perfil: nombre visible, email…)
   reloadUser: () => void;
+  // Toasts ligeras: notify() encola; dismissToast() descarta.
+  toasts: Toast[];
+  notify: (msg: string, kind?: ToastKind) => void;
+  dismissToast: (id: number) => void;
 }
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -60,6 +69,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [themeEff, setThemeEff] = useState<'light' | 'dark'>(effectiveTheme());
   const [dataVersion, setDataVersion] = useState(0);
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
   // Capacidades OpenZFS (feature-gating; silencioso si falla). Se piden en el
   // arranque y se RE-piden al establecer sesión (login / sesión existente /
@@ -190,13 +200,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getProvider().me().then(setUser).catch(() => {});
   }, []);
 
+  const notify = useCallback((msg: string, kind: ToastKind = 'info') => {
+    const id = nextToastId++;
+    setToasts((cur) => [...cur, { id, msg, kind }]);
+    setTimeout(() => setToasts((cur) => cur.filter((x) => x.id !== id)), kind === 'err' ? 6000 : 3500);
+  }, []);
+  const dismissToast = useCallback((id: number) => {
+    setToasts((cur) => cur.filter((x) => x.id !== id));
+  }, []);
+
   const value = useMemo<AppCtx>(() => ({
     ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo,
     t, langMode, setLang, themeMode, themeEff, setTheme,
     isAdmin: user?.role === 'admin',
     caps,
     refresh, dataVersion, reloadUser,
-  }), [ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo, t, langMode, setLang, themeMode, themeEff, setTheme, caps, refresh, dataVersion, reloadUser]);
+    toasts, notify, dismissToast,
+  }), [ready, demo, user, route, navigate, login, logout, enterDemo, exitDemo, t, langMode, setLang, themeMode, themeEff, setTheme, caps, refresh, dataVersion, reloadUser, toasts, notify, dismissToast]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
