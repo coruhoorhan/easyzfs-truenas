@@ -1,5 +1,10 @@
 # EasyZFS
 
+> **TrueNAS adaptation/fork** with Veeam instant recovery (ZFS clone + SMB),
+> broken-chain & stale-backup watcher, active-mounts panel, snapshot
+> protection and tr/es/en UI. Original project: [gnacho/easyzfs](https://github.com/gnacho/easyzfs)
+> (AGPL-3.0).
+
 <p align="center">
   <a href="README.md">English</a> |
   <a href="README.es.md">Español</a>
