@@ -591,6 +591,30 @@ svg{flex-shrink:0}
 /* movimiento reducido: desactiva TODAS las transiciones y animaciones
    (por media query del SO o por el switch de Ajustes → clase en <html>) */
 @media(prefers-reduced-motion:reduce){
-  *{transition:none!important;animation:none!important}
+  *{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
 }
 html.reduce-motion *{transition:none!important;animation:none!important}
+
+/* toast host — por encima de todo (70 > 60 modal), abajo-derecha */
+.toast-host{
+  position:fixed;right:14px;bottom:calc(12px + env(safe-area-inset-bottom));
+  z-index:70;display:flex;flex-direction:column;gap:8px;max-width:min(360px,92vw);
+  pointer-events:none;
+}
+.toast{
+  pointer-events:auto;display:flex;align-items:flex-start;gap:10px;
+  background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:10px;padding:11px 12px;box-shadow:0 6px 22px rgba(10,14,10,.22);
+  color:var(--text);font-size:13.5px;line-height:1.45;
+  animation:toast-in .18s ease-out;
+}
+.toast.err{border-left-color:var(--err)}
+.toast.warn{border-left-color:var(--warn)}
+.toast.ok{border-left-color:var(--ok)}
+.toast .toast-msg{flex:1;word-break:break-word}
+.toast .toast-x{
+  flex-shrink:0;background:transparent;border:0;color:var(--text2);font-size:16px;
+  line-height:1;padding:2px 4px;cursor:pointer;border-radius:6px;
+}
+.toast .toast-x:hover{color:var(--text);background:var(--surface2)}
+@keyframes toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
