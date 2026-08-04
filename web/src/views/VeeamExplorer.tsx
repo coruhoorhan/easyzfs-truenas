@@ -91,7 +91,7 @@ function VeeamFileRow({ f, dataset }: { f: VeeamFile; dataset: string }) {
 }
 
 function MountSMBButton({ snapshot, dataset, mountKey }: { snapshot: string, dataset: string, mountKey: string }) {
-  const { t } = useApp();
+  const { t, notify } = useApp();
   // El estado de montaje es por (máquina, cadena, snapshot): el mismo
   // snapshot aloja el VBK de muchas máquinas, y sin la máquina en la clave
   // el estado "montado" aparecería en TODAS las filas que usan ese snapshot.
@@ -117,13 +117,14 @@ function MountSMBButton({ snapshot, dataset, mountKey }: { snapshot: string, dat
         body: JSON.stringify({ snapshot: snap })
       });
       const d = await r.json();
-      if (d.error) setError(d.error);
+      if (d.error) { setError(d.error); notify(d.error, 'err'); }
       else {
         const md = { shareName: d.share_name, cloneDS: d.clone_ds };
         localStorage.setItem(storageKey, JSON.stringify(md));
         setMountData(md);
+        notify(t('veeam_connected'), 'ok');
       }
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setError(e.message); notify(e.message ?? t('error'), 'err'); }
     setBusy(false);
   };
 
@@ -136,12 +137,13 @@ function MountSMBButton({ snapshot, dataset, mountKey }: { snapshot: string, dat
         body: JSON.stringify({ share_name: mountData?.shareName, clone_ds: mountData?.cloneDS })
       });
       const d = await r.json();
-      if (d.error) setError(d.error);
+      if (d.error) { setError(d.error); notify(d.error, 'err'); }
       else {
         localStorage.removeItem(storageKey);
         setMountData(null);
+        notify(t('veeam_disconnected'), 'ok');
       }
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setError(e.message); notify(e.message ?? t('error'), 'err'); }
     setBusy(false);
   };
 
@@ -176,10 +178,9 @@ function MachineRow({ m, dataset, staleDays, ignored, onToggleIgnore }: {
   m: VeeamMachine; dataset: string; staleDays: number;
   ignored: boolean; onToggleIgnore: () => void;
 }) {
-  const { t } = useApp();
+  const { t, refresh, notify } = useApp();
   const [open, setOpen] = useState(false);
   const [protecting, setProtecting] = useState(false);
-  const [protMsg, setProtMsg] = useState('');
   const [lastSnap, setLastSnap] = useState('');
 
   const ageDays = m.last_backup_ts ? Math.max(0, Math.floor((Date.now() / 1000 - m.last_backup_ts) / 86400)) : null;
@@ -209,15 +210,16 @@ function MachineRow({ m, dataset, staleDays, ignored, onToggleIgnore }: {
   })).join('\n');
 
   const protect = async () => {
-    setProtecting(true); setProtMsg('');
+    setProtecting(true);
     try {
       const safe = m.name.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 40);
       const name = `ezv-${safe}-${new Date().toISOString().slice(0, 10)}-${Math.floor(Date.now() / 1000) % 100000}`;
       await getProvider().createSnapshot({ dataset, name, recursive: false });
       setLastSnap(name);
-      setProtMsg(t('veeam_protect_ok', { name }));
+      notify(t('veeam_protect_ok', { name }), 'ok');
+      refresh(); // anında tazele: snapshot listesi ezv-<nombre>-<fecha> gösterir
       setTimeout(() => setLastSnap(''), 4000); // cooldown: evita clic repetido
-    } catch (e: any) { setProtMsg(e?.message ?? t('error')); }
+    } catch (e: any) { notify(e?.message ?? t('error'), 'err'); }
     setProtecting(false);
   };
 
@@ -243,7 +245,6 @@ function MachineRow({ m, dataset, staleDays, ignored, onToggleIgnore }: {
               </span>
             )}
           </div>
-          {protMsg && <div style={{ fontSize: '0.75em', color: 'var(--text2)', marginTop: 4 }}>{protMsg}</div>}
         </div>
         {ignored && (
           <span style={{ padding: '2px 9px', borderRadius: '10px', backgroundColor: '#e5e7eb', color: '#4b5563', fontSize: '0.72rem', fontWeight: 700 }}>
@@ -333,7 +334,7 @@ function MachineRow({ m, dataset, staleDays, ignored, onToggleIgnore }: {
 }
 
 export default function VeeamExplorer() {
-  const { t } = useApp();
+  const { t, notify } = useApp();
   const [data, setData] = useState<VeeamExplorerResp | null>(null);
   const [error, setError] = useState<string>('');
   const [dataset, setDataset] = useState('tank/vmware');
@@ -364,11 +365,13 @@ export default function VeeamExplorer() {
 
   const unmountFromPanel = async (m: VeeamMount) => {
     try {
-      await fetch('/api/veeam/unmount-clone', {
+      const r = await fetch('/api/veeam/unmount-clone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ share_name: m.share_name, clone_ds: m.clone_ds })
       });
+      const d = await r.json();
+      if (d?.error) { notify(d.error, 'err'); return; }
       // Limpia el estado local de la cadena para que los badges se actualicen.
       const snap = m.share_name.replace(/^VeeamClone_/, '').replace(/_\d+$/, '');
       try {
@@ -376,9 +379,10 @@ export default function VeeamExplorer() {
           if (k.startsWith('veeam_mount_') && k.endsWith(`_${snap}`)) localStorage.removeItem(k);
         }
       } catch { /* ignore */ }
+      notify(t('veeam_disconnected'), 'ok');
       loadMounts();
       load(dataset);
-    } catch { /* ignore */ }
+    } catch (e: any) { notify(e?.message ?? t('error'), 'err'); }
   };
 
   // ¿Está montada alguna cadena de esta máquina? (estado por máquina+cadena)
@@ -404,11 +408,11 @@ export default function VeeamExplorer() {
     fetch(`/api/veeam/explorer?dataset=${encodeURIComponent(ds)}`)
       .then(r => r.json())
       .then(d => {
-        if (d.error) { setError(d.error); return; }
+        if (d.error) { setError(d.error); notify(d.error, 'err'); return; }
         setData(d);
         persistMonitored(ds);
       })
-      .catch(e => setError(e.message))
+      .catch(e => { setError(e.message); notify(e?.message ?? t('error'), 'err'); })
       .finally(() => setLoading(false));
   };
 
