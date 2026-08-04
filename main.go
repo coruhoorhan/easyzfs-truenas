@@ -174,7 +174,8 @@ func main() {
 
 // spaHandler sirve la SPA embebida: fichero si existe, index.html si no
 // (fallback de rutas del cliente). Cache-Control: index.html y sw.js siempre
-// se revalidan (no-cache) para que un despliegue nuevo se vea al recargar;
+// se revalidan (no-store) para que un despliegue nuevo se vea al recargar y
+// ningún proxy/HTTP-cache sirva un HTML viejo a clientes con una app abierta;
 // /assets/* es inmutable (Vite les pone hash en el nombre — si el hash cambia,
 // es un fichero distinto); el resto (iconos, manifest) con caché corta.
 func spaHandler(fsys http.FileSystem) http.Handler {
@@ -183,7 +184,7 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 		path := r.URL.Path
 		switch {
 		case path == "/" || path == "/index.html" || path == "/sw.js":
-			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Cache-Control", "no-store")
 		case strings.HasPrefix(path, "/assets/"):
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		default:

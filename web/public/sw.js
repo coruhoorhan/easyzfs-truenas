@@ -93,3 +93,24 @@ self.addEventListener("pushsubscriptionchange", (event) => {
       ),
   );
 });
+
+// === ACTIVATE: toma el control + limpieza de cachés viejas ===================
+// Ahora mismo este SW NO cachea fetch (sirve el HTML/JS desde la red con los
+// headers Cache-Control del backend). El handler deja constancia y limpieza
+// por si en el futuro se añade un caché versionado (easyzfs-v<N>): quita los
+// que queden de versiones anteriores y toma el control de las pestañas YA
+// abiertas (sin esto, la app vieja sigue viva hasta recargar dos veces).
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((name) => name.startsWith("easyzfs-v") && name !== "easyzfs-v1")
+          .map((name) => caches.delete(name)),
+      );
+      await self.clients.claim();
+    })(),
+  );
+  self.skipWaiting(); // la versión nueva manda de inmediato tras activar
+});
