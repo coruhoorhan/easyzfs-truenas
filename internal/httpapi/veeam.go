@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -74,32 +73,24 @@ func (s *Server) veeamMounts(w http.ResponseWriter, r *http.Request) {
 		ReadOnly  bool   `json:"read_only"`
 		CreatedTS int64  `json:"created_ts"`
 	}
-	out, err := executil.Run(r.Context(), 15*time.Second, "midclt", "call", "sharing.smb.query")
+	shares, err := s.smbSharesList(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusOK, []mountInfo{}) // sin middleware → sin montajes
-		return
-	}
-	var shares []map[string]interface{}
-	if err := json.Unmarshal(out, &shares); err != nil {
-		writeErr(w, http.StatusInternalServerError, "query_error", err.Error())
+		writeJSON(w, http.StatusOK, []mountInfo{}) // sin SMB → sin montajes
 		return
 	}
 	var mounts []mountInfo
 	for _, sh := range shares {
-		name, _ := sh["name"].(string)
-		if !strings.HasPrefix(name, "VeeamClone_") {
+		if !strings.HasPrefix(sh.Name, "VeeamClone_") {
 			continue
 		}
-		path, _ := sh["path"].(string)
-		ro, _ := sh["readonly"].(bool)
-		cloneDS := strings.TrimPrefix(path, "/mnt/")
+		cloneDS := strings.TrimPrefix(sh.Path, "/mnt/")
 		createdTS := int64(0)
-		if idx := strings.LastIndex(name, "_"); idx > 0 {
-			createdTS, _ = strconv.ParseInt(name[idx+1:], 10, 64)
+		if idx := strings.LastIndex(sh.Name, "_"); idx > 0 {
+			createdTS, _ = strconv.ParseInt(sh.Name[idx+1:], 10, 64)
 		}
 		mounts = append(mounts, mountInfo{
-			ShareName: name, CloneDS: cloneDS, Path: path,
-			ReadOnly: ro, CreatedTS: createdTS,
+			ShareName: sh.Name, CloneDS: cloneDS, Path: sh.Path,
+			ReadOnly: sh.ReadOnly, CreatedTS: createdTS,
 		})
 	}
 	if mounts == nil {
@@ -148,17 +139,14 @@ func (s *Server) veeamMountClone(w http.ResponseWriter, r *http.Request) {
 		log.Printf("veeam: chmod del clone %s: %v", cloneDS, err)
 	}
 
-	// 3. Share SMB de solo lectura vía middleware TrueNAS. El campo correcto
-	//    es 'readonly' (bool) en SCALE 25.10; 'ro'/'guestok' no existen en el
-	//    schema y el create fallaría con EINVAL.
-	payload := fmt.Sprintf(`{"path": "/mnt/%s", "name": "%s", "comment": "EasyZFS Anında Kurtarma", "readonly": true}`, cloneDS, shareName)
-	if _, err := executil.Run(r.Context(), 30*time.Second, "midclt", "call", "sharing.smb.create", payload); err != nil {
+	// 3. Share SMB de solo lectura vía la capa portátil (TrueNAS midclt o
+	//    Samba net conf en Debian/Proxmox).
+	if err := s.smbShareCreate(r.Context(), shareName, "/mnt/"+cloneDS, true); err != nil {
 		executil.Run(r.Context(), 15*time.Second, "zfs", "destroy", cloneDS) // rollback del clone
 		writeErr(w, http.StatusInternalServerError, "smb_error", err.Error())
 		return
 	}
-	// 4. Recarga SMB + auditoría de la mutación.
-	executil.Run(r.Context(), 15*time.Second, "midclt", "call", "service.reload", "cifs")
+	// 4. Auditoría de la mutación (la recarga SMB la hace la capa portátil).
 	s.act.AuditOnly(r.Context(), actor(r), "veeam.mount_clone", body.Snapshot,
 		map[string]any{"clone_ds": cloneDS, "share_name": shareName})
 
@@ -193,24 +181,10 @@ func (s *Server) veeamUnmountClone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Localizar y borrar el share SMB por nombre (midclt sharing.smb.query).
-	out, err := executil.Run(r.Context(), 15*time.Second, "midclt", "call", "sharing.smb.query")
-	if err == nil {
-		var shares []map[string]interface{}
-		if json.Unmarshal(out, &shares) == nil {
-			for _, share := range shares {
-				if name, ok := share["name"].(string); ok && name == body.ShareName {
-					if idFloat, ok := share["id"].(float64); ok {
-						id := int(idFloat)
-						if _, err := executil.Run(r.Context(), 15*time.Second, "midclt", "call", "sharing.smb.delete", fmt.Sprintf("%d", id)); err != nil {
-							writeErr(w, http.StatusInternalServerError, "smb_error", "No se pudo borrar el share: "+err.Error())
-							return
-						}
-						executil.Run(r.Context(), 15*time.Second, "midclt", "call", "service.reload", "cifs")
-						break
-					}
-				}
-			}
-		}
+	// 1. Borrar el share SMB (mejor esfuerzo: un share huérfano se limpia
+	//    desde el panel de montajes; un clone sin share quedaría inaccesible).
+	if err := s.smbShareDelete(r.Context(), body.ShareName); err != nil {
+		log.Printf("veeam: no se pudo borrar el share %s: %v", body.ShareName, err)
 	}
 
 	// 2. Destruir el clone (destructivo, confirmado por quien llama).
