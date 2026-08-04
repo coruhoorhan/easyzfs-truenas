@@ -61,6 +61,7 @@ export interface Settings {
   backup_retention_days: number;
   veeam_datasets?: string; // datasets Veeam monitorizados por el collector (coma separados)
   veeam_stale_days?: number; // días sin respaldo antes de marcar una máquina como obsoleta
+  veeam_ignore?: string; // máquinas excluidas del aviso de respaldo obsoleto (coma separadas)
 }
 
 // Copia de seguridad de la BD (GET /api/backup/status)

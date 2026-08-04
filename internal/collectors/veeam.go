@@ -78,7 +78,16 @@ func (c *VeeamCollector) scanOnce(ctx context.Context) {
 				"broken_chain", map[string]any{"dataset": ds, "machine": bc.Machine, "chain": bc.Chain})
 		}
 		now := time.Now()
+		ignored := map[string]bool{}
+		for _, n := range strings.Split(st.VeeamIgnore, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				ignored[n] = true
+			}
+		}
 		for _, m := range res.Machines {
+			if ignored[m.Name] {
+				continue // máquina excluida (p. ej. respaldo puntual a propósito)
+			}
 			if m.LastBackupTS > 0 {
 				ageDays := int64(now.Unix()-m.LastBackupTS) / 86400
 				if ageDays >= int64(st.VeeamStaleDays) {

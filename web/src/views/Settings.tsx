@@ -573,6 +573,11 @@ export default function Settings() {
             value={settings.veeam_stale_days ?? 2}
             onChange={(e) => setSettings({ ...settings, veeam_stale_days: +e.target.value })} />
           <p className="muted" style={{ marginTop: 4 }}>{t('veeam_stale_days_d')}</p>
+          <label htmlFor="th-veeam-ignore">{t('veeam_ignore_lbl')}</label>
+          <input id="th-veeam-ignore" type="text" value={settings.veeam_ignore ?? ''}
+            placeholder="FATSA_000_172_ORACLE-UCM, ..."
+            onChange={(e) => setSettings({ ...settings, veeam_ignore: e.target.value })} />
+          <p className="muted" style={{ marginTop: 4 }}>{t('veeam_ignore_d')}</p>
           {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
           <div className="m-actions">
             <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>

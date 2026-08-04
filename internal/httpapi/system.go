@@ -73,6 +73,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	cur.BackupFreqHours = st.BackupFreqHours
 	cur.BackupRetentionDays = st.BackupRetentionDays
 	cur.VeeamStaleDays = st.VeeamStaleDays
+	cur.VeeamIgnore = st.VeeamIgnore
 	if err := s.settings.Save(r.Context(), cur); err != nil {
 		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
 		return
@@ -114,6 +115,7 @@ type settingsBody struct {
 	BackupFreqHours     int    `json:"backup_freq_hours"`
 	BackupRetentionDays int    `json:"backup_retention_days"`
 	VeeamStaleDays      int    `json:"veeam_stale_days"`
+	VeeamIgnore         string `json:"veeam_ignore"`
 }
 
 // listAlerts — GET /api/alerts → últimas 100.

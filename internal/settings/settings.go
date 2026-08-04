@@ -31,6 +31,9 @@ type Settings struct {
 	VeeamDatasets string `json:"veeam_datasets"`
 	// Días sin respaldo de una máquina antes de considerar su yedek bayat.
 	VeeamStaleDays int `json:"veeam_stale_days"`
+	// Máquinas excluidas del aviso de respaldo obsoleto (separadas por coma):
+	// p. ej. un equipo que se respalda una sola vez a propósito.
+	VeeamIgnore string `json:"veeam_ignore"`
 }
 
 // Defaults — ajustes de fábrica.
@@ -121,6 +124,14 @@ func (s *Store) Save(ctx context.Context, st Settings) error {
 		}
 	}
 	st.VeeamDatasets = strings.Join(cleaned, ",")
+	// VeeamIgnore: nombres de máquina separados por coma, sin espacios.
+	var ig []string
+	for _, n := range strings.Split(st.VeeamIgnore, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			ig = append(ig, n)
+		}
+	}
+	st.VeeamIgnore = strings.Join(ig, ",")
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return err

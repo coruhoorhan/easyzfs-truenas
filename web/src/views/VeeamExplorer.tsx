@@ -172,14 +172,18 @@ function MountSMBButton({ snapshot, dataset, mountKey }: { snapshot: string, dat
   );
 }
 
-function MachineRow({ m, dataset, staleDays }: { m: VeeamMachine; dataset: string; staleDays: number }) {
+function MachineRow({ m, dataset, staleDays, ignored, onToggleIgnore }: {
+  m: VeeamMachine; dataset: string; staleDays: number;
+  ignored: boolean; onToggleIgnore: () => void;
+}) {
   const { t } = useApp();
   const [open, setOpen] = useState(false);
   const [protecting, setProtecting] = useState(false);
   const [protMsg, setProtMsg] = useState('');
+  const [lastSnap, setLastSnap] = useState('');
 
   const ageDays = m.last_backup_ts ? Math.max(0, Math.floor((Date.now() / 1000 - m.last_backup_ts) / 86400)) : null;
-  const stale = ageDays !== null && ageDays >= staleDays;
+  const stale = !ignored && ageDays !== null && ageDays >= staleDays;
 
   // Script de recuperación con el host real y cookie de sesión (el endpoint
   // de descarga exige autenticación).
@@ -210,7 +214,9 @@ function MachineRow({ m, dataset, staleDays }: { m: VeeamMachine; dataset: strin
       const safe = m.name.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 40);
       const name = `ezv-${safe}-${new Date().toISOString().slice(0, 10)}-${Math.floor(Date.now() / 1000) % 100000}`;
       await getProvider().createSnapshot({ dataset, name, recursive: false });
-      setProtMsg(t('veeam_protect_ok'));
+      setLastSnap(name);
+      setProtMsg(t('veeam_protect_ok', { name }));
+      setTimeout(() => setLastSnap(''), 4000); // cooldown: evita clic repetido
     } catch (e: any) { setProtMsg(e?.message ?? t('error')); }
     setProtecting(false);
   };
@@ -239,8 +245,23 @@ function MachineRow({ m, dataset, staleDays }: { m: VeeamMachine; dataset: strin
           </div>
           {protMsg && <div style={{ fontSize: '0.75em', color: 'var(--text2)', marginTop: 4 }}>{protMsg}</div>}
         </div>
-        <button className="btn sm" onClick={(e) => { e.stopPropagation(); void protect(); }} disabled={protecting}>
-          {protecting ? '…' : t('veeam_protect')}
+        {ignored && (
+          <span style={{ padding: '2px 9px', borderRadius: '10px', backgroundColor: '#e5e7eb', color: '#4b5563', fontSize: '0.72rem', fontWeight: 700 }}>
+            {t('veeam_ignored')}
+          </span>
+        )}
+        {stale && (
+          <button className="btn sm" onClick={(e) => { e.stopPropagation(); onToggleIgnore(); }} title={t('veeam_ignore_btn')}>
+            {t('veeam_ignore_btn')}
+          </button>
+        )}
+        {ignored && (
+          <button className="btn sm" onClick={(e) => { e.stopPropagation(); onToggleIgnore(); }} title={t('veeam_ignore_unbtn')}>
+            {t('veeam_ignore_unbtn')}
+          </button>
+        )}
+        <button className="btn sm" onClick={(e) => { e.stopPropagation(); void protect(); }} disabled={protecting || !!lastSnap}>
+          {protecting ? '…' : lastSnap ? '✓' : t('veeam_protect')}
         </button>
         <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>{fmtBytes(m.total_size)}</div>
       </div>
@@ -321,6 +342,7 @@ export default function VeeamExplorer() {
   const [flt, setFlt] = useState<'all' | 'broken' | 'mounted' | 'archive'>('all');
   const [mounts, setMounts] = useState<VeeamMount[] | null>(null);
   const [staleDays, setStaleDays] = useState(2);
+  const [ignoreSet, setIgnoreSet] = useState<Set<string>>(new Set());
 
   // Montajes activos (estado real del servidor, no localStorage).
   const loadMounts = () => {
@@ -328,6 +350,16 @@ export default function VeeamExplorer() {
       .then(r => r.json())
       .then(d => { if (!d?.error) setMounts(Array.isArray(d) ? d : []); })
       .catch(() => {});
+  };
+
+  // Añade/elimina la máquina de la lista de exclusión del aviso de obsoleto.
+  const toggleIgnore = (name: string) => {
+    getProvider().getSettings().then((st) => {
+      const cur = (st.veeam_ignore ?? '').split(',').map(s => s.trim()).filter(Boolean);
+      const next = cur.includes(name) ? cur.filter(x => x !== name) : [...cur, name];
+      setIgnoreSet(new Set(next));
+      getProvider().putSettings({ ...st, veeam_ignore: next.join(',') }).catch(() => {});
+    }).catch(() => {});
   };
 
   const unmountFromPanel = async (m: VeeamMount) => {
@@ -392,7 +424,10 @@ export default function VeeamExplorer() {
 
   useEffect(() => {
     load(dataset);
-    getProvider().getSettings().then(s => setStaleDays(s.veeam_stale_days ?? 2)).catch(() => {});
+    getProvider().getSettings().then(s => {
+      setStaleDays(s.veeam_stale_days ?? 2);
+      setIgnoreSet(new Set((s.veeam_ignore ?? '').split(',').map(x => x.trim()).filter(Boolean)));
+    }).catch(() => {});
     loadMounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -471,7 +506,8 @@ export default function VeeamExplorer() {
 
           <div>
             {shownMachines.map(m => (
-              <MachineRow key={m.name} m={m} dataset={dataset} staleDays={staleDays} />
+              <MachineRow key={m.name} m={m} dataset={dataset} staleDays={staleDays}
+                ignored={ignoreSet.has(m.name)} onToggleIgnore={() => toggleIgnore(m.name)} />
             ))}
             {shownMachines.length === 0 && (
                 <div className="empty">{data.machines.length === 0 ? t('veeam_empty') : t('veeam_nomatch')}</div>
