@@ -36,6 +36,7 @@ export const IconList = (p: P) => base(p, <><path d="M8 6h13M8 12h13M8 18h13" />
 export const IconLock = (p: P) => base(p, <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>);
 export const IconUnlock = (p: P) => base(p, <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 7.7-1.5" /></>);
 export const IconHeart = (p: P) => base(p, <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" />);
+export const IconArchive = (p: P) => base(p, <><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></>);
 
 // Logo de la app: diseño "E de capas" (assets de branding en /icons)
 export function Logo({ size = 30 }: { size?: number }) {

@@ -33,8 +33,8 @@ const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabi
 
 // Contenedor visual del modal con gestión de foco y teclado.
 // label = título del diálogo (el mismo texto del h3): nombre accesible del role="dialog".
-export function ModalBox({ children, onClose, wide, label }: {
-  children: ReactNode; onClose: () => void; wide?: boolean; label: string;
+export function ModalBox({ children, onClose, wide, maxWidth, label }: {
+  children: ReactNode; onClose: () => void; wide?: boolean; maxWidth?: number; label: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const prevFocus = useRef<Element | null>(null);
@@ -68,7 +68,7 @@ export function ModalBox({ children, onClose, wide, label }: {
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" role="dialog" aria-modal="true" ref={ref} tabIndex={-1}
-        style={wide ? { maxWidth: 620 } : undefined}
+        style={maxWidth ? { maxWidth } : wide ? { maxWidth: 620 } : undefined}
         aria-label={label}>
         {children}
       </div>

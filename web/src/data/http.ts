@@ -160,7 +160,7 @@ export class HttpProvider implements DataProvider {
   poweroffDisk = (dev: string) => post<void>(`/disks/${enc(dev)}/poweroff`, {});
 
   getPushVapidKey = () => get<{ publicKey: string }>('/push/vapid-public-key');
-  pushSubscribe = (sub: PushSubscriptionJSON, lang: 'es' | 'en') =>
+  pushSubscribe = (sub: PushSubscriptionJSON, lang: 'es' | 'en' | 'tr') =>
     post<void>('/push/subscribe', {
       endpoint: sub.endpoint, keys: sub.keys, lang,
       origin: window.location.origin, // para notification.navigate absoluta

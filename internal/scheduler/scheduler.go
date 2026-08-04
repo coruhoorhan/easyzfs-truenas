@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"easyzfs/internal/actions"
+	"easyzfs/internal/executil"
 	"easyzfs/internal/hub"
 	"easyzfs/internal/model"
 )
@@ -25,6 +27,7 @@ type Job struct {
 	Enabled    bool       `json:"enabled"`
 	LastRun    *time.Time `json:"last_run"`
 	LastResult string     `json:"last_result"`
+	ThresholdMB int64     `json:"threshold_mb"`
 	NextRun    *time.Time `json:"next_run,omitempty"`
 	CreatedAt  time.Time  `json:"-"` // base de planificación si nunca se ejecutó
 }
@@ -59,7 +62,7 @@ func NewStore(d *sql.DB) *Store {
 // List devuelve todos los jobs.
 func (st *Store) List(ctx context.Context) ([]Job, error) {
 	rows, err := st.db.QueryContext(ctx,
-		"SELECT id, tipo, target, schedule, COALESCE(retention,''), enabled, last_run, COALESCE(last_result,''), created_at FROM jobs ORDER BY id")
+		"SELECT id, tipo, target, schedule, COALESCE(retention,''), enabled, last_run, COALESCE(last_result,''), threshold_mb, created_at FROM jobs ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +73,7 @@ func (st *Store) List(ctx context.Context) ([]Job, error) {
 		var en int
 		var last sql.NullString
 		var created string
-		if err := rows.Scan(&j.ID, &j.Tipo, &j.Target, &j.Schedule, &j.Retention, &en, &last, &j.LastResult, &created); err != nil {
+		if err := rows.Scan(&j.ID, &j.Tipo, &j.Target, &j.Schedule, &j.Retention, &en, &last, &j.LastResult, &j.ThresholdMB, &created); err != nil {
 			return nil, err
 		}
 		j.Enabled = en != 0
@@ -101,16 +104,16 @@ func (st *Store) Get(ctx context.Context, id int64) (*Job, error) {
 // Create inserta un job y devuelve su id.
 func (st *Store) Create(ctx context.Context, j *Job) (int64, error) {
 	res, err := st.db.ExecContext(ctx,
-		"INSERT INTO jobs(tipo, target, schedule, retention, enabled) VALUES (?,?,?,?,1)",
-		j.Tipo, j.Target, j.Schedule, j.Retention)
+		"INSERT INTO jobs(tipo, target, schedule, retention, enabled, threshold_mb) VALUES (?,?,?,?,1,?)",
+		j.Tipo, j.Target, j.Schedule, j.Retention, j.ThresholdMB)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
-// Update aplica cambios parciales (enabled/schedule/retention).
-func (st *Store) Update(ctx context.Context, id int64, enabled *bool, schedule, retention *string) error {
+// Update aplica cambios parciales (enabled/schedule/retention/threshold_mb).
+func (st *Store) Update(ctx context.Context, id int64, enabled *bool, schedule, retention *string, thresholdMB *int64) error {
 	if enabled != nil {
 		en := 0
 		if *enabled {
@@ -130,6 +133,11 @@ func (st *Store) Update(ctx context.Context, id int64, enabled *bool, schedule, 
 	}
 	if retention != nil {
 		if _, err := st.db.ExecContext(ctx, "UPDATE jobs SET retention=? WHERE id=?", *retention, id); err != nil {
+			return err
+		}
+	}
+	if thresholdMB != nil {
+		if _, err := st.db.ExecContext(ctx, "UPDATE jobs SET threshold_mb=? WHERE id=?", *thresholdMB, id); err != nil {
 			return err
 		}
 	}
@@ -260,14 +268,22 @@ func (s *Scheduler) RunNow(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ErrSkipped — el job no se ejecutó porque el cambio no superó el umbral de
+// datos (diffsnap). No es un fallo: runJob lo registra como ok con detalle.
+var ErrSkipped = errors.New("skipped")
+
 // runJob ejecuta el job según su tipo y registra resultado + historial + SSE.
 func (s *Scheduler) runJob(ctx context.Context, j Job) {
 	ok := true
 	detail := "ok"
 	if err := s.execute(ctx, j); err != nil {
-		ok = false
-		detail = err.Error()
-		log.Printf("scheduler: job %d (%s %s): %v", j.ID, j.Tipo, j.Target, err)
+		if errors.Is(err, ErrSkipped) {
+			detail = err.Error() // skip legítimo: no se marca como fallo
+		} else {
+			ok = false
+			detail = err.Error()
+			log.Printf("scheduler: job %d (%s %s): %v", j.ID, j.Tipo, j.Target, err)
+		}
 	}
 	now := time.Now().UTC()
 	result := "ok"
@@ -287,6 +303,15 @@ func (s *Scheduler) runJob(ctx context.Context, j Job) {
 func (s *Scheduler) execute(ctx context.Context, j Job) error {
 	switch j.Tipo {
 	case "snapshot":
+		if j.ThresholdMB > 0 {
+			skip, err := s.belowThreshold(ctx, j)
+			if err == nil && skip {
+				return fmt.Errorf("%w: cambio por debajo del umbral (%d MB escritos)", ErrSkipped, j.ThresholdMB)
+			}
+			// Si medir falla, se toma el snapshot: nunca se pierde una copia
+			// por culpa del medidor (fail-open).
+		}
+
 		name := model.AutoSnapPrefix + time.Now().Format("20060102-1504")
 		if err := s.actions.SnapshotCreate(ctx, "scheduler", j.Target, name, true); err != nil {
 			return err
@@ -329,6 +354,31 @@ func (s *Scheduler) execute(ctx context.Context, j Job) error {
 		return s.actions.SmartTest(ctx, "scheduler", j.Target, testType)
 	}
 	return fmt.Errorf("tipo de job desconocido %q", j.Tipo)
+}
+
+// belowThreshold — diffsnap: mide los bytes escritos desde el snapshot más
+// reciente del dataset (written@<snap>) y devuelve true si no se supera el
+// umbral configurado. Ante cualquier error de consulta devuelve (false, err):
+// el llamador interpreta eso como "tomar el snapshot" (fail-open).
+func (s *Scheduler) belowThreshold(ctx context.Context, j Job) (bool, error) {
+	out, err := executil.Run(ctx, 15*time.Second, "zfs", "list", "-t", "snapshot", "-S", "creation", "-o", "name", "-H", "-d", "1", j.Target)
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return false, fmt.Errorf("sin snapshots previos en %s", j.Target)
+	}
+	lastSnap := strings.TrimSpace(lines[0]) // más reciente (orden desc por creation)
+	wOut, err := executil.Run(ctx, 15*time.Second, "zfs", "get", "-Hp", "-o", "value", "written@"+lastSnap, j.Target)
+	if err != nil {
+		return false, err
+	}
+	var writtenBytes int64
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(wOut)), "%d", &writtenBytes); err != nil {
+		return false, err
+	}
+	return writtenBytes < j.ThresholdMB*1024*1024, nil
 }
 
 // parseTS tolera RFC3339 y formato SQLite.

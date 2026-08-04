@@ -104,7 +104,7 @@ export interface DataProvider {
 
   // Notificaciones push (Web Push; 503 push_not_configured sin claves VAPID)
   getPushVapidKey(): Promise<{ publicKey: string }>;
-  pushSubscribe(sub: PushSubscriptionJSON, lang: 'es' | 'en'): Promise<void>;
+  pushSubscribe(sub: PushSubscriptionJSON, lang: 'es' | 'en' | 'tr'): Promise<void>;
   pushUnsubscribe(endpoint: string): Promise<void>;
 
   // Preferencias de notificación y horario silencioso (del propio usuario)

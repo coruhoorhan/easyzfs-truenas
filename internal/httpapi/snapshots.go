@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // listSnapshots — GET /api/snapshots?dataset= (agrupado por dataset).
@@ -164,5 +165,14 @@ func (s *Server) downloadSnapshotFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(fileName)+"\"")
+
+	// Log download action in audit_log (RFC3339 UTC, igual que actions.audit)
+	user := actor(r)
+	if user == "" {
+		user = "admin"
+	}
+	_, _ = s.db.Exec("INSERT INTO audit_log (ts, actor, action, target, detail, confirmed) VALUES (?, ?, ?, ?, ?, 1)",
+		time.Now().UTC().Format(time.RFC3339), user, "snapshot.download", full, "Downloaded: "+filepath.Base(fileName))
+
 	http.ServeFile(w, r, filePath)
 }

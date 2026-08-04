@@ -109,6 +109,8 @@ var migrations = []string{
 	// mensaje exacto — los contadores volátiles (p. ej. CRC que crece cada
 	// pasada) generaban una alerta+push nueva cada 10 min (bug 3-Ago-2026).
 	`ALTER TABLE alerts ADD COLUMN kind TEXT NOT NULL DEFAULT '';`,
+	// v16: Data-driven threshold für snapshot jobs (Diffsnap logic)
+	`ALTER TABLE jobs ADD COLUMN threshold_mb INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

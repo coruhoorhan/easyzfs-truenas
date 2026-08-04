@@ -2,7 +2,7 @@
 // Números en bytes enteros; fechas RFC3339 UTC.
 
 export type Role = 'admin' | 'user';
-export type Lang = 'auto' | 'es' | 'en';
+export type Lang = 'auto' | 'es' | 'en' | 'tr';
 
 export interface SessionUser {
   user: string;
@@ -59,6 +59,7 @@ export interface Settings {
   backup_enabled: boolean;
   backup_freq_hours: number;
   backup_retention_days: number;
+  veeam_datasets?: string; // datasets Veeam monitorizados por el collector (coma separados)
 }
 
 // Copia de seguridad de la BD (GET /api/backup/status)
@@ -243,12 +244,13 @@ export interface Job {
   id: number;
   tipo: JobType;
   target: string;
-  schedule: string; // hourly@:15 | daily@06:00 | weekly:sun@03:00 | monthly:1@02:00
-  retention: string;
+  schedule: string;
+  retention?: string;
   enabled: boolean;
-  last_run: string;
-  last_result: string;
-  next_run: string;
+  threshold_mb?: number;
+  last_run?: string;
+  last_result?: string;
+  next_run?: string;
 }
 export interface JobHistoryItem {
   ts: string;
@@ -323,8 +325,8 @@ export interface CreateDatasetReq {
   passphrase?: string;    // solo si encryption; viaja en el body, jamás en URL
 }
 export interface CreateSnapshotReq { dataset: string; name: string; recursive: boolean }
-export interface CreateJobReq { tipo: JobType; target: string; schedule: string; retention?: string }
-export interface UpdateJobReq { enabled?: boolean; schedule?: string; retention?: string }
+export interface CreateJobReq { tipo: JobType; target: string; schedule: string; retention?: string; threshold_mb?: number; }
+export interface UpdateJobReq { enabled?: boolean; schedule?: string; retention?: string; threshold_mb?: number; }
 export interface CreateUserReq { user: string; password: string; role: Role }
 
 // --- Recomendaciones de discos (motor de reglas del backend) ---

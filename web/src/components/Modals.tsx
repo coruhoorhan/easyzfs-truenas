@@ -1138,9 +1138,10 @@ export function describeSchedule(sc: string, t: (k: never, vars?: Record<string,
 }
 
 // Campos de frecuencia compartidos entre "nueva tarea" y "editar programación"
-function ScheduleFields({ s, set, showRetention, retention, setRetention, t }: {
+function ScheduleFields({ s, set, showRetention, retention, setRetention, thresholdMB, setThresholdMB, t }: {
   s: SchedState; set: (v: SchedState) => void;
   showRetention: boolean; retention: string; setRetention: (v: string) => void;
+  thresholdMB?: number; setThresholdMB?: (v: number) => void;
   t: (k: never, vars?: Record<string, string | number>) => string;
 }) {
   const T = t as (k: string) => string;
@@ -1178,6 +1179,12 @@ function ScheduleFields({ s, set, showRetention, retention, setRetention, t }: {
         <option value="3m">{T('nt_ret_3m')}</option>
         <option value="1y">{T('nt_ret_1y')}</option>
       </select>
+      <label htmlFor="sch-thresh">Değişim Eşiği (MB) - İsteğe Bağlı</label>
+      <input id="sch-thresh" type="number" min={0} value={thresholdMB ?? 0}
+        onChange={(e) => setThresholdMB && setThresholdMB(parseInt(e.target.value, 10) || 0)} />
+      <p className="desc" style={{ marginTop: 4, fontSize: 12 }}>
+        0 girilirse her zaman yedek alınır. Örn: 50 girilirse sadece 50MB veri değiştiğinde yedeklenir.
+      </p>
     </>)}
   </>);
 }
@@ -1190,6 +1197,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
   const [target, setTarget] = useState('');
   const [sched, setSched] = useState<SchedState>({ freq: 'daily', minute: '15', time: '06:00', weekday: 'sun', monthday: 1 });
   const [retention, setRetention] = useState('1m');
+  const [threshold, setThreshold] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -1209,6 +1217,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
       await getProvider().createJob({
         tipo: jobType, target, schedule: buildSchedule(sched),
         retention: tipo === 'snapshot' ? retention : undefined,
+        threshold_mb: tipo === 'snapshot' ? threshold : undefined,
       });
       refresh(); onClose();
     } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
@@ -1240,7 +1249,8 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
           </>)}
         </select>
         <ScheduleFields s={sched} set={setSched} showRetention={tipo === 'snapshot'}
-          retention={retention} setRetention={setRetention} t={t as never} />
+          retention={retention} setRetention={setRetention} 
+          thresholdMB={threshold} setThresholdMB={setThreshold} t={t as never} />
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
           <button type="button" className="btn" onClick={onClose}>{t('cancel')}</button>
@@ -1255,6 +1265,7 @@ function EditScheduleModal({ job, onClose }: { job: Job; onClose: () => void }) 
   const { t, refresh, isAdmin } = useApp();
   const [sched, setSched] = useState<SchedState>(() => parseSchedule(job.schedule));
   const [retention, setRetention] = useState(job.retention || '1m');
+  const [threshold, setThreshold] = useState(job.threshold_mb || 0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -1265,6 +1276,7 @@ function EditScheduleModal({ job, onClose }: { job: Job; onClose: () => void }) 
       await getProvider().updateJob(job.id, {
         schedule: buildSchedule(sched),
         retention: job.tipo === 'snapshot' ? retention : undefined,
+        threshold_mb: job.tipo === 'snapshot' ? threshold : undefined,
       });
       refresh(); onClose();
     } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
@@ -1284,10 +1296,8 @@ function EditScheduleModal({ job, onClose }: { job: Job; onClose: () => void }) 
         <h3>{t('et_title')}</h3>
         <p className="desc">{t('et_job')}: <b className="mono">{job.tipo} · {job.target}</b></p>
         <ScheduleFields s={sched} set={setSched} showRetention={job.tipo === 'snapshot'}
-          retention={retention} setRetention={setRetention} t={t as never} />
-        <label className="checklabel" style={{ marginTop: 16 }}>
-          <input type="checkbox" defaultChecked /> {t('et_notify')}
-        </label>
+          retention={retention} setRetention={setRetention} 
+          thresholdMB={threshold} setThresholdMB={setThreshold} t={t as never} />
         {err && <p className="form-err" role="alert">{err}</p>}
         <div className="m-actions">
           {isAdmin && <button type="button" className="btn danger" style={{ marginRight: 'auto' }} onClick={remove} disabled={busy}>{t('et_delete')}</button>}
@@ -1639,6 +1649,27 @@ function DeleteUserModal({ user, onClose }: { user: string; onClose: () => void 
 }
 
 // ---------- DOSYALARA GOZAT (VEEAM) ----------
+function parseVeeamName(fullName: string) {
+  const parts = fullName.split('/');
+  const filename = parts.pop() || '';
+  const folder = parts.length > 0 ? parts.join('/') + '/' : '';
+  
+  let dateStr = '';
+  let timeStr = '';
+  let machine = filename;
+
+  const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})T(\d{2})(\d{2})(\d{2})/);
+  if (dateMatch) {
+    dateStr = dateMatch[1];
+    timeStr = `${dateMatch[2]}:${dateMatch[3]}:${dateMatch[4]}`;
+    machine = filename.split('.vm-')[0];
+  } else if (filename.endsWith('.vbm')) {
+    machine = filename.substring(0, filename.lastIndexOf('_'));
+  }
+
+  return { folder, machine, filename, dateStr, timeStr };
+}
+
 function BrowseFilesModal({ full, onClose }: { full: string; onClose: () => void }) {
   const { t } = useApp();
   const [files, setFiles] = useState<{name: string, size: number, is_dir: boolean}[] | null>(null);
@@ -1655,7 +1686,7 @@ function BrowseFilesModal({ full, onClose }: { full: string; onClose: () => void
   }, [full]);
 
   return (
-    <ModalBox onClose={onClose} wide label="Browse Files">
+    <ModalBox onClose={onClose} maxWidth={1100} label="Browse Files">
       <h3>Files in <span className="mono">{full}</span></h3>
       {err && <p className="form-err" role="alert">{err}</p>}
       {!files && !err && <div className="empty">Loading...</div>}
@@ -1664,22 +1695,55 @@ function BrowseFilesModal({ full, onClose }: { full: string; onClose: () => void
         <div className="tblwrap" style={{ maxHeight: 'min(55vh, 420px)', overflowY: 'auto' }}>
           <table className="data">
             <thead>
-              <tr><th>Name</th><th className="num">Size</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
+              <tr><th>Makine / Dosya</th><th>Tarih</th><th>Tür</th><th className="num">Boyut</th><th style={{ textAlign: 'right' }}>İşlemler</th></tr>
             </thead>
             <tbody>
-              {files.map(f => (
+              {[...files].sort((a, b) => a.name.localeCompare(b.name)).map(f => {
+                const { folder, machine, filename, dateStr, timeStr } = parseVeeamName(f.name);
+                const isVbk = f.name.endsWith('.vbk');
+                const isVib = f.name.endsWith('.vib');
+                const isVbm = f.name.endsWith('.vbm');
+                const isVeeam = isVbk || isVib || isVbm;
+
+                return (
                 <tr key={f.name}>
-                  <td className="mono" style={{ wordBreak: 'break-all', whiteSpace: 'normal', maxWidth: '400px' }}>{f.name}</td>
+                  <td className="mono" style={{ wordBreak: 'break-all', whiteSpace: 'normal', maxWidth: '400px' }}>
+                    {isVeeam ? (
+                      <>
+                        {folder && <div style={{ color: 'var(--text2)', fontSize: '0.85em', marginBottom: '2px' }}>{folder}</div>}
+                        <div style={{ fontWeight: 'bold', fontSize: '1.1em', color: 'var(--text)' }}>{machine}</div>
+                        <div style={{ fontSize: '0.75em', color: 'var(--text2)', marginTop: '4px' }}>{filename}</div>
+                      </>
+                    ) : (
+                      f.name
+                    )}
+                  </td>
+                  <td>
+                    {dateStr ? (
+                      <>
+                        <div style={{ fontWeight: 'bold', color: 'var(--text)' }}>{dateStr}</div>
+                        <div style={{ fontSize: '0.85em', color: 'var(--text2)' }}>{timeStr}</div>
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--text2)' }}>-</span>
+                    )}
+                  </td>
+                  <td>
+                    {isVbk && <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#e2f5e9', color: '#10753b', display: 'inline-block' }}>TAM YEDEK (VBK)</span>}
+                    {isVib && <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#e6f0ff', color: '#0052cc', display: 'inline-block' }}>GÜNLÜK (VIB)</span>}
+                    {isVbm && <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#f4f5f7', color: '#42526e', display: 'inline-block' }}>HARİTA (VBM)</span>}
+                  </td>
                   <td className="num">{fmtBytes(f.size)}</td>
                   <td style={{ textAlign: 'right' }}>
                     {!f.is_dir && (
                       <a href={`/api/snapshots/${encodeURIComponent(full)}/download?file=${encodeURIComponent(f.name)}`}
                          download
-                         className="btn sm primary">Download</a>
+                         className="btn sm primary">İndir</a>
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -68,6 +68,10 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	cur.Webhook = st.Webhook
 	cur.NotifyScrubErrors = st.NotifyScrubErrors
 	cur.NotifySmartChange = st.NotifySmartChange
+	cur.VeeamDatasets = st.VeeamDatasets
+	cur.BackupEnabled = st.BackupEnabled
+	cur.BackupFreqHours = st.BackupFreqHours
+	cur.BackupRetentionDays = st.BackupRetentionDays
 	if err := s.settings.Save(r.Context(), cur); err != nil {
 		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
 		return
@@ -97,13 +101,17 @@ func validateSettings(st settingsBody) string {
 
 // settingsBody — body de PUT /api/settings (idéntico a settings.Settings).
 type settingsBody struct {
-	Lang              string `json:"lang"`
-	CapWarnPct        int    `json:"cap_warn_pct"`
-	CapCritPct        int    `json:"cap_crit_pct"`
-	DiskTempC         int    `json:"disk_temp_c"`
-	Webhook           string `json:"webhook"`
-	NotifyScrubErrors bool   `json:"notify_scrub_errors"`
-	NotifySmartChange bool   `json:"notify_smart_change"`
+	Lang                string `json:"lang"`
+	CapWarnPct          int    `json:"cap_warn_pct"`
+	CapCritPct          int    `json:"cap_crit_pct"`
+	DiskTempC           int    `json:"disk_temp_c"`
+	Webhook             string `json:"webhook"`
+	NotifyScrubErrors   bool   `json:"notify_scrub_errors"`
+	NotifySmartChange   bool   `json:"notify_smart_change"`
+	VeeamDatasets       string `json:"veeam_datasets"`
+	BackupEnabled       bool   `json:"backup_enabled"`
+	BackupFreqHours     int    `json:"backup_freq_hours"`
+	BackupRetentionDays int    `json:"backup_retention_days"`
 }
 
 // listAlerts — GET /api/alerts → últimas 100.

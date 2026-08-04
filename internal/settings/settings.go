@@ -6,7 +6,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"strings"
 )
+
+// reDataset — mismo whitelist que actions, para validar cada dataset de Veeam.
+var reDataset = regexp.MustCompile(`^[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$`)
 
 // Settings — contrato GET/PUT /api/settings.
 type Settings struct {
@@ -21,6 +26,9 @@ type Settings struct {
 	BackupEnabled       bool `json:"backup_enabled"`
 	BackupFreqHours     int  `json:"backup_freq_hours"`     // 1/6/12/24/48/72
 	BackupRetentionDays int  `json:"backup_retention_days"` // 1-30
+	// Datasets Veeam que monitoriza el collector (cadenas rotas), separados
+	// por coma. 'tank/vmware,tank/backups'
+	VeeamDatasets string `json:"veeam_datasets"`
 }
 
 // Defaults — ajustes de fábrica.
@@ -74,7 +82,7 @@ func (s *Store) Load(ctx context.Context) (Settings, error) {
 
 // Save valida y persiste los ajustes.
 func (s *Store) Save(ctx context.Context, st Settings) error {
-	if st.Lang != "auto" && st.Lang != "es" && st.Lang != "en" {
+	if st.Lang != "auto" && st.Lang != "es" && st.Lang != "en" && st.Lang != "tr" {
 		st.Lang = "auto"
 	}
 	if st.CapWarnPct < 1 || st.CapWarnPct > 100 {
@@ -97,6 +105,16 @@ func (s *Store) Save(ctx context.Context, st Settings) error {
 	if st.BackupRetentionDays < 1 || st.BackupRetentionDays > 30 {
 		st.BackupRetentionDays = 3
 	}
+	// VeeamDatasets: separados por coma, valida cada uno (mismo whitelist de
+	// dataset) y descarta entradas inválidas.
+	var cleaned []string
+	for _, d := range strings.Split(st.VeeamDatasets, ",") {
+		d = strings.TrimSpace(d)
+		if d != "" && reDataset.MatchString(d) {
+			cleaned = append(cleaned, d)
+		}
+	}
+	st.VeeamDatasets = strings.Join(cleaned, ",")
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return err

@@ -6,7 +6,7 @@ import type { ComponentType } from 'react';
 import { AppProvider, useApp, alertTargetView } from './ui/store';
 import type { ViewId } from './ui/store';
 import { ModalProvider, ModalHost } from './components/ModalHost';
-import { Logo, IconHome, IconPool, IconData, IconSnap, IconTask, IconDisk, IconGear, IconBell, IconMoon, IconSun, IconChev, IconFoldLeft, IconFoldRight, IconUser } from './components/icons';
+import { Logo, IconHome, IconPool, IconData, IconSnap, IconTask, IconDisk, IconGear, IconBell, IconMoon, IconSun, IconChev, IconFoldLeft, IconFoldRight, IconUser, IconArchive } from './components/icons';
 import { Spinner } from './components/ui';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getProvider } from './data';
@@ -27,6 +27,7 @@ const Datasets = lazyRetry(() => import('./views/Datasets'));
 const Snapshots = lazyRetry(() => import('./views/Snapshots'));
 const Tasks = lazyRetry(() => import('./views/Tasks'));
 const Disks = lazyRetry(() => import('./views/Disks'));
+const Veeam = lazyRetry(() => import('./views/VeeamExplorer'));
 const Settings = lazyRetry(() => import('./views/Settings'));
 
 // Nav principal (Ajustes NO va aquí: vive al pie del sidebar, patrón
@@ -38,6 +39,7 @@ const NAV: { id: ViewId; icon: ComponentType<{ size?: number }> }[] = [
   { id: 'disks', icon: IconDisk },
   { id: 'tasks', icon: IconTask },
   { id: 'snaps', icon: IconSnap },
+  { id: 'veeam', icon: IconArchive },
 ];
 
 const COLLAPSED_KEY = 'easyzfs-sidebar-collapsed';
@@ -168,6 +170,7 @@ function Shell() {
       case 'snaps': return <Snapshots />;
       case 'tasks': return <Tasks />;
       case 'disks': return <Disks />;
+      case 'veeam': return <Veeam />;
       case 'settings': return <Settings />;
     }
   })();

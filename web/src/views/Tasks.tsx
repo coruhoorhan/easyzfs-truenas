@@ -74,7 +74,7 @@ export default function Tasks() {
   const systemdAvailable = sys.data?.systemd_available ?? false;
   const upcoming = list
     .filter((j) => j.enabled && j.next_run)
-    .sort((a, b) => a.next_run.localeCompare(b.next_run))
+    .sort((a, b) => (a.next_run || '').localeCompare(b.next_run || ''))
     .slice(0, 5);
 
   return (
@@ -96,7 +96,7 @@ export default function Tasks() {
                 {tipoLbl(j.tipo)} · <span className="mono">{j.target === 'all' ? t('nt_all_disks') : j.target}</span>
               </div>
               <span className="mono" style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 650 }}>
-                {timeAgo(j.next_run, t)}
+                {j.next_run ? timeAgo(j.next_run, t) : ''}
               </span>
             </div>
           ))}

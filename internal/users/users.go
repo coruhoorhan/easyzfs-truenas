@@ -31,7 +31,7 @@ var (
 	ErrNotFound      = errors.New("usuario no encontrado")
 	ErrInvalidName   = errors.New("nombre de usuario inválido")
 	ErrInvalidRole   = errors.New("rol inválido (admin|user)")
-	ErrInvalidLang   = errors.New("idioma inválido (auto|es|en)")
+	ErrInvalidLang   = errors.New("idioma inválido (auto|es|en|tr)")
 	ErrInvalidEmail  = errors.New("email inválido")
 	ErrWeakPassword  = errors.New("la contraseña debe tener al menos 8 caracteres")
 	ErrBadCredential = errors.New("credenciales incorrectas")
@@ -254,9 +254,9 @@ func (s *Store) SetProfile(ctx context.Context, name, displayName, email string)
 	return nil
 }
 
-// SetLanguage fija el idioma del usuario ('auto'|'es'|'en').
+// SetLanguage fija el idioma del usuario ('auto'|'es'|'en'|'tr').
 func (s *Store) SetLanguage(ctx context.Context, name, lang string) error {
-	if lang != "auto" && lang != "es" && lang != "en" {
+	if lang != "auto" && lang != "es" && lang != "en" && lang != "tr" {
 		return ErrInvalidLang
 	}
 	res, err := s.db.ExecContext(ctx,

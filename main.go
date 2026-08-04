@@ -95,7 +95,7 @@ func main() {
 	go pushSender.RunQueue(ctx)
 
 	// Colectores (reales o mock) + providers para los handlers.
-	providers, cols := collectors.Build(cfg, database, h, alerter)
+	providers, cols := collectors.Build(cfg, database, h, alerter, stStore)
 
 	act := actions.NewService(database)
 	jobStore := scheduler.NewStore(database)

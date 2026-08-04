@@ -38,8 +38,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Tipo      string `json:"tipo"`
 		Target    string `json:"target"`
-		Schedule  string `json:"schedule"`
-		Retention string `json:"retention"`
+		Schedule   string `json:"schedule"`
+		Retention  string `json:"retention"`
+		ThresholdMB int64 `json:"threshold_mb"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -64,7 +65,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	j := &scheduler.Job{Tipo: body.Tipo, Target: body.Target,
-		Schedule: body.Schedule, Retention: body.Retention}
+		Schedule: body.Schedule, Retention: body.Retention, ThresholdMB: body.ThresholdMB}
 	id, err := s.jstore.Create(r.Context(), j)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
@@ -83,8 +84,9 @@ func (s *Server) patchJob(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Enabled   *bool   `json:"enabled"`
-		Schedule  *string `json:"schedule"`
-		Retention *string `json:"retention"`
+		Schedule    *string `json:"schedule"`
+		Retention   *string `json:"retention"`
+		ThresholdMB *int64  `json:"threshold_mb"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -105,7 +107,7 @@ func (s *Server) patchJob(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "job no encontrado")
 		return
 	}
-	if err := s.jstore.Update(r.Context(), id, body.Enabled, body.Schedule, body.Retention); err != nil {
+	if err := s.jstore.Update(r.Context(), id, body.Enabled, body.Schedule, body.Retention, body.ThresholdMB); err != nil {
 		writeErr(w, http.StatusInternalServerError, "db_error", err.Error())
 		return
 	}

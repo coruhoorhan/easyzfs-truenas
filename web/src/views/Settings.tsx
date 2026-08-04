@@ -396,7 +396,7 @@ function ProfileCard() {
       <h3 className="cardtitle">{t('s_profile')}</h3>
       <label>{t('s_lang')}</label>
       <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
-        options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]} />
+        options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }, { v: 'tr', label: '🇹🇷 Türkçe' }]} />
       <label htmlFor="pf-name">{t('s_displayname')}</label>
       <input id="pf-name" value={name} maxLength={64} placeholder={user?.user}
         autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
@@ -563,6 +563,11 @@ export default function Settings() {
           <label htmlFor="th-temp">{t('s_temp')}</label>
           <input id="th-temp" type="number" value={settings.disk_temp_c}
             onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
+          <label htmlFor="th-veeam">{t('veeam_monitored_lbl')}</label>
+          <input id="th-veeam" type="text" value={settings.veeam_datasets ?? ''}
+            placeholder="tank/vmware, tank/backups"
+            onChange={(e) => setSettings({ ...settings, veeam_datasets: e.target.value })} />
+          <p className="muted" style={{ marginTop: 4 }}>{t('veeam_monitored_d')}</p>
           {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
           <div className="m-actions">
             <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
@@ -605,9 +610,9 @@ export default function Settings() {
                 </div>
               </div>
               <Select value={u.language ?? 'auto'} ariaLabel={t('s_lang')}
-                options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }]}
+                options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }, { v: 'tr', label: '🇹🇷 Türkçe' }]}
                 onChange={(v) => {
-                  const lang = v as 'auto' | 'es' | 'en';
+                  const lang = v as 'auto' | 'es' | 'en' | 'tr';
                   setUsers((cur) => cur?.map((x) => (x.user === u.user ? { ...x, language: lang } : x)) ?? cur);
                   getProvider().setUserLanguage(u.user, lang).catch(() => {});
                 }} />

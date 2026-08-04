@@ -43,6 +43,14 @@ var ValidTopos = map[string]bool{
 	"stripe": true, "mirror": true, "raidz1": true, "raidz2": true, "raidz3": true,
 }
 
+// ValidPoolName / ValidDatasetName / ValidSnapshotName exponen las mismas
+// whitelists a otros paquetes (p. ej. httpapi/veeam) para que ninguna ruta
+// de entrada ejecute comandos con nombres sin validar. Mirrors de rePool,
+// reDataset y reSnapName respectivamente.
+func ValidPoolName(name string) bool     { return rePool.MatchString(name) }
+func ValidDatasetName(name string) bool  { return reDataset.MatchString(name) }
+func ValidSnapshotName(name string) bool { return reSnapName.MatchString(name) }
+
 // Service ejecuta operaciones contra el sistema y las audita.
 type Service struct {
 	db *sql.DB

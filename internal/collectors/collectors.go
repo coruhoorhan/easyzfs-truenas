@@ -10,6 +10,7 @@ import (
 	"easyzfs/internal/config"
 	"easyzfs/internal/hub"
 	"easyzfs/internal/model"
+	"easyzfs/internal/settings"
 )
 
 // Collector — patrón del skill: bucle con ticker que sale al cancelar ctx.
@@ -57,7 +58,7 @@ type Providers struct {
 }
 
 // Build construye colectores reales o el mock (MOCK=1 / DEMO=1).
-func Build(cfg *config.Config, d *sql.DB, h *hub.Hub, al *alerts.Alerter) (*Providers, []Collector) {
+func Build(cfg *config.Config, d *sql.DB, h *hub.Hub, al *alerts.Alerter, st *settings.Store) (*Providers, []Collector) {
 	mant := NewMantenimiento(d, cfg.RetentionDays)
 	if cfg.Mock {
 		m := NewMock(h, al)
@@ -72,8 +73,10 @@ func Build(cfg *config.Config, d *sql.DB, h *hub.Hub, al *alerts.Alerter) (*Prov
 	// Eventos ZFS en tiempo real ('zpool events -f'); si no está disponible se
 	// desactiva solo tras el log y el polling queda como red de seguridad.
 	ec := NewEventsCollector(al)
+	// Cadenas Veeam rotas en segundo plano (vigila sin abrir la vista).
+	vc := NewVeeamCollector(st, al)
 	return &Providers{Pools: zc, Disks: smc, SysTimers: ssc, Perf: pc, Caps: cc},
-		[]Collector{zc, sc, smc, ssc, pc, cc, ec, mant}
+		[]Collector{zc, sc, smc, ssc, pc, cc, ec, vc, mant}
 }
 
 // baseName normaliza un dev de vdev ('/dev/sdb1', 'sdb1', 'ata-XXX-part1') a
