@@ -430,17 +430,21 @@ table.data td.num{font-family:var(--font-mono);font-size:12.5px}
   font-size:11px;font-weight:700;cursor:help;vertical-align:middle;flex-shrink:0;
 }
 .infobubble-pop{
-  position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);
+  /* position:fixed + top/left los pone InfoBubble por JS (useEffect):
+     fixed escapa del overflow de los ancestros (.tblwrap recortaba la
+     burbuja del primer disco) y permite voltear hacia abajo si no cabe
+     arriba. pointer-events:none evita parpadeo al pisar el trigger. */
+  position:fixed;
   width:min(290px,78vw);padding:12px 14px;border-radius:10px;z-index:50;
   background:var(--surface2);color:var(--text);border:1px solid var(--border);
   box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:12px;font-weight:400;line-height:1.5;
-  /* display:none, NO opacity/visibility: incluso invisible seguía contando
-     sus 290px en el scrollWidth de la celda (scroll horizontal fantasma). */
-  display:none;
+  /* display:none cerrado; .open lo hace medible (opacity:0, invisible) y
+     .placed lo revela una vez posicionado. pointer-events:none evita
+     parpadeo al pisar el trigger con el ratón. */
+  display:none;pointer-events:none;opacity:0;
 }
-.infobubble:hover .infobubble-pop,.infobubble:focus .infobubble-pop{
-  display:block;
-}
+.infobubble-pop.open{display:block}
+.infobubble-pop.open.placed{opacity:1}
 .infobubble-pop ul{margin:4px 0 0;padding-left:16px}
 .infobubble-pop li{margin-bottom:3px}
 
