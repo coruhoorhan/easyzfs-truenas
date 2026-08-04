@@ -200,7 +200,9 @@ function Shell() {
           <div className="sidefoot">
             <button type="button" className={`userblock${active === 'settings' ? ' active' : ''}`}
               onClick={() => navigate('settings')} title={collapsed ? `${user.user} · ${t('settings' as never)}` : undefined}>
-              <span className="avatar" aria-hidden="true"><IconUser size={16} /></span>
+              <span className="avatar" aria-hidden="true">
+                {user.avatar ? <img src={getProvider().avatarUrl(user.avatar)} alt="" /> : <IconUser size={16} />}
+              </span>
               {!collapsed && (
                 <span className="ublbl">
                   <b>{user.display_name || user.user}</b>

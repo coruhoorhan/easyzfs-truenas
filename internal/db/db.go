@@ -109,6 +109,9 @@ var migrations = []string{
 	// mensaje exacto — los contadores volátiles (p. ej. CRC que crece cada
 	// pasada) generaban una alerta+push nueva cada 10 min (bug 3-Ago-2026).
 	`ALTER TABLE alerts ADD COLUMN kind TEXT NOT NULL DEFAULT '';`,
+	// v16: avatar del usuario (foto de perfil). Nombre del fichero dentro de
+	// <datadir>/avatars/ (p. ej. 'nacho.webp'); vacío = sin foto.
+	`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT '';`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

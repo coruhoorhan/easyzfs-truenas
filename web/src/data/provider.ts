@@ -31,6 +31,12 @@ export interface DataProvider {
   setMyPassword(current: string, next: string): Promise<void>;
   setMyLanguage(language: Lang): Promise<void>;
   updateMyProfile(displayName: string, email: string): Promise<void>;
+  // Avatar: body binario (webp/jpeg recortado en cliente, máx. 512 KB).
+  setMyAvatar(blob: Blob): Promise<void>;
+  deleteMyAvatar(): Promise<void>;
+  // URL de la foto de perfil de un usuario ('' → sin foto). Sincrónico:
+  // en real es /api/avatars/{name}; en mock, un object URL en memoria.
+  avatarUrl(name: string): string;
 
   // Usuarios (admin)
   getUsers(): Promise<UserInfo[]>;

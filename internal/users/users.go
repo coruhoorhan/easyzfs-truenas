@@ -21,6 +21,7 @@ type User struct {
 	Language    string     `json:"language"` // "auto" | "es" | "en"
 	DisplayName string     `json:"display_name"` // nombre visible (saludos); vacío = username
 	Email       string     `json:"email"`        // opcional
+	Avatar      string     `json:"avatar"`       // nombre del fichero en <datadir>/avatars/; vacío = sin foto
 	LastLogin   *time.Time `json:"last_login"`
 	Sessions    int        `json:"sessions"`
 }
@@ -135,7 +136,7 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 // List devuelve todos los usuarios con su nº de sesiones activas.
 func (s *Store) List(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.user, u.role, u.language, u.display_name, u.email, u.last_login,
+		SELECT u.user, u.role, u.language, u.display_name, u.email, u.avatar, u.last_login,
 		       (SELECT COUNT(*) FROM sessions se WHERE se.user=u.user AND se.expires_at > datetime('now'))
 		FROM users u ORDER BY u.user`)
 	if err != nil {
@@ -146,7 +147,7 @@ func (s *Store) List(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var last sql.NullString
-		if err := rows.Scan(&u.Name, &u.Role, &u.Language, &u.DisplayName, &u.Email, &last, &u.Sessions); err != nil {
+		if err := rows.Scan(&u.Name, &u.Role, &u.Language, &u.DisplayName, &u.Email, &u.Avatar, &last, &u.Sessions); err != nil {
 			return nil, err
 		}
 		if last.Valid && last.String != "" {
@@ -163,8 +164,8 @@ func (s *Store) Get(ctx context.Context, name string) (*User, error) {
 	var u User
 	var last sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		"SELECT user, role, language, display_name, email, last_login FROM users WHERE user=?", name).
-		Scan(&u.Name, &u.Role, &u.Language, &u.DisplayName, &u.Email, &last)
+		"SELECT user, role, language, display_name, email, avatar, last_login FROM users WHERE user=?", name).
+		Scan(&u.Name, &u.Role, &u.Language, &u.DisplayName, &u.Email, &u.Avatar, &last)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -244,6 +245,21 @@ func (s *Store) SetProfile(ctx context.Context, name, displayName, email string)
 	}
 	res, err := s.db.ExecContext(ctx,
 		"UPDATE users SET display_name=?, email=? WHERE user=?", displayName, email, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAvatar fija el nombre del fichero de avatar del usuario (dentro de
+// <datadir>/avatars/). Vacío = quitar la foto.
+func (s *Store) SetAvatar(ctx context.Context, name, filename string) error {
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE users SET avatar=? WHERE user=?", filename, name)
 	if err != nil {
 		return err
 	}

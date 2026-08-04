@@ -316,6 +316,28 @@ export class MockProvider implements DataProvider {
     if (this.session) this.session = { ...this.session, display_name: d, email: e };
   };
 
+  // Avatares en memoria (object URLs): demo sin backend.
+  private avatars = new Map<string, string>();
+  setMyAvatar = async (blob: Blob) => {
+    await delay();
+    if (!this.session) throw new ApiError(401, 'unauthorized', 'Sesión no iniciada');
+    if (blob.size > 512 * 1024) throw new ApiError(400, 'avatar_too_large', 'Imagen demasiado grande (máx. 512 KB)');
+    const name = this.session.user;
+    const old = this.avatars.get(name);
+    if (old) URL.revokeObjectURL(old);
+    this.avatars.set(name, URL.createObjectURL(blob));
+    this.session = { ...this.session, avatar: name };
+  };
+  deleteMyAvatar = async () => {
+    await delay();
+    if (!this.session) throw new ApiError(401, 'unauthorized', 'Sesión no iniciada');
+    const name = this.session.user;
+    const old = this.avatars.get(name);
+    if (old) { URL.revokeObjectURL(old); this.avatars.delete(name); }
+    this.session = { ...this.session, avatar: '' };
+  };
+  avatarUrl = (name: string) => this.avatars.get(name) ?? '';
+
   // ---- Usuarios ----
   getUsers = async () => { await delay(); return this.users.map((u) => ({ ...u })); };
   createUser = async (r: CreateUserReq) => {

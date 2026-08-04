@@ -10,6 +10,7 @@ export interface SessionUser {
   language?: Lang; // ausente en respuestas viejas del server
   display_name?: string; // nombre visible (saludos); vacío = username
   email?: string;
+  avatar?: string; // nombre del fichero de avatar; vacío = sin foto
 }
 
 export interface UserInfo {
@@ -18,6 +19,7 @@ export interface UserInfo {
   language?: Lang;
   display_name?: string;
   email?: string;
+  avatar?: string; // nombre del fichero de avatar; vacío = sin foto
   last_login: string;
   sessions: number;
 }
