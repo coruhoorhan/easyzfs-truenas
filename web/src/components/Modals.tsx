@@ -1061,7 +1061,7 @@ function RollbackModal({ full, onClose }: { full: string; onClose: () => void })
 
 // ---------- eliminar snapshot ----------
 function DeleteSnapModal({ full, onClose }: { full: string; onClose: () => void }) {
-  const { t, refresh, isAdmin } = useApp();
+  const { t, refresh, isAdmin, notify } = useApp();
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -1073,7 +1073,8 @@ function DeleteSnapModal({ full, onClose }: { full: string; onClose: () => void 
     try {
       await getProvider().deleteSnapshot(full, confirm.trim() === snap ? full : confirm.trim());
       refresh(); onClose();
-    } catch (ex) { setErr(errorMessage(ex, t)); setBusy(false); }
+      notify(t('veeam_deleted'), 'ok');
+    } catch (ex) { const msg = errorMessage(ex, t); setErr(msg); notify(msg, 'err'); setBusy(false); }
   };
 
   return (
