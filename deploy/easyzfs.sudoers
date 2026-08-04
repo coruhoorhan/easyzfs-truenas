@@ -1,9 +1,16 @@
 # EasyZFS — sudoers limitado.
 # El servicio corre como usuario 'easyzfs' (sin root) y necesita elevar solo
-# estos binarios (executil antepone `sudo -n` cuando euid != 0). `crontab` es
-# para leer el crontab de root en la vista Tareas (solo lectura).
+# estos binarios (executil antepone `sudo -n` cuando euid != 0).
+#
+# Argumentos restringidos al uso real del código:
+#   crontab   → solo `-l` (lectura del crontab de root en la vista Tareas);
+#               sin args, `crontab -e` permitiría ejecutar código como root.
+#   hdparm    → solo `-y /dev/*` (standby de disco en acciones).
+#   udisksctl → solo `power-off -b /dev/*` (apagado de disco; fallback de hdparm).
+# zpool/zfs/smartctl/lsblk necesitan libertad de argumentos (son la API del
+# almacenamiento); el confinamiento extra vive en easyzfs-sysd y la unit.
 #
 # Instalación:
 #   install -m 0440 -o root -g root deploy/easyzfs.sudoers /etc/sudoers.d/easyzfs
 #   visudo -cf /etc/sudoers.d/easyzfs    # validar sintaxis antes de recargar
-easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/sbin/lsblk, /usr/bin/crontab, /usr/bin/udisksctl, /usr/sbin/hdparm, /usr/local/libexec/easyzfs-sysd
+easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/bin/lsblk, /usr/bin/crontab -l, /usr/sbin/hdparm -y /dev/*, /usr/bin/udisksctl power-off -b /dev/*, /usr/local/libexec/easyzfs-sysd

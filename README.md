@@ -219,8 +219,12 @@ runs unprivileged and can only elevate those binaries. This is the bundled
 `deploy/easyzfs.sudoers`:
 
 ```
-easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/sbin/lsblk, /usr/bin/crontab
+easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/bin/lsblk, /usr/bin/crontab -l, /usr/sbin/hdparm -y /dev/*, /usr/bin/udisksctl power-off -b /dev/*, /usr/local/libexec/easyzfs-sysd
 ```
+
+`crontab`, `hdparm` and `udisksctl` are pinned to the exact arguments the
+code uses (read-only crontab listing; disk standby/power-off), so they
+cannot be abused as a root code-execution path.
 
 **Option B: conscious root.** Change `User=easyzfs`/`Group=easyzfs` to
 `User=root` in the unit (or set `EASYZFS_SUDO=0` with another sufficiently

@@ -224,8 +224,12 @@ configuración del `easyzfs.service` incluido (por eso **no** lleva
 `deploy/easyzfs.sudoers`:
 
 ```
-easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/sbin/lsblk, /usr/bin/crontab
+easyzfs ALL=(root) NOPASSWD: /usr/sbin/zpool, /usr/sbin/zfs, /usr/sbin/smartctl, /usr/bin/lsblk, /usr/bin/crontab -l, /usr/sbin/hdparm -y /dev/*, /usr/bin/udisksctl power-off -b /dev/*, /usr/local/libexec/easyzfs-sysd
 ```
+
+`crontab`, `hdparm` y `udisksctl` quedan fijados a los argumentos exactos
+que usa el código (lectura del crontab; standby/apagado de disco), de modo
+que no puedan usarse como vía de ejecución de código como root.
 
 **Opción B: root consciente.** Cambia `User=easyzfs`/`Group=easyzfs` a
 `User=root` en la unit (o define `EASYZFS_SUDO=0` con otro usuario lo
