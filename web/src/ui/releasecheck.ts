@@ -1,15 +1,16 @@
 // releasecheck.ts — aviso pasivo de releases nuevas en GitHub. Comprueba la
-// última release UNA vez al día por navegador (caché en localStorage) con una
-// GET anónima: nada de botón "comprobar actualizaciones" ni phone-home del
-// servidor. Si hay versión más nueva, la shell muestra un ribbon superior
-// (descartable por versión) y Ajustes un icono en la zona admin.
+// última release UNA vez a la semana por navegador (caché en localStorage)
+// con una GET anónima: el servidor no hace phone-home. Si hay versión más
+// nueva, la shell muestra un ribbon superior (descartable por versión, con
+// botón Actualizar) y Ajustes → Acerca de ofrece "Comprobar actualizaciones"
+// (solo admin; fuerza la consulta al momento).
 import { useEffect, useState } from 'react';
 
 const REPO = 'gnacho/easyzfs';
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 const CACHE_KEY = 'easyzfs-release-check';
 const DISMISS_KEY = 'easyzfs-release-dismissed';
-const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ReleaseState =
   | { kind: 'unknown' }
@@ -68,15 +69,41 @@ function toState(c: Cache | null, currentVersion: string | undefined): ReleaseSt
     : { kind: 'uptodate' };
 }
 
+// Notifica a los suscritos (ribbon de la shell) que hay un resultado nuevo.
+type Listener = () => void;
+const listeners = new Set<Listener>();
+function notify(): void { listeners.forEach((l) => l()); }
+
+// checkReleaseNow — comprobación manual e inmediata (botón "Comprobar
+// actualizaciones" de Ajustes). Ignora la caducidad semanal; devuelve el
+// estado resultante. Si la red falla, conserva la caché anterior y relanza.
+export async function checkReleaseNow(currentVersion: string | undefined): Promise<ReleaseState> {
+  try {
+    const c = await fetchLatest();
+    notify();
+    return toState(c, currentVersion);
+  } catch (e) {
+    notify();
+    throw e;
+  }
+}
+
 // useReleaseCheck — estado de release respecto a currentVersion. Solo actúa
-// con enabled=true (sesión real, no demo). Como mucho 1 fetch/día/navegador.
+// con enabled=true (sesión real, no demo). Pasivo: como mucho 1 fetch por
+// semana por navegador; se re-suscribe a los cambios de checkReleaseNow.
 export function useReleaseCheck(currentVersion: string | undefined, enabled: boolean): ReleaseState {
   const [cache, setCache] = useState<Cache | null>(() => readCache());
 
   useEffect(() => {
+    const refresh = () => setCache(readCache());
+    listeners.add(refresh);
+    return () => { listeners.delete(refresh); };
+  }, []);
+
+  useEffect(() => {
     if (!enabled) return;
     const c = readCache();
-    if (c && Date.now() - c.ts < DAY_MS) { setCache(c); return; }
+    if (c && Date.now() - c.ts < WEEK_MS) { setCache(c); return; }
     let alive = true;
     fetchLatest().then((n) => { if (alive) setCache(n); }).catch(() => {
       // Sin red/rate-limit: conserva la caché anterior (si la hay)

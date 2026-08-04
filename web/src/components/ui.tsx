@@ -125,11 +125,59 @@ export function Spinner({ label }: { label: string }) {
 
 // InfoBubble — burbuja explicativa al pasar el ratón (tokens del tema) y al
 // tocar en móvil (tabIndex → :focus). glyph: '?' por defecto, 'i' informativo.
+// El popover se posiciona con position:fixed desde JS: los ancestros con
+// overflow (p.ej. .tblwrap) no pueden recortarlo. Si no cabe arriba (primera
+// fila de una tabla) se voltea automáticamente hacia abajo, y el left queda
+// sujeto a los bordes del viewport.
 export function InfoBubble({ title, glyph = '?', children }: { title?: string; glyph?: '?' | 'i'; children: React.ReactNode }) {
+  const btnRef = useRef<HTMLSpanElement>(null);
+  const popRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const place = () => {
+    const btn = btnRef.current, pop = popRef.current;
+    if (!btn || !pop) return;
+    const r = btn.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    const pad = 8, vw = window.innerWidth, vh = window.innerHeight;
+    // Por defecto arriba; voltea abajo si se cortaría con el borde superior
+    const top = r.top - ph - pad >= 4 ? r.top - ph - pad : Math.min(r.bottom + pad, vh - ph - 4);
+    const left = Math.max(4, Math.min(r.left + r.width / 2 - pw / 2, vw - pw - 4));
+    setPos({ top, left });
+  };
+
+  useEffect(() => {
+    if (!open) { setPos(null); return; }
+    // El popover ya está display:block (clase .open) pero opacity:0: medible
+    // sin parpadeo. place() calcula y setPos revela (clase .placed) en el
+    // mismo ciclo de render tras el primer paint invisible.
+    place();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    // al hacer scroll (incl. scroll horizontal de .tblwrap) la posición fixed
+    // queda desincronizada del trigger: cerrar es lo más simple y seguro
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
   return (
-    <span className="infobubble" tabIndex={0} aria-label={title}>
+    <span className="infobubble" tabIndex={0} aria-label={title} ref={btnRef}
+      onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+      onTouchStart={() => setOpen((o) => !o)}
+      onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}>
       {glyph}
-      <span className="infobubble-pop" role="tooltip">
+      <span className={`infobubble-pop${open ? ' open' : ''}${pos ? ' placed' : ''}`} role="tooltip" ref={popRef}
+        style={pos ? { top: pos.top, left: pos.left } : undefined}>
         {title && <b style={{ display: 'block', marginBottom: 6 }}>{title}</b>}
         {children}
       </span>

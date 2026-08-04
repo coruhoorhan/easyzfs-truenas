@@ -3,13 +3,27 @@ import type { DataProvider } from './provider';
 import { ApiError } from './types';
 import { notifyAuthExpired } from './events';
 import type {
-  Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
+  ActivityItem, Alert, BackupFile, BackupStatus, CreateDatasetReq, CreateJobReq, CreatePoolReq, CreateReplicationReq, CreateSnapshotReq, CreateUserReq,
   Dataset, Disk, Job, JobHistoryItem, Lang, LongOp, Overview, Performance, Pool, PoolHistoryEntry, PushAlertTipo, PushPreference, PushQuietHours, PushSubscriptionJSON,
   Recommendation, ReplicationJob, ReplicationSSHKey, ReplicationTestResult, SessionUser, Settings,
   SnapshotGroup, SystemTimer, SystemTimersResp, UpdateJobReq, UpdateReplicationReq, UserInfo, VersionInfo,
 } from './types';
 
 const BASE = '/api';
+
+// Modo demo habilitado (GET /api/public/demo, sin sesión): lo consulta el
+// login para mostrar u ocultar el botón "Entrar como demo". Fuera del
+// provider porque se llama ANTES de autenticarse.
+export async function fetchDemoEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/public/demo`, { credentials: 'same-origin' });
+    if (!res.ok) return true; // sin respuesta: por defecto se ofrece (como antes)
+    const j = await res.json();
+    return j?.demo_enabled !== false;
+  } catch {
+    return true; // sin red: se ofrece el botón igualmente
+  }
+}
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
@@ -50,6 +64,8 @@ export class HttpProvider implements DataProvider {
   getAlerts = () => get<Alert[]>('/alerts');
   ackAlert = (id: number) => post<void>(`/alerts/${id}/ack`);
   getOverview = () => get<Overview>('/overview');
+  getActivity = (limit?: number) =>
+    get<ActivityItem[]>(limit ? `/activity?limit=${limit}` : '/activity');
 
   getBackupStatus = () => get<BackupStatus>('/backup/status');
   runBackup = () => post<BackupFile>('/backup/run');
