@@ -181,15 +181,16 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// me — GET /api/me → {user, role, language, display_name, email}
+// me — GET /api/me → {user, role, language, display_name, email, avatar}
 // (401 ya lo da el middleware).
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	lang := "auto"
-	displayName, email := "", ""
+	displayName, email, avatar := "", "", ""
 	if u, err := s.users.Get(r.Context(), auth.UserFromContext(r.Context())); err == nil {
 		lang = u.Language
 		displayName = u.DisplayName
 		email = u.Email
+		avatar = u.Avatar
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
 		"user":         auth.UserFromContext(r.Context()),
@@ -197,6 +198,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		"language":     lang,
 		"display_name": displayName,
 		"email":        email,
+		"avatar":       avatar,
 	})
 }
 

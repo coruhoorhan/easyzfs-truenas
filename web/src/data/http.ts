@@ -94,6 +94,24 @@ export class HttpProvider implements DataProvider {
   updateMyProfile = (display_name: string, email: string) =>
     put<void>('/me/profile', { display_name, email });
 
+  // Avatar: el blob ya viene recortado y re-codificado (webp/jpeg) del
+  // diálogo de recorte; se manda crudo como importBackup.
+  setMyAvatar = async (blob: Blob): Promise<void> => {
+    const res = await fetch(`${BASE}/me/avatar`, {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+      body: blob,
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, j?.error ?? 'http_error', j?.message ?? `HTTP ${res.status}`);
+    }
+  };
+  deleteMyAvatar = () => del<void>('/me/avatar');
+  // La URL existe siempre; el componente solo la usa si user.avatar != ''
+  // (evita 404s en el <img>). no-cache en el server: se revalida al cambiar.
+  avatarUrl = (name: string) => `${BASE}/avatars/${enc(name)}`;
+
   getUsers = () => get<UserInfo[]>('/users');
   createUser = (r: CreateUserReq) => post<void>('/users', r);
   deleteUser = (name: string, confirm: string) => del<void>(`/users/${enc(name)}`, { confirm });

@@ -37,6 +37,11 @@ export const IconLock = (p: P) => base(p, <><rect x="4" y="11" width="16" height
 export const IconUnlock = (p: P) => base(p, <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 7.7-1.5" /></>);
 export const IconHeart = (p: P) => base(p, <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z" />);
 export const IconArchive = (p: P) => base(p, <><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></>);
+export const IconPlus = (p: P) => base(p, <path d="M12 5v14M5 12h14" />);
+export const IconMinus = (p: P) => base(p, <path d="M5 12h14" />);
+export const IconX = (p: P) => base(p, <path d="M18 6 6 18M6 6l12 12" />);
+export const IconCamera = (p: P) => base(p, <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /><path d="m16.5 12.5 4-1" /></>);
+export const IconTrash = (p: P) => base(p, <><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6M14 11v6" /></>);
 
 // Logo de la app: diseño "E de capas" (assets de branding en /icons)
 export function Logo({ size = 30 }: { size?: number }) {

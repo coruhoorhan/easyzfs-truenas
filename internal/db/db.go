@@ -111,6 +111,9 @@ var migrations = []string{
 	`ALTER TABLE alerts ADD COLUMN kind TEXT NOT NULL DEFAULT '';`,
 // v16: Data-driven threshold für snapshot jobs (Diffsnap logic)
 	`ALTER TABLE jobs ADD COLUMN threshold_mb INTEGER NOT NULL DEFAULT 0;`,
+	// v16: avatar del usuario (foto de perfil). Nombre del fichero dentro de
+	// <datadir>/avatars/ (p. ej. 'nacho.webp'); vacío = sin foto.
+	`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT '';`,
 }
 
 // Open abre la BD con WAL, busy_timeout y una sola conexión escritora.

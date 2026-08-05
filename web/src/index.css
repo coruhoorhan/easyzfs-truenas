@@ -82,8 +82,9 @@ aside.sidebar nav a:hover:not(.active){background:var(--surface2)}
 .userblock.active{background:var(--accent-soft);color:var(--accent)}
 .userblock .avatar{
   width:30px;height:30px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;
-  background:var(--accent-soft);color:var(--accent);
+  background:var(--accent-soft);color:var(--accent);overflow:hidden;
 }
+.userblock .avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .userblock .ublbl{display:flex;flex-direction:column;min-width:0;line-height:1.25}
 .userblock .ublbl b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .userblock .ublbl span{font-size:11px;color:var(--text2)}
@@ -385,6 +386,51 @@ table.data td.num{font-family:var(--font-mono);font-size:12.5px}
 .modal h3{font-size:17px;font-weight:700;margin-bottom:4px}
 .modal .desc{font-size:13px;color:var(--text2)}
 .modal .m-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
+
+/* ---- Diálogo de recorte de avatar (crop cuadrado 1:1) ---- */
+.crop-wrap{display:flex;flex-direction:column;gap:12px}
+.crop-vp{
+  position:relative;width:280px;height:280px;margin:0 auto;overflow:hidden;
+  border-radius:12px;background:var(--surface2);cursor:grab;touch-action:none;
+}
+.crop-vp:active{cursor:grabbing}
+.crop-img{position:absolute;top:0;left:0;user-select:none;-webkit-user-drag:none}
+.crop-grid{
+  position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(to right,transparent calc(33.33% - 1px),rgba(255,255,255,.22) 33.33%,transparent calc(33.33% + 1px),transparent calc(66.66% - 1px),rgba(255,255,255,.22) 66.66%,transparent calc(66.66% + 1px)),
+    linear-gradient(to bottom,transparent calc(33.33% - 1px),rgba(255,255,255,.22) 33.33%,transparent calc(33.33% + 1px),transparent calc(66.66% - 1px),rgba(255,255,255,.22) 66.66%,transparent calc(66.66% + 1px));
+}
+.crop-controls{display:flex;align-items:center;gap:10px;width:280px;margin:0 auto}
+.crop-controls input[type="range"]{flex:1}
+.crop-hint{font-size:12px;color:var(--text2);text-align:center;margin:0}
+
+/* ---- Tarjeta Mi perfil: cabecera avatar + grid de campos ---- */
+.profile-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.avatar-lg{
+  position:relative;width:64px;height:64px;border-radius:50%;flex-shrink:0;overflow:hidden;
+  display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);
+  font-size:24px;font-weight:700;cursor:pointer;border:0;padding:0;
+}
+.avatar-lg img{width:100%;height:100%;object-fit:cover;display:block}
+.avatar-lg .cam{
+  position:absolute;inset:0;display:grid;place-items:center;color:#fff;
+  background:rgba(0,0,0,.45);opacity:0;transition:opacity .15s;
+}
+.avatar-lg:hover .cam,.avatar-lg:focus-visible .cam{opacity:1}
+.profile-head .ph-lbl{display:flex;flex-direction:column;min-width:0;gap:2px}
+.profile-head .ph-lbl b{font-size:16px;line-height:1.2}
+.profile-head .ph-lbl span{font-size:12px;color:var(--text2)}
+.profile-grid{display:grid;gap:14px 18px}
+@media(min-width:720px){.profile-grid{grid-template-columns:1fr 1fr}}
+.profile-grid > .full{grid-column:1/-1}
+.notif-row{
+  display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;
+  border:1px solid var(--border);border-radius:10px;background:var(--surface2);
+  color:inherit;font:inherit;cursor:pointer;text-align:left;
+}
+.notif-row:hover{border-color:var(--accent)}
+.notif-row .nr-lbl{flex:1;font-size:13.5px;font-weight:600}
 .seg{display:flex;background:var(--surface2);border-radius:10px;padding:3px;gap:3px}
 .seg button{flex:1;padding:8px 6px;border-radius:8px;font-size:13px;font-weight:600;color:var(--text2)}
 .seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(10,14,10,.10)}

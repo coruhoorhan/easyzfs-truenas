@@ -11,8 +11,9 @@ import { getProvider } from '../data';
 import { errorMessage, useApp } from '../ui/store';
 import { fmtBytes, fmtDuration, timeAgo } from '../ui/format';
 import { Seg, Select, Spinner, Switch, Badge } from '../components/ui';
-import { Logo, IconCode, IconList, IconHeart, IconShield, IconDownload, IconCheck, IconSun, IconMoon, IconMonitor, IconUpload } from '../components/icons';
-import { useModal } from '../components/Modal';
+import { Logo, IconCode, IconList, IconHeart, IconShield, IconDownload, IconCheck, IconSun, IconMoon, IconMonitor, IconUpload, IconCamera, IconTrash, IconLock, IconBell, IconChev } from '../components/icons';
+import { useModal, ModalBox } from '../components/Modal';
+import { AvatarCropDialog } from '../components/AvatarCropDialog';
 import { usePush } from '../data/push';
 import { checkReleaseNow, useReleaseCheck } from '../ui/releasecheck';
 import {
@@ -150,6 +151,7 @@ function UpdateCheckRow({ version }: { version: string | undefined }) {
     </div>
   );
 }
+
 // Tarjeta "Copia de seguridad" (zona admin): patrón ajuste-proceso — estado
 // (último + próximo), configuración (switch + frecuencia + retención) y
 // acciones (Forzar ahora / Exportar / Importar) en la misma tarjeta.
@@ -342,6 +344,7 @@ function deriveLevel(prefs: PushPreference[]): PushLevel | 'custom' {
   if (on.size === IMPORTANTES.length && IMPORTANTES.every((k) => on.has(k))) return 'important';
   return 'custom';
 }
+
 function PushPrefs() {
   const { t } = useApp();
   const [prefs, setPrefs] = useState<PushPreference[] | null>(null);
@@ -447,19 +450,19 @@ function PushPrefs() {
   );
 }
 
-// Sección "Notificaciones push": tarjeta explicativa ANTES del prompt nativo
-// (qué alertas llegarán y que requiere la app cerrada para notar el efecto).
-// El prompt nativo solo sale del gesto del botón "Activar alertas" (subscribe).
-// Estados: activadas (con desactivar), denied (instrucciones, NO re-pedir),
-// unsupported, iOS sin PWA (guía de instalación), demo y sin claves VAPID
-// (nota informativa sin botón).
-function PushSection() {
+// Contenido de la configuración de notificaciones push (vive en el modal
+// "notifs" que abre la tarjeta Mi perfil; canon ajustes.md 5-Ago-2026).
+// Tarjeta explicativa ANTES del prompt nativo (qué alertas llegarán y que
+// requiere la app cerrada para notar el efecto). El prompt nativo solo sale
+// del gesto del botón "Activar alertas" (subscribe). Estados: activadas (con
+// desactivar), denied (instrucciones, NO re-pedir), unsupported, iOS sin PWA
+// (guía de instalación), demo y sin claves VAPID (nota informativa sin botón).
+function PushPanel() {
   const { t } = useApp();
   const { state, error, subscribe, unsubscribe } = usePush();
 
   return (
-    <div className="card pad">
-      <h3 className="cardtitle">{t('s_push')}</h3>
+    <div>
       <p className="muted">{t('s_push_d')}</p>
 
         {state === 'unknown' && (
@@ -508,11 +511,14 @@ function PushSection() {
   );
 }
 
-// Tarjeta "Mi perfil": idioma, nombre visible (saludos), email opcional y
-// cambio de contraseña INLINE (estilo NetPulse: el form se despliega dentro
-// de la tarjeta, sin modal) + cerrar sesión.
+// Tarjeta "Mi perfil" HORIZONTAL (canon ajustes.md 5-Ago-2026): cabecera con
+// avatar (subir foto con recorte cuadrado 1:1, EXIF y re-codificación webp)
+// + nombre/email visibles; grid de campos: nombre visible, email opcional,
+// idioma y fila de notificaciones push (abre modal con PushPanel); cambio de
+// contraseña INLINE (estilo NetPulse) + cerrar sesión.
 function ProfileCard() {
   const { t, user, langMode, setLang, logout, reloadUser } = useApp();
+  const push = usePush();
   const [name, setName] = useState(user?.display_name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [msg, setMsg] = useState('');
@@ -522,6 +528,12 @@ function ProfileCard() {
   const [cur, setCur] = useState('');
   const [p1, setP1] = useState('');
   const [p2, setP2] = useState('');
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const avatarUrl = user?.avatar ? getProvider().avatarUrl(user.avatar) : '';
+  const initial = (user?.display_name || user?.user || '?').trim().charAt(0).toUpperCase();
 
   const save = async () => {
     setBusy(true); setMsg(''); setErr('');
@@ -545,23 +557,82 @@ function ProfileCard() {
     setBusy(false);
   };
 
+  const uploadAvatar = async (blob: Blob) => {
+    setMsg(''); setErr('');
+    try {
+      await getProvider().setMyAvatar(blob);
+      reloadUser(); // el sidebar y la tarjeta muestran la foto nueva
+      setMsg(t('saved_ok'));
+    } catch (e) { setErr(errorMessage(e, t)); throw e; }
+  };
+
+  const removeAvatar = async () => {
+    setMsg(''); setErr('');
+    try {
+      await getProvider().deleteMyAvatar();
+      reloadUser();
+      setMsg(t('s_avatar_removed'));
+    } catch (e) { setErr(errorMessage(e, t)); }
+  };
+
   return (
     <div className="card pad">
       <h3 className="cardtitle">{t('s_profile')}</h3>
-      <label>{t('s_lang')}</label>
-      <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
-options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }, { v: 'tr', label: '🇹🇷 Türkçe' }]} />
-      <label htmlFor="pf-name">{t('s_displayname')}</label>
-      <input id="pf-name" value={name} maxLength={64} placeholder={user?.user}
-        autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
-      <p className="muted" style={{ marginTop: 4 }}>{t('s_displayname_d')}</p>
-      <label htmlFor="pf-email">{t('s_email')}</label>
-      <input id="pf-email" type="email" value={email} maxLength={254}
-        autoComplete="email" onChange={(e) => setEmail(e.target.value)} />
-      <p className="muted" style={{ marginTop: 4 }}>{t('s_email_d')}</p>
+
+      {/* Cabecera horizontal: avatar editable + nombre/email reales */}
+      <div className="profile-head">
+        <button type="button" className="avatar-lg" onClick={() => fileRef.current?.click()}
+          aria-label={t('s_avatar_change')} title={t('s_avatar_change')}>
+          {avatarUrl ? <img src={avatarUrl} alt="" /> : <span aria-hidden="true">{initial}</span>}
+          <span className="cam" aria-hidden="true"><IconCamera size={18} /></span>
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" hidden
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) setCropFile(f); e.target.value = ''; }} />
+        <div className="ph-lbl">
+          <b>{user?.display_name || user?.user}</b>
+          <span>@{user?.user}</span>
+        </div>
+        {avatarUrl && (
+          <button type="button" className="iconbtn" onClick={() => { void removeAvatar(); }}
+            aria-label={t('s_avatar_remove')} title={t('s_avatar_remove')}><IconTrash size={15} /></button>
+        )}
+      </div>
+
+      {/* Grid de campos: nombre | email / idioma | notificaciones */}
+      <div className="profile-grid">
+        <div>
+          <label htmlFor="pf-name">{t('s_displayname')}</label>
+          <input id="pf-name" value={name} maxLength={64} placeholder={user?.user}
+            autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
+          <p className="muted" style={{ marginTop: 4 }}>{t('s_displayname_d')}</p>
+        </div>
+        <div>
+          <label htmlFor="pf-email">{t('s_email')}</label>
+          <input id="pf-email" type="email" value={email} maxLength={254}
+            autoComplete="email" onChange={(e) => setEmail(e.target.value)} />
+          <p className="muted" style={{ marginTop: 4 }}>{t('s_email_d')}</p>
+        </div>
+        <div>
+          <label>{t('s_lang')}</label>
+          <Select value={langMode} onChange={setLang} ariaLabel={t('s_lang')}
+            options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Español' }, { v: 'en', label: '🇬🇧 English' }, { v: 'tr', label: '🇹🇷 Türkçe' }]} />
+        </div>
+        <div>
+          <label>{t('s_notifs')}</label>
+          <button type="button" className="notif-row" onClick={() => setShowNotifs(true)}>
+            <IconBell size={16} aria-hidden="true" />
+            <span className="nr-lbl">{t('s_push')}</span>
+            <Badge tone={push.state === 'subscribed' ? 'ok' : 'info'} dot={false}>
+              {push.state === 'subscribed' ? t('s_push_on') : t('s_push_off')}
+            </Badge>
+            <IconChev size={14} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
       <div className="m-actions" style={{ justifyContent: 'flex-start' }}>
         <button className="btn primary" disabled={busy} onClick={() => { void save(); }}>{t('save')}</button>
-        <button className="btn" onClick={() => setShowPass((v) => !v)}>{t('s_mypass')}</button>
+        <button className="btn" onClick={() => setShowPass((v) => !v)}><IconLock size={14} /> {t('s_mypass')}</button>
         <button className="btn danger" onClick={logout}>{t('logout')}</button>
       </div>
       {showPass && (
@@ -584,6 +655,23 @@ options={[{ v: 'auto', label: t('s_lang_auto') }, { v: 'es', label: '🇪🇸 Es
       )}
       {msg && <p style={{ fontSize: 13, color: 'var(--ok)', fontWeight: 600, marginTop: 10 }} role="status">{msg}</p>}
       {err && <p className="form-err" role="alert" style={{ marginTop: 10 }}>{err}</p>}
+
+      {/* Diálogo de recorte cuadrado para la foto de perfil */}
+      {cropFile && (
+        <AvatarCropDialog file={cropFile} onClose={() => setCropFile(null)}
+          onCrop={(blob) => uploadAvatar(blob)} />
+      )}
+
+      {/* Modal de notificaciones push (contenido = PushPanel) */}
+      {showNotifs && (
+        <ModalBox label={t('s_push')} onClose={() => setShowNotifs(false)}>
+          <h3 className="cardtitle">{t('s_push')}</h3>
+          <PushPanel />
+          <div className="m-actions">
+            <button className="btn" onClick={() => setShowNotifs(false)}>{t('close')}</button>
+          </div>
+        </ModalBox>
+      )}
     </div>
   );
 }
@@ -670,21 +758,6 @@ export default function Settings() {
           <label htmlFor="th-temp">{t('s_temp')}</label>
           <input id="th-temp" type="number" value={settings.disk_temp_c}
             onChange={(e) => setSettings({ ...settings, disk_temp_c: +e.target.value })} />
-          <label htmlFor="th-veeam">{t('veeam_monitored_lbl')}</label>
-          <input id="th-veeam" type="text" value={settings.veeam_datasets ?? ''}
-            placeholder="tank/vmware, tank/backups"
-            onChange={(e) => setSettings({ ...settings, veeam_datasets: e.target.value })} />
-          <p className="muted" style={{ marginTop: 4 }}>{t('veeam_monitored_d')}</p>
-          <label htmlFor="th-veeam-stale">{t('veeam_stale_days_lbl')}</label>
-          <input id="th-veeam-stale" type="number" min={1} max={30}
-            value={settings.veeam_stale_days ?? 2}
-            onChange={(e) => setSettings({ ...settings, veeam_stale_days: +e.target.value })} />
-          <p className="muted" style={{ marginTop: 4 }}>{t('veeam_stale_days_d')}</p>
-          <label htmlFor="th-veeam-ignore">{t('veeam_ignore_lbl')}</label>
-          <input id="th-veeam-ignore" type="text" value={settings.veeam_ignore ?? ''}
-            placeholder="FATSA_000_172_ORACLE-UCM, ..."
-            onChange={(e) => setSettings({ ...settings, veeam_ignore: e.target.value })} />
-          <p className="muted" style={{ marginTop: 4 }}>{t('veeam_ignore_d')}</p>
           {!threshOk && <p className="form-err" role="alert">{t('s_thresh_invalid')}</p>}
           <div className="m-actions">
             <button className="btn primary" disabled={!threshOk} onClick={() => saveSettings({})}>{t('save')}</button>
@@ -740,11 +813,8 @@ export default function Settings() {
       </div>
       </div>
 
-      {/* ---- Fila 2: Mi perfil + Notificaciones push ---- */}
-      <div className="st-row">
-        <ProfileCard />
-        <PushSection />
-      </div>
+      {/* ---- Fila 2: Mi perfil (horizontal, ancho completo: avatar + campos + notificaciones) ---- */}
+      <ProfileCard />
 
       {/* ---- Zona de administración (tinte sutil; solo admin) ---- */}
       {isAdmin && <h2 className="zonehead">{t('s_admin_zone')}<ReleaseIcon version={version?.version} /></h2>}
@@ -831,7 +901,7 @@ export default function Settings() {
         <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{t('s_roles_d')}</p>
       </div>
 
-{/* ---- Actividad (audit log, "ver más") ---- */}
+      {/* ---- Actividad (audit log, "ver más") ---- */}
       <ActivityCard />
       </div>
       </>
